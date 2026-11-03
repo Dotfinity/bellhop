@@ -1,0 +1,111 @@
+Error: Invariant NoDoubleRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 0
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = TRUE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 2: <Tick line 145, col 5 to line 151, col 70 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 1
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = TRUE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 3: <RenewStoreDown line 93, col 5 to line 96, col 75 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 1
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 4: <Tick line 145, col 5 to line 151, col 70 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 2
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 5: <RenewStoreDown line 93, col 5 to line 96, col 75 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 2
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 6: <Tick line 145, col 5 to line 151, col 70 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 3
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 7: <RenewStoreDown line 93, col 5 to line 96, col 75 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 3
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 8: <Tick line 145, col 5 to line 151, col 70 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 4
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 9: <Recover line 129, col 5 to line 132, col 85 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Enqueued"
+/\ now = 4
+/\ owner = n1
+/\ expiry = 3
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 10: <RecovererStarts line 136, col 5 to line 141, col 61 of module F2_SelfFencing>
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 4
+/\ owner = n2
+/\ expiry = 7
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Running")

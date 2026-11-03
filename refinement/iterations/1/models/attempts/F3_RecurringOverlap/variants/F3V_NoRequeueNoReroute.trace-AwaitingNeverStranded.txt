@@ -1,0 +1,82 @@
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 2: <ReadDue line 75, col 5 to line 79, col 92 of module F3V_NoRequeueNoReroute>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 1 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 3: <CatchUpFire line 93, col 5 to line 100, col 44 of module F3V_NoRequeueNoReroute>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n1}, {}>>
+/\ nextRun = 2
+/\ winners = <<{n1}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 4: <DeleteOcc line 204, col 5 to line 206, col 93 of module F3V_NoRequeueNoReroute>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n1}, {}>>
+/\ nextRun = 2
+/\ winners = <<{n1}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Deleted", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 5: <ReadDue line 75, col 5 to line 79, col 92 of module F3V_NoRequeueNoReroute>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 2)
+/\ reporters = <<{n1}, {}>>
+/\ nextRun = 2
+/\ winners = <<{n1}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Deleted", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 6: <CatchUpFire line 93, col 5 to line 100, col 44 of module F3V_NoRequeueNoReroute>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n1}, {n2}>>
+/\ nextRun = 3
+/\ winners = <<{n1}, {n2}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Deleted", "Awaiting", "Awaiting">>
+/\ attempt = <<0, 0, 0>>
+
+State 7: <Pause line 118, col 5 to line 120, col 93 of module F3V_NoRequeueNoReroute>
+/\ paused = TRUE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n1}, {n2}>>
+/\ nextRun = 3
+/\ winners = <<{n1}, {n2}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Deleted", "Awaiting", "Awaiting">>
+/\ attempt = <<0, 0, 0>>
+
+State 8: Stuttering

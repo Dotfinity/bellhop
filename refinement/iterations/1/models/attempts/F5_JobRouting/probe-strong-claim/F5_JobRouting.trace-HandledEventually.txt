@@ -1,0 +1,138 @@
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ state = (j1 :> "Enqueued" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 0 @@ n2 :> 0)
+/\ old = (j1 :> FALSE @@ j2 :> FALSE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> NoNode @@ j2 :> NoNode)
+
+State 2: <TimePasses line 76, col 5 to line 77, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Enqueued" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> FALSE @@ j2 :> FALSE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> NoNode @@ j2 :> NoNode)
+
+State 3: <Claim line 60, col 5 to line 65, col 34 of module F5_JobRouting>
+/\ state = (j1 :> "Processing" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> FALSE @@ j2 :> FALSE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 4: <GraceExpires line 81, col 5 to line 83, col 45 of module F5_JobRouting>
+/\ state = (j1 :> "Processing" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> FALSE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 5: <Finish line 69, col 5 to line 72, col 43 of module F5_JobRouting>
+/\ state = (j1 :> "Succeeded" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> FALSE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 6: <Purge line 119, col 5 to line 123, col 43 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> FALSE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 7: <GraceExpires line 81, col 5 to line 83, col 45 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 8: <TimePasses line 76, col 5 to line 77, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 2 @@ n2 :> 2)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 9: <Tick line 87, col 5 to line 93, col 39 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 0 @@ n2 :> 2)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 10: <Tick line 87, col 5 to line 93, col 39 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 0 @@ n2 :> 0)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 11: <Crash line 97, col 5 to line 99, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 0 @@ n2 :> 0)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> FALSE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 12: <TimePasses line 76, col 5 to line 77, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> FALSE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 13: <Start line 103, col 5 to line 105, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 1)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 14: <Tick line 87, col 5 to line 93, col 39 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 1 @@ n2 :> 0)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 15: <TimePasses line 76, col 5 to line 77, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 2 @@ n2 :> 1)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 16: <TimePasses line 76, col 5 to line 77, col 46 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 3 @@ n2 :> 2)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 17: <MarkUnroutable line 109, col 5 to line 115, col 43 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Unroutable")
+/\ hb = (n1 :> 3 @@ n2 :> 2)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 18: <Tick line 87, col 5 to line 93, col 39 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 0 @@ n2 :> 2)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+State 19: <Tick line 87, col 5 to line 93, col 39 of module F5_JobRouting>
+/\ state = (j1 :> "Purged" @@ j2 :> "Enqueued")
+/\ hb = (n1 :> 0 @@ n2 :> 0)
+/\ old = (j1 :> TRUE @@ j2 :> TRUE)
+/\ up = (n1 :> TRUE @@ n2 :> TRUE)
+/\ claimer = (j1 :> n1 @@ j2 :> NoNode)
+
+Back to state 7: <TimePasses line 76, col 5 to line 77, col 46 of module F5_JobRouting>

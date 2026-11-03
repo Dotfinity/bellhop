@@ -1,0 +1,82 @@
+{
+  "module": "F2_SelfFencing",
+  "rules": [
+    {
+      "name": "NoDoubleRun",
+      "kind": "invariant",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F2_SelfFencing.trace-NoDoubleRun.txt"
+    },
+    {
+      "name": "HealthyNeverRecovered",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "CancelledByRecoveryMoment",
+      "kind": "property",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F2_SelfFencing.trace-CancelledByRecoveryMoment.txt"
+    },
+    {
+      "name": "RecoveredAfterFailedRelease",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "now",
+      "domain": "Times",
+      "values": 9
+    },
+    {
+      "variable": "expiry",
+      "domain": "0..(MaxTime + LeaseLength)",
+      "values": 12
+    },
+    {
+      "variable": "jobState",
+      "domain": "{\"Processing\", \"Enqueued\", \"Succeeded\"}",
+      "values": 3
+    },
+    {
+      "variable": "owner",
+      "domain": "Nodes",
+      "values": 2
+    },
+    {
+      "variable": "handler",
+      "domain": "[Nodes -> HandlerStates]",
+      "values": 25
+    },
+    {
+      "variable": "lastOk",
+      "domain": "Times",
+      "values": 9
+    },
+    {
+      "variable": "pending",
+      "domain": "{\"none\", \"sent\", \"due\"}",
+      "values": 3
+    },
+    {
+      "variable": "attempted",
+      "domain": "BOOLEAN",
+      "values": 2
+    },
+    {
+      "variable": "healthy",
+      "domain": "BOOLEAN",
+      "values": 2
+    }
+  ],
+  "typeOkProduct": 1749600,
+  "status": "issues",
+  "because": "One or more rules were broken; see their traces.",
+  "states": 2103,
+  "distinct": 1280,
+  "depth": 21
+}

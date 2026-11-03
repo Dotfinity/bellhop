@@ -1,0 +1,78 @@
+Error: Invariant NoOverlap is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 2: <ManualTrigger line 124, col 5 to line 125, col 82 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 3: <MarkUnroutable line 216, col 5 to line 218, col 93 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Unroutable", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 4: <ManualTrigger line 124, col 5 to line 125, col 82 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Unroutable", "Enqueued", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 5: <Reroute line 222, col 5 to line 224, col 93 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Enqueued", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 6: <Claim line 137, col 5 to line 140, col 84 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Processing", "Enqueued", "None">>
+/\ attempt = <<1, 0, 0>>
+
+State 7: <Claim line 137, col 5 to line 140, col 84 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Processing", "Processing", "None">>
+/\ attempt = <<1, 1, 0>>

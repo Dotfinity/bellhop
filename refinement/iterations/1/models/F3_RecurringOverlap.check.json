@@ -1,0 +1,103 @@
+{
+  "module": "F3_RecurringOverlap",
+  "rules": [
+    {
+      "name": "NoOverlap",
+      "kind": "invariant",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F3_RecurringOverlap.trace-NoOverlap.txt"
+    },
+    {
+      "name": "OneFirePerInstant",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "MissedReportedOnce",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "AwaitingRunsInOrder",
+      "kind": "invariant",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F3_RecurringOverlap.trace-AwaitingRunsInOrder.txt"
+    },
+    {
+      "name": "SkipCreatesNothingWhileActive",
+      "kind": "property",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F3_RecurringOverlap.trace-SkipCreatesNothingWhileActive.txt"
+    },
+    {
+      "name": "PausedNeverFires",
+      "kind": "property",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F3_RecurringOverlap.trace-PausedNeverFires.txt"
+    },
+    {
+      "name": "AwaitingNeverStranded",
+      "kind": "property",
+      "outcome": "violated",
+      "class": "livelock",
+      "trace": "F3_RecurringOverlap.trace-AwaitingNeverStranded.txt"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "policy",
+      "domain": "Policies",
+      "values": 4
+    },
+    {
+      "variable": "paused",
+      "domain": "BOOLEAN",
+      "values": 2
+    },
+    {
+      "variable": "nextRun",
+      "domain": "1..(NumInstants + 1)",
+      "values": 3
+    },
+    {
+      "variable": "dueRead",
+      "domain": "[Nodes -> 0..NumInstants]",
+      "values": 9
+    },
+    {
+      "variable": "status",
+      "domain": "[Occs -> Statuses]",
+      "values": 1331
+    },
+    {
+      "variable": "attempt",
+      "domain": "[Occs -> 0..MaxAttempts]",
+      "values": 27
+    },
+    {
+      "variable": "cancelReq",
+      "domain": "[Occs -> BOOLEAN]",
+      "values": 8
+    },
+    {
+      "variable": "winners",
+      "domain": "[Instants -> SUBSET Nodes]",
+      "values": 16
+    },
+    {
+      "variable": "reporters",
+      "domain": "[Instants -> SUBSET Nodes]",
+      "values": 16
+    }
+  ],
+  "typeOkProduct": 15897378816,
+  "status": "issues",
+  "because": "One or more rules were broken; see their traces.",
+  "states": 98454404,
+  "distinct": 11298592,
+  "depth": 27
+}

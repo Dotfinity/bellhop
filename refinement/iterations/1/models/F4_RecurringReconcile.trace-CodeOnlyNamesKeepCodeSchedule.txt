@@ -1,0 +1,145 @@
+Error: Invariant CodeOnlyNamesKeepCodeSchedule is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "old" @@ n2 :> "old")
+/\ lastReconciler = "none"
+
+State 2: <StartNode line 81, col 5 to line 83, col 31 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "old" @@ n2 :> "old")
+/\ lastReconciler = "svc1"
+
+State 3: <Remove line 124, col 5 to line 127, col 21 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "old" @@ n2 :> "old")
+/\ lastReconciler = "none"
+
+State 4: <RuntimeEdit line 100, col 5 to line 106, col 21 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "old" @@ n2 :> "old")
+/\ lastReconciler = "none"

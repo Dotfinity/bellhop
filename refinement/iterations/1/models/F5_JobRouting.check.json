@@ -1,0 +1,65 @@
+{
+  "module": "F5_JobRouting",
+  "rules": [
+    {
+      "name": "NeverClaimedWithoutHandler",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "HandledEventually",
+      "kind": "property",
+      "outcome": "violated",
+      "class": "livelock",
+      "trace": "F5_JobRouting.trace-HandledEventually.txt"
+    },
+    {
+      "name": "UnroutableOnlyWithoutLiveHandler",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "YoungJobLeftAlone",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "UnfinishedNeverPurged",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "state",
+      "domain": "[Jobs -> ModelStates]",
+      "values": 36
+    },
+    {
+      "variable": "claimer",
+      "domain": "[Jobs -> Nodes \\cup {NoNode}]",
+      "values": 9
+    },
+    {
+      "variable": "old",
+      "domain": "[Jobs -> BOOLEAN]",
+      "values": 4
+    },
+    {
+      "variable": "up",
+      "domain": "[Nodes -> BOOLEAN]",
+      "values": 4
+    },
+    {
+      "variable": "hb",
+      "domain": "[Nodes -> 0..Stale]",
+      "values": 16
+    }
+  ],
+  "typeOkProduct": 82944,
+  "status": "issues",
+  "because": "One or more rules were broken; see their traces.",
+  "states": 41461,
+  "distinct": 6736,
+  "depth": 15
+}
