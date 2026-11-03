@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft v0.2 for review |
+| Status | Draft v0.3 for review (open questions 1 to 5 resolved; see [docs/bellhop-architecture.md](docs/bellhop-architecture.md) §0) |
 | Date | 2026-11-03 |
 | Scope | A new .NET background-job and scheduling library positioned against Hangfire and TickerQ |
 | Evidence | [research.md](research.md): feature inventories, grievances, Redis landscape, plugin ecosystem, sources |
@@ -232,7 +232,7 @@ All of these are free.
 | STO-4 | The store MUST never require the application to register, expose or migrate a `DbContext`. `Bellhop.EntityFrameworkCore` is optional sugar for transactional enqueue only. | MUST |
 | STO-5 | **Rolling deploys.** Schema version N must be readable and writable by library versions N and N+1 so that nodes on two adjacent versions can coexist. | MUST |
 | STO-6 | **Idle cost.** An idle node (no work, notifications available) MUST issue at most one lightweight query per `PollInterval` and the dashboard MUST NOT add load when nobody is viewing it. | MUST |
-| STO-7 | **Retention and cleanup.** Per-state retention (defaults: Succeeded 24 h, Cancelled 7 d, DeadLettered 30 d, state history and logs follow the job). Cleanup runs in small paced batches (default 500 rows, short sleep between) so it never spikes I/O. Tables MUST be designed so cleanup hits an index, not a scan. | MUST |
+| STO-7 | **Retention and cleanup.** Per-state retention (defaults: Succeeded 7 d, Cancelled 7 d, DeadLettered 30 d, state history and logs follow the job). Cleanup runs in small paced batches (default 500 rows, short sleep between) so it never spikes I/O. Tables MUST be designed so cleanup hits an index, not a scan. | MUST |
 | STO-8 | Published **conformance test suite** (`Bellhop.Storage.Conformance`): an xunit package any store author runs to prove correctness, including concurrency tests for claims, uniqueness and recurring triggers. Community stores (MySQL, MongoDB, others) are welcome and MUST pass it to be listed. | MUST |
 | STO-9 | Multi-tenancy: the same store MAY be shared by multiple applications using a configurable `Namespace`; jobs of one namespace are invisible to workers of another. | SHOULD |
 | STO-10 | Payload size: a soft limit (default 64 KB) with a warning and a hard limit (default 1 MB) with a clear exception; large data belongs in the application's own storage and the payload carries a reference. | MUST |
@@ -439,11 +439,11 @@ All packages share one version number (SET-9).
 
 ## 9. Open questions
 
-1. Confirm the name **Bellhop** and the root namespace.
-2. PostgreSQL as the reference store first, SQL Server second? (Proposed: yes, because `SKIP LOCKED` + `LISTEN/NOTIFY` give the best reliability and latency story; SQL Server follows in M2.)
-3. Dashboard front-end stack: a small framework-free build (Preact/htmx-class size) versus React. Proposed: whichever keeps the embedded bundle under ~300 KB and needs no runtime CDN.
-4. Should `AutoMigrate` default to true in all environments (Hangfire-style convenience) or only in Development (DBA-friendly)? Proposed: true everywhere, with the script export documented on the first page.
-5. Default succeeded-job retention: 24 h (Hangfire) versus 7 d (more useful dashboards, more storage).
+1. ~~Confirm the name **Bellhop** and the root namespace.~~ **Resolved 2026-11-03:** Bellhop, root namespace `Bellhop`.
+2. ~~PostgreSQL as the reference store first, SQL Server second?~~ **Resolved 2026-11-03:** yes, as proposed.
+3. ~~Dashboard front-end stack.~~ **Resolved 2026-11-03:** framework-free, embedded bundle under 300 KB, no runtime CDN.
+4. ~~Should `AutoMigrate` default to true in all environments?~~ **Resolved 2026-11-03:** true everywhere, with the script export documented on the first page.
+5. ~~Default succeeded-job retention: 24 h versus 7 d.~~ **Resolved 2026-11-03:** 7 days by default, configurable (STO-7 updated).
 6. Is a Hangfire migration adapter (`Enqueue(() => ...)` sugar backed by Bellhop) worth shipping as a separate, clearly "legacy" package?
 7. Redis store in 1.0 or 1.1? (Proposed: 1.0 for Redis and Valkey, with Garnet, Dragonfly and Kvrocks promoted to Tier 2 in 1.x once the CI matrix is stable.)
 8. Should Dragonfly, which is not open source (BSL 1.1), be listed as supported at all, or only as "known to work"? (Proposed: Tier 2 with the license stated, since the derivative list is about protocol compatibility, not endorsement.)
