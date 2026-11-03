@@ -1,0 +1,42 @@
+# M1-13 Scheduler tick, recovery and cleanup
+
+## Context
+
+The tick is the one periodic query a node makes (STO-6). It promotes due jobs, recovers expired leases on behalf of crashed nodes, reroutes unroutable jobs, heartbeats the node and returns due recurring definitions. Cleanup runs under a short store lease on one node at a time. Together they provide EXE-4 (recovery without a single point of failure), EXE-9 (database clock, skew warning), EXE-10 (distributed scheduler) and STO-7 (paced retention). This answers H3 and H4, Hangfire's stuck jobs and expiration-manager load spikes.
+
+Implements arch §7.4, except firing recurring definitions (M1-14, which plugs into the tick result). Fills in the scheduler shell from M1-08.
+
+Files: `src/Bellhop/Engine/Scheduling/` (`SchedulerLoop` with step function `TickOnceAsync`, `CleanupLoop` with `RunOnceAsync`, `ClockSkewMonitor`).
+
+**As a** operator of several nodes
+**I want** every node to share scheduling, recovery and cleanup safely
+**so that** crashed nodes' jobs come back on their own, nothing depends on a leader, and cleanup never spikes the database.
+
+## Acceptance criteria
+
+- Given a `Both` node, when it runs, then `TickAsync` is called every `PollInterval`, with the node's routable names and queues, and a heartbeat every `NodeHeartbeatInterval` (EXE-10).
+- Given a tick that promoted jobs or reports ready queues, then the worker wake signal is raised (EXE-8).
+- Given node A claims a job through the store and "crashes" (the lease is never renewed), when node B's scheduler ticks after the lease expires, then the job is `Enqueued` with reason `Interrupted`, the next claim returns it as attempt 2, and info 1301 is logged on B (EXE-4). With attempts exhausted, it is `DeadLettered` with reason `Interrupted`. Two "nodes" (two scheduler instances with different node ids) share one in-memory store in this test. The full run-it-again path with workers is covered by M1-17 and the acceptance run.
+- Given the node clock 10 s ahead of the store clock (a `FakeTimeProvider` for the node and a separate clock for the store), when a tick runs, then warning 1302 reports the skew, and is not repeated for 10 minutes (EXE-9).
+- Given the tick throws, then 1303 is logged, the loop backs off as in arch §7.1, and the health state records the failure (consumed by M1-16).
+- Given two nodes running cleanup at the same interval, when both fire, then only the lease holder calls `PurgeAsync` (EXE-10, ADR-1).
+- Given 1,200 expired succeeded jobs and `BatchSize = 500`, when cleanup runs, then `PurgeAsync` is called 3 times with `PauseBetweenBatches` between calls, and stops after the batch that returned fewer than 500 (STO-7).
+- Given configured retention (`Succeeded = 1 h` for the test), when cleanup runs, then the `PurgeRequest` carries the configured per-state values. The default is 7 days (D6).
+- Given `Mode = ClientOnly`, then neither the tick nor cleanup runs (A-14).
+- Given the host stops, then the tick and cleanup loops stop within `PollInterval`.
+
+## Tests
+
+`SchedulerTickTests`, `RecoveryAcrossNodesTests`, `ClockSkewTests`, `CleanupLeadershipTests`, `CleanupPacingTests`, using the in-memory store and fake time.
+
+## Out of scope
+
+Firing recurring definitions (M1-14). Reconciliation (M1-14). PostgreSQL tick SQL (M1-19 to M1-21). Health check surface (M1-16).
+
+**Priority:** Must
+**Depends on:** M1-07, M1-08
+**Traces to:** EXE-4, EXE-9, EXE-10, STO-6, STO-7, CON-7; arch §7.4, D6
+
+## Notes
+
+Status: not started
