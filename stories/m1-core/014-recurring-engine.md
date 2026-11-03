@@ -18,17 +18,21 @@ Files: `src/Bellhop/Engine/Recurring/` (`RecurringRegistry` from `[Recurring]`, 
 - Given a recurring name that breaks the name rule, or two code-defined recurring jobs with the same name, then startup fails naming both.
 - Given startup on a `Both` node, then reconciliation runs once before the loops start, and info 1401 logs created, updated, unchanged and orphaned counts with the orphaned names (REC-3).
 - Given a due definition with `NextRunAt = 03:00`, a tick at 03:00:00.4 and `RunOnce`, then one occurrence job is created with `ScheduledAt` 03:00 and `RecurringName` set, and `NextRunAt` becomes the next day's 03:00.
-- Given the node was down from 02:00 to 08:30 with an hourly schedule (`0 * * * *`), when it comes back, then:
-  - `RunOnce` creates one occurrence (for 08:00) and logs 1402 for 6 missed,
-  - `Skip` creates none, because the latest occurrence (08:00) is 30 minutes late, beyond `MisfireThreshold`, and logs 1402,
-  - `RunAll` with `MisfireMax = 3` creates 3 occurrences (06:00, 07:00, 08:00), oldest first, and logs 1402 for the 4 not run,
-  - in every case `NextRunAt` becomes 09:00, and `OnRecurringMissedAsync` is raised with the missed instants and the policy (REC-5).
+- Given the node was down from 01:30 to 08:30 with an hourly schedule (`0 * * * *`, so `NextRunAt` was 02:00 and the due occurrences are 02:00 to 08:00, 7 in all), when it comes back, then:
+  - `RunOnce` creates one occurrence (for 08:00) and logs 1402 for the 6 not run,
+  - `Skip` creates none, because the latest occurrence (08:00) is 30 minutes late, beyond `MisfireThreshold`, and logs 1402 for all 7,
+  - `RunAll` with `MisfireMax = 3` creates the newest 3 occurrences (06:00, 07:00, 08:00) as a sequence (the first `Enqueued`, the others `Awaiting` under the default `Skip` overlap, arch §7.7), and logs 1402 for the 4 not run,
+  - in every case `NextRunAt` becomes 09:00, and `OnRecurringMissedAsync` is raised once, with the missed instants and the policy (REC-5).
+- Given a per-second schedule and a node down for 5 hours (18,000 due occurrences, above the 10,000 enumeration cap), when it comes back with `RunOnce`, then exactly one occurrence is created at the latest second ≤ now, the log says "10,000 or more" missed, and the fire completes in under 100 ms of CPU.
+- Given two nodes that both see the same due definition, then 1402 and `OnRecurringMissedAsync` happen only on the node whose fire returned `Fired = true` (arch §7.7 step 5). `OnEnqueuedAsync` is raised for each created `Enqueued` occurrence.
 - Given two scheduler instances sharing one store, when both tick a due definition at once, then exactly one occurrence exists, and the losing fire is not logged above debug (REC-7).
 - Given `IRecurringJobManager.AddOrUpdateAsync` changes an hourly schedule to daily at 10:00 while `NextRunAt` was 09:00 (overdue), then `NextRunAt` becomes the next 10:00 after now, and no catch-up runs for the old schedule (REC-10).
-- Given the manager, then `RemoveAsync`, `PauseAsync`, `ResumeAsync` (recomputing `NextRunAt` from now, so no catch-up for the paused period), `ListAsync`, `GetAsync` and `GetNextOccurrencesAsync(name, 5)` behave as described in arch §3.1 and §7.7 (REC-9).
+- Given the manager, then `RemoveAsync`, `PauseAsync`, `ResumeAsync` (passing `NextRunAt` recomputed from the estimated store now, so no catch-up for the paused period), `ListAsync` (keyset-paged, with `LastFireOutcome` and `LastJobState`), `GetAsync` and `GetNextOccurrencesAsync(name, 5)` behave as described in arch §3.1 and §7.7 (REC-9).
+- Given `IRecurringJobManager` mocked with Moq in a consumer's test, then setups on its methods work directly (TST-2).
+- Given a code-defined job with `AllowRuntimeOverride`, when the manager changes its schedule and the host restarts, then the runtime schedule is kept (REC-3, arch §5.3).
 - Given `TriggerAsync(name)`, then one occurrence is created now with the stored payload, and `NextRunAt` is unchanged. Given `TriggerAsync(name, payloadOverride)`, then the occurrence uses the override (REC-9).
 - Given a manager edit to a code-defined job without `AllowRuntimeOverride`, then the store's conflict exception reaches the caller with the message from M1-06 (REC-3).
-- Given a definition stored with a cron that no longer parses (edited by hand), when it is due, then it is paused with `last_outcome = Invalid`, error 1404 names it, and other definitions still fire (arch §4.7).
+- Given a definition stored with a cron that no longer parses (edited by hand), when it is due, then it is paused with `LastFireOutcome = Invalid`, error 1404 names it, and other definitions still fire (arch §4.7).
 - Given a fire that throws for one definition, then 1405 is logged with the name, and the remaining due definitions are fired in the same tick.
 
 ## Tests
@@ -41,7 +45,7 @@ Overlap behaviour end to end, including `CancelPrevious` cancellation delivery (
 
 **Priority:** Must
 **Depends on:** M1-04, M1-06, M1-13
-**Traces to:** REC-1 to REC-5, REC-7 to REC-10, SET-8; arch §7.7, A-12, A-13, A-14, A-15
+**Traces to:** REC-1 to REC-5, REC-7 to REC-10, SET-8, TST-2, RET-6; arch §7.7, A-12, A-13, A-14, A-15
 
 ## Notes
 

@@ -27,33 +27,31 @@ Where sources disagree: the decisions above win over arch, and arch (with its li
 ## Tracks and order
 
 ```text
-Foundation   Core                         Storage (in-memory)        Engine                         PostgreSQL                 Dashboard          Finish
+Foundation and core               Storage (in-memory)           Engine                                 PostgreSQL                     Dashboard
 
-M1-01 ─ M1-02 ─┬─ M1-03 registry ───────────────┐
-               ├─ M1-04 schedules ──────────────┼──────────────────────────────┐
-               ├─ M1-05 mem: jobs ──┬─ M1-06 mem: recurring ───────────────────┤
-               │                    └─ M1-07 mem: nodes/index ─┐               │
-               │                                               │               │
-               │   M1-03 + M1-05 ─ M1-08 hosting ─┬─ M1-09 client ─ M1-10 processor ─┬─ M1-11 retries
-               │                                  │                                  └─ M1-12 worker loop
-               │                                  └── (+M1-07) ─ M1-13 scheduler tick
-               │                                       (+M1-04, M1-06, M1-13) ─ M1-14 recurring engine ─ (+M1-12) M1-15 overlap
-               │                                                                   (+M1-09, M1-12, M1-13) M1-16 observability
-               │                                                                   (+M1-11, M1-12, M1-14) M1-17 Bellhop.Testing
-               │
-               └─ M1-18 pg schema ─ (+M1-05) M1-19 pg jobs ─┬─ (+M1-06) M1-20 pg recurring
-                                                           ├─ (+M1-07) M1-21 pg nodes/index/purge
-                                                           └─ (+M1-12) M1-22 pg notify
+M1-01 ─ M1-02 ─┬─ M1-03 registry
+               ├─ M1-04 schedules
+               └─ M1-05 mem: jobs ─┬─ M1-06 mem: recurring
+                                   └─ M1-07 mem: nodes, routing, index
 
-                   M1-08 ─ M1-23 dashboard foundation ─┬─ (+M1-07) M1-24 overview/jobs/detail
-                                                       └─ (+M1-06, M1-07) M1-25 recurring/dead letters/queues/nodes
+M1-03 + M1-05 ─ M1-08 hosting ─┬─ M1-09 client ─ M1-10 processor ─ M1-11 retries ─ (+M1-07) M1-12 worker loop
+                               ├─ (+M1-07) M1-13 scheduler tick ─ (+M1-04, M1-06) M1-14 recurring engine
+                               │      M1-12 + M1-14 ─ M1-15 overlap end to end
+                               │      M1-11..M1-14 ─ M1-16 observability
+                               │      M1-11, M1-12, M1-14 ─ M1-17 Bellhop.Testing
+                               ├─ M1-18 pg schema ─ (+M1-05) M1-19 pg jobs ─┬─ (+M1-06) M1-20 pg recurring ─┐
+                               │                                           └─ (+M1-07) M1-21 pg nodes ─────┴─ (+M1-12, M1-13) M1-22 pg notify
+                               └─ M1-23 dashboard foundation ─┬─ (+M1-07) M1-24 overview, jobs, detail
+                                                              └─ (+M1-07, M1-14) M1-25 recurring, dead letters, queues, nodes
 
-                   M1-15, M1-16, M1-17, M1-20, M1-21, M1-22, M1-24, M1-25 ─ M1-26 sample + getting started ─ M1-27 acceptance run
+M1-15, M1-16, M1-17, M1-20, M1-21, M1-22, M1-24, M1-25 ─ M1-26 sample + getting started ─ M1-27 acceptance run
 ```
+
+The critical path is M1-01 → 02 → 05 → 08 → 09 → 10 → 11 → 12 → 15 → 26 → 27. Once M1-08 has landed, the PostgreSQL track (M1-18 onward) and the dashboard track (M1-23 onward) run beside the engine track.
 
 Rules for the tracks:
 
-- **Foundation first.** M1-01 and M1-02 land alone. M1-02 fixes the public and store contracts (arch §3, §5), the event-id ranges (arch §8.4) and the `PublicAPI` files, so every later story touches its own folder.
+- **Foundation first.** M1-01 and M1-02 land alone. M1-08 creates the shared engine pieces every loop writes to (`BellhopHealthState`, `IStoreClock`, `JobEventsInvoker`), so no later story has to wait for another to create them. M1-02 fixes the public and store contracts (arch §3, §5), the event-id ranges (arch §8.4) and the `PublicAPI` files, so every later story touches its own folder.
 - **The store contract is defined by the conformance suite.** M1-05, M1-06 and M1-07 each add a conformance test group in `tests/Bellhop.Storage.Conformance` and make the in-memory store pass it. M1-19, M1-20 and M1-21 make PostgreSQL pass the same groups. Where the tracks meet, a PostgreSQL story is done when the same conformance classes pass on both stores.
 - **Dashboard on fixtures first.** The dashboard stories run against the in-memory store seeded with Bogus data (`DashboardFixture`), so pages can be built and reviewed before PostgreSQL exists. They never call PostgreSQL directly.
 - **Shared files.** `PublicAPI.Unshipped.txt`, `BellhopEventIds.cs`, `Directory.Packages.props` and `ServiceCollectionExtensions` are appended to by many stories. Each story adds only its own lines. A defect found in a shared file owned by an earlier story is fixed in its own commit that references the owning story.
@@ -69,29 +67,33 @@ Rules for the tracks:
 | M1-04 | [Schedules: cron, intervals and time zones](004-schedules.md) | Core | M1-02 | not started |
 | M1-05 | [In-memory store: job lifecycle and conformance suite](005-in-memory-store-jobs.md) | Storage | M1-02 | not started |
 | M1-06 | [In-memory store: recurring definitions](006-in-memory-store-recurring.md) | Storage | M1-05 | not started |
-| M1-07 | [In-memory store: nodes, leases, purge, index and statistics](007-in-memory-store-nodes-index.md) | Storage | M1-05 | not started |
+| M1-07 | [In-memory store: nodes, leases, purge, routing, index, statistics and namespaces](007-in-memory-store-nodes-index.md) | Storage | M1-05 | not started |
 | M1-08 | [Hosting, options and startup summary](008-hosting-and-options.md) | Core | M1-03, M1-05 | not started |
 | M1-09 | [Job client](009-job-client.md) | Core | M1-08 | not started |
 | M1-10 | [Job execution pipeline](010-execution-pipeline.md) | Engine | M1-09 | not started |
 | M1-11 | [Retries and dead letters](011-retries-and-dead-letters.md) | Engine | M1-10 | not started |
-| M1-12 | [Worker loop, heartbeat, timeouts and shutdown](012-worker-loop.md) | Engine | M1-10 | not started |
+| M1-12 | [Worker loop, heartbeat, timeouts and shutdown](012-worker-loop.md) | Engine | M1-07, M1-11 | not started |
 | M1-13 | [Scheduler tick, recovery and cleanup](013-scheduler-tick.md) | Engine | M1-07, M1-08 | not started |
 | M1-14 | [Recurring jobs: reconciliation, firing and manager](014-recurring-engine.md) | Engine | M1-04, M1-06, M1-13 | not started |
 | M1-15 | [Recurring overlap policies end to end](015-recurring-overlap.md) | Engine | M1-12, M1-14 | not started |
-| M1-16 | [Traces, metrics and health check](016-observability.md) | Engine | M1-09, M1-12, M1-13 | not started |
+| M1-16 | [Traces, metrics and health check](016-observability.md) | Engine | M1-11, M1-12, M1-13, M1-14 | not started |
 | M1-17 | [Bellhop.Testing harness and inline mode](017-testing-package.md) | Engine | M1-11, M1-12, M1-14 | not started |
-| M1-18 | [PostgreSQL schema and migrations](018-postgresql-schema.md) | PostgreSQL | M1-02 | not started |
+| M1-18 | [PostgreSQL schema and migrations](018-postgresql-schema.md) | PostgreSQL | M1-08 | not started |
 | M1-19 | [PostgreSQL store: job lifecycle](019-postgresql-jobs.md) | PostgreSQL | M1-05, M1-18 | not started |
 | M1-20 | [PostgreSQL store: recurring definitions](020-postgresql-recurring.md) | PostgreSQL | M1-06, M1-19 | not started |
 | M1-21 | [PostgreSQL store: nodes, leases, purge, index and statistics](021-postgresql-nodes-index.md) | PostgreSQL | M1-07, M1-19 | not started |
-| M1-22 | [PostgreSQL LISTEN/NOTIFY wake-ups](022-postgresql-notify.md) | PostgreSQL | M1-12, M1-19 | not started |
+| M1-22 | [PostgreSQL LISTEN/NOTIFY wake-ups](022-postgresql-notify.md) | PostgreSQL | M1-12, M1-13, M1-20, M1-21 | not started |
 | M1-23 | [Dashboard foundation: endpoint, security and shell](023-dashboard-foundation.md) | Dashboard | M1-08 | not started |
 | M1-24 | [Dashboard: overview, jobs and job detail](024-dashboard-jobs.md) | Dashboard | M1-07, M1-23 | not started |
-| M1-25 | [Dashboard: recurring, dead letters, queues and nodes](025-dashboard-recurring-queues-nodes.md) | Dashboard | M1-06, M1-07, M1-23 | not started |
+| M1-25 | [Dashboard: recurring, dead letters, queues and nodes](025-dashboard-recurring-queues-nodes.md) | Dashboard | M1-07, M1-14, M1-23 | not started |
 | M1-26 | [Sample app and getting-started page](026-sample-and-getting-started.md) | Finish | M1-15, M1-16, M1-17, M1-20, M1-21, M1-22, M1-24, M1-25 | not started |
 | M1-27 | [M1 acceptance run](027-acceptance-run.md) | Finish | M1-26 | not started |
 
 Update the Status column when a story starts and when it's done. A finished story's file moves to `stories/completed/m1-core/`.
+
+## Plan review
+
+An independent cold review on 2026-11-03 found 2 blockers and 22 major issues in the first draft: stranded `Awaiting` recurring occurrences, a §3 snippet that can't run without an auth block, missing dependency edges, store contract gaps, and lifecycle holes under failure. All are fixed. Arch §15 summarises the changes, and the dependency edges above reflect what each story's criteria use, not only what it imports.
 
 ## Story format
 

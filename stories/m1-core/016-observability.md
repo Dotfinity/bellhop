@@ -14,6 +14,7 @@ Files: `src/Bellhop/Diagnostics/` (`BellhopInstrumentation` holding the `Activit
 
 - Given an `ActivityListener` on source `Bellhop` and an ambient `Activity` in the caller, when a job is enqueued and executed, then a producer span `publish default` is a child of the caller's activity, and a consumer span `process default` has the producer as parent and a link to it. Both carry the attributes in arch §8.1 (OBS-1, A-17).
 - Given a job enqueued from inside a handler, then its producer span is a child of the running consumer span (SCH-10).
+- Given a running handler, then `ctx.TraceContext` equals the consumer span's context (JOB-6).
 - Given a recurring occurrence, then its consumer span starts a new trace.
 - Given a handler that throws, then the consumer span's status is error, and the exception is recorded as a span event with its type and message.
 - Given two Bellhop hosts in one process, then each has its own `ActivitySource` and `Meter` instances, and a `MeterListener` scoped to one host's meter sees only that host's measurements (TST-1).
@@ -21,8 +22,8 @@ Files: `src/Bellhop/Diagnostics/` (`BellhopInstrumentation` holding the `Activit
 - Given `bellhop.queue.depth` is observed twice within 15 s, then the store's statistics were read at most once. If it is never observed, the statistics are never read for it.
 - Given `AddHealthChecks().AddBellhopHealthCheck()` on a healthy node, then the result is Healthy, with data for store reachability, schema version, last worker loop iteration, scheduling-lag p50 and dead-letter count in the last hour (OBS-5).
 - Given the store has failed continuously for longer than `StoreFailureThreshold`, then the check is Unhealthy, with the last error message in its description (OBS-3).
-- Given the worker loop has not iterated for 3 × `PollInterval` + 30 s on a worker node, then the check is Unhealthy. On a `ClientOnly` node this check is skipped.
-- Given the scheduling-lag p50 over the last minute exceeds `SchedulingLagThreshold`, or the dead-letter count in the last hour exceeds `DeadLetterGrowthThreshold`, then the check is Degraded, naming which threshold was exceeded.
+- Given an idle worker node with no work for 10 minutes, then the check stays Healthy (the loop records liveness on its `PollInterval` timeout, arch §7.1). Given the worker loop hung (it has not woken for 3 × `PollInterval` + 30 s, simulated by blocking it), then the check is Unhealthy. On a `ClientOnly` node this check is skipped.
+- Given the scheduling-lag p50 over the last minute exceeds `SchedulingLagThreshold`, or the number of jobs this node dead-lettered in the last hour exceeds `DeadLetterGrowthThreshold`, then the check is Degraded, naming which threshold was exceeded.
 - Given a health probe, then it makes no store call (it reads `BellhopHealthState`).
 
 ## Tests
@@ -34,8 +35,8 @@ Files: `src/Bellhop/Diagnostics/` (`BellhopInstrumentation` holding the `Activit
 Correlation ids (M2, BLT-4). Prometheus exporter setup, which is user configuration; M1-26 documents the two lines. Captured logs (M2).
 
 **Priority:** Must
-**Depends on:** M1-09, M1-12, M1-13
-**Traces to:** OBS-1, OBS-2, OBS-3, OBS-5, SCH-10, TST-1; arch §8, A-17
+**Depends on:** M1-11, M1-12, M1-13, M1-14
+**Traces to:** OBS-1, OBS-2, OBS-3, OBS-5, JOB-6, SCH-10, TST-1; arch §8, A-17
 
 ## Notes
 

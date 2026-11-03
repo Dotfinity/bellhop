@@ -16,7 +16,9 @@ Files: `src/Bellhop/Registry/` (`JobRegistry`, `JobRegistration`, `JobRegistryBu
 - Given a job type with no `[JobName]`, when the registry is built, then its name is the type's simple name and the registration is flagged so that M1-08 can log warning 1005.
 - Given `[JobName("new-name", Aliases = ["old-name"])]`, when `"old-name"` is looked up, then it resolves to the same registration, and `RoutableNames` contains both names.
 - Given two types that claim the same name or alias, when the registry is built, then it throws with the message from arch §6.1 naming both types.
-- Given a job type with no handler, or a handler whose job type is not registered, when the registry is built, then it throws naming the type and the fix (`AddJob<TJob, THandler>()` or `AddJobsFromAssemblyContaining<T>()`).
+- Given `AddJob<SendWelcomeEmail>()` with no handler (a client-only node, SET-7), when the registry is built, then the job resolves by name for enqueueing, is not in `RoutableNames`, and is reported in the registry's "no handler on this node" list (M1-08 logs it as 1007 in worker modes).
+- Given a scanned assembly with a job type and no handler for it, then the job is registered without a handler, the same way.
+- Given two handlers for one job type, when the registry is built, then it throws naming both handler types.
 - Given a job name that violates the name rule in arch §6.1, when the registry is built, then it throws quoting the name and the rule.
 - Given `AddJobsFromAssemblyContaining<A>()` and `AddJobsFromAssemblyContaining<B>()` for two different assemblies, when the registry is built, then jobs from both are registered (SET-10). Scanning the same assembly twice registers each job once.
 - Given `[Queue("emails")]` on a type and `ConfigureJob<T>().OnQueue("bulk")`, when metadata is resolved, then the queue is `"bulk"` (fluent wins, JOB-7). The same holds for priority, retry and timeout. Attributes are read once; no attribute code executes.
@@ -25,6 +27,7 @@ Files: `src/Bellhop/Registry/` (`JobRegistry`, `JobRegistration`, `JobRegistryBu
 - Given any serialized payload, when the JSON is inspected, then it contains no `$type` or type-name metadata unless the user declared `[JsonDerivedType]` (JOB-4).
 - Given JSON that cannot bind (for example a string where an int is required), when it is deserialized, then `JobSerializationException` is thrown with the job name and the JSON path.
 - Given `UseJsonOptions(custom)`, when a payload is serialized, then the custom options are used.
+- Given `UseSerializer<MySerializer>()`, when a payload is serialized and deserialized, then `MySerializer` is used (EXT-3). Its XML docs and the interface's state that the output must be a JSON document (the PostgreSQL store keeps payloads as `jsonb`); a serializer that returns non-JSON fails at enqueue with a message naming the serializer type.
 - Given a payload whose serialized size is over the hard limit, when the size check runs, then `JobPayloadTooLargeException` is thrown with the message in arch §6.2. Over the soft limit, the check returns a warning result carrying the size (the client logs it in M1-09).
 - Given `record Login(string User, [property: Sensitive] string Password, Card Card)` where `Card` has a `[Sensitive] Number`, when the payload is masked, then `password` and `card.number` are `"***"` and other values are unchanged, including inside arrays of nested records.
 

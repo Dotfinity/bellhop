@@ -14,8 +14,9 @@ The getting-started page covers, in this order: install packages; the §3 code; 
 
 ## Acceptance criteria
 
-- Given the sample's `Program.cs` and job files, when they are compared with the §3 code blocks, then they match line for line (apart from `using` lines and the sample-only demo endpoints, which live in a separate file). `GettingStartedSnippetTests` extracts the C# blocks from `docs/getting-started.md` and asserts each appears verbatim in the sample sources, so the doc can't drift (NFR-6).
-- Given `docker compose up -d` in the sample folder and `dotnet run`, when `/jobs` is opened in Development, then the dashboard shows the overview, and `nightly-cleanup` on the recurring page with `0 3 * * *  Europe/Sofia` and its next run (manual check, recorded in Notes with timings: clone to dashboard in minutes).
+- Given the sample's sources, then each §3 code block appears in them verbatim, as a contiguous block. The sample adds only: `using` lines; an auth block in `Program.cs` that registers an authentication scheme and the "Admins" policy (M-6); `app.MapHealthChecks("/health")`; and a call to map the demo endpoints from `DemoEndpoints.cs`. `GettingStartedSnippetTests` extracts the C# blocks from `docs/getting-started.md` and asserts each appears verbatim in the sample sources, so the doc can't drift (NFR-6).
+- Given the getting-started page, then it shows the §3 blocks verbatim, followed by a short "Define the Admins policy" block with the auth lines the sample uses, and a sentence saying any policy or `.AllowAnonymous()` works (M-6).
+- Given `docker compose up -d` in the sample folder and `dotnet run`, when `/jobs` is opened in Development as a user who satisfies "Admins" (the sample's dev sign-in), then the dashboard shows the overview, and `nightly-cleanup` on the recurring page with `0 3 * * *  Europe/Sofia` and its next run (manual check, recorded in Notes with timings: clone to dashboard in minutes).
 - Given `POST /users` on the sample, then a `send-welcome-email` job runs at once, and a `SendFollowUpEmail` job appears as scheduled 3 days ahead.
 - Given the sample started with `ASPNETCORE_ENVIRONMENT=Production` and the §3 `RequireAuthorization("Admins")`, then it starts, and `/jobs` requires the policy. If the policy call is removed, startup fails with the DSH-2 message. Shown in Notes.
 - Given the README, then "Status" says M1 preview, links the getting-started page, and no longer says there is no code.
@@ -31,7 +32,7 @@ The docs site, samples repo, worker-service and multi-tenant samples (M2, NFR-6)
 
 **Priority:** Must
 **Depends on:** M1-15, M1-16, M1-17, M1-20, M1-21, M1-22, M1-24, M1-25
-**Traces to:** P1, NFR-6 (M1 part), SET-1, EXE-5, DSH-2, D4; requirements.md §3
+**Traces to:** P1, NFR-6 (M1 part), SET-1, EXE-5, DSH-2, D4; requirements.md §3; arch M-6
 
 ## Notes
 

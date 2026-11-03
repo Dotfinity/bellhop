@@ -25,9 +25,10 @@ Cron grammar (document it in the XML docs of `Schedule.Cron`):
 - Given an invalid expression such as `"61 * * * *"`, `"* * *"` or `"0 3 * * MON#2"`, when `Schedule.Cron` is called, then it throws `FormatException` whose message names the field (for example `minute`), the bad value, and the allowed range (REC-2).
 - Given `"30 2 * * *"` in `Europe/Sofia`, when the next occurrence after 2027-03-27T12:00Z is requested (the spring-forward night, when local 03:00–04:00 does not exist on 2027-03-28), then it is 2027-03-28 02:30 local (still valid that day, before the gap). Given `"30 3 * * *"` over the same night, then it is 2027-03-28 04:00 local, the first valid instant after the gap, and only once (REC-4).
 - Given `"30 3 * * *"` in `Europe/Sofia` across the fall-back night (2026-10-25, when local 03:00–04:00 occurs twice), when occurrences are enumerated across that night, then 03:30 local appears exactly once, at the first (daylight) instance (REC-4).
-- Given `"0 * * * *"` in a time zone with a 30-minute DST shift (`Australia/Lord_Howe`), when occurrences across its DST change are enumerated, then no hour is produced twice and none is skipped except wall-clock hours that do not exist.
+- Given `"*/15 * * * *"` in `Europe/Sofia` across the same fall-back night, then occurrences continue every 15 minutes of elapsed time through both passes of 03:00–04:00 local, with no hour-long gap (A-24).
+- Given `"0 * * * *"` in `Australia/Lord_Howe` (a 30-minute DST shift), when occurrences across its spring-forward change (local 02:00 jumps to 02:30) are enumerated, then the 02:00 occurrence runs once, at 02:30 local (the gap rule). Across its fall-back change (local 02:00 returns to 01:30), every hourly occurrence appears exactly once, because no `:00` minute falls in the repeated half hour.
 - Given `Schedule.Every(TimeSpan.FromMinutes(15))`, when the next occurrence after 10:07:00Z is requested, then it is 10:15:00Z on every call and node, whatever the time zone argument (A-12). Given an interval under 1 s, it throws `ArgumentOutOfRangeException`.
-- Given an IANA id such as `"Europe/Sofia"` on Windows and Linux, when it is resolved, then the same `TimeZoneInfo` rules apply. Given `"Mars/Olympus"`, then resolution fails with `Unknown time zone "Mars/Olympus". Use an IANA id such as "Europe/Sofia" or "UTC".`
+- Given an IANA id such as `"Europe/Sofia"` on Windows and Linux, when it is resolved, then the same `TimeZoneInfo` rules apply. Given `"Mars/Olympus"`, then resolution fails with `Unknown time zone "Mars/Olympus". Use an IANA id such as "Europe/Sofia" or "UTC". If the id is valid, the time zone database may be missing: install tzdata in the container, or turn off InvariantGlobalization on Windows.`
 - Given `Cron.Daily(hour: 3)`, `Cron.Weekly(DayOfWeek.Monday, 9)` and the other helpers, when they are called, then they return the expected cron strings, and out-of-range arguments throw.
 - Given any schedule, when `Schedule.Parse(s.Kind, s.Expression)` is called, then an equal schedule results (round-trip, needed for persistence).
 - Given `"0 0 31 2 *"` (February 31st), when the next occurrence is requested, then it returns null within bounded time (searching at most 5 years ahead) instead of looping.
@@ -42,7 +43,7 @@ Misfire and overlap logic (M1-14, M1-15). Persisting custom `ISchedule` kinds (A
 
 **Priority:** Must
 **Depends on:** M1-02
-**Traces to:** REC-2, REC-4, REC-11 (built-in kinds), SEC-4; arch §7.7, A-11, A-12
+**Traces to:** REC-2, REC-4, REC-11 (built-in kinds), SEC-4; arch §7.7, A-11, A-12, A-24
 
 ## Notes
 

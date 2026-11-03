@@ -11,7 +11,10 @@ Files to create:
 - `Directory.Packages.props` with central package management and exact versions (arch §12, A-7 per-TFM `Microsoft.Extensions.*`)
 - Empty projects `src/Bellhop`, `src/Bellhop.PostgreSql`, `src/Bellhop.Dashboard`, `src/Bellhop.Testing`, and test projects `tests/Bellhop.Tests`, `tests/Bellhop.PostgreSql.Tests`, `tests/Bellhop.Dashboard.Tests`, `tests/Bellhop.Testing.Tests`, plus the library `tests/Bellhop.Storage.Conformance` (not a test project)
 - `Microsoft.CodeAnalysis.PublicApiAnalyzers` on every `src/` project, with empty `PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt`
-- Package references between `src/` projects as `ProjectReference`; when packed, they become exact-version dependencies (`[0.1.0-preview.1]`), which `dotnet pack` must show (SET-9)
+- Package references between `src/` projects as `ProjectReference`. NuGet packs these as `>=` dependencies by default, so add an MSBuild step that makes them exact (`[0.1.0-preview.1]`), and record the approach in Notes (SET-9)
+- `IsTrimmable` and `EnableTrimAnalyzer` on `src/Bellhop`, so trim warnings fail the build (NFR-1)
+- `CHANGELOG.md` with an "Unreleased" section (NFR-5)
+- `tests/Bellhop.Storage.Conformance` references `xunit.v3.extensibility.core` and `xunit.v3.assert`, not `xunit.v3` (it is a library of abstract test classes, arch §12)
 - `.github/workflows/ci.yml`: Ubuntu, .NET 8 and 10, runs the three gates plus `dotnet list package --vulnerable --include-transitive` (SEC-4)
 - The Mechanics section of `CLAUDE.md` filled in with Stack, Build, Test and Lint
 
@@ -40,7 +43,7 @@ Any production type (M1-02). Docker-based tests (M1-18). Publishing packages.
 
 **Priority:** Must
 **Depends on:** –
-**Traces to:** SET-9, NFR-1, NFR-5, SEC-4; arch §2, §12; D2
+**Traces to:** SET-9, NFR-1, NFR-5, NFR-7 (license), SEC-4; arch §2, §12; D2
 
 ## Notes
 

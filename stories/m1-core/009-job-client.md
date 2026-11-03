@@ -16,8 +16,9 @@ Files: `src/Bellhop/Client/` (`JobClient`, `EnqueuePipeline`, internal `AmbientJ
 
 - Given `EnqueueAsync(new SendWelcomeEmail(id))`, when it returns, then the store holds an `Enqueued` job with the registered name, the serialized payload, queue/priority/retry/timeout from the merged metadata (arch §6.1), and the returned `JobId` (SCH-1).
 - Given `ScheduleAsync(job, delay: TimeSpan.FromDays(3))`, then the job is `Scheduled` with `Delay` passed to the store (resolved on the store clock). Given `ScheduleAsync(job, at: t)` with t in the past, then the job is `Scheduled` with `DueAt = t` and becomes due at the next tick (SCH-2).
-- Given `EnqueueOptions { Queue = "bulk", Priority = 5, Tags = ["tenant:42"], Timeout = 2 min, Retry = new(3), Parameters = { ["source"] = "signup" } }`, when the job is read back, then each value is stored. Options win over fluent and attribute metadata (SCH-4).
-- Given a queue name or tag that breaks the rules in arch §3.2, when enqueue runs, then `ArgumentException` names the value and the rule. Given a null job, `ArgumentNullException`.
+- Given `EnqueueOptions { Queue = "bulk", Priority = 5, Tags = ["tenant:42"], Timeout = 2 min, Retry = new(3), Parameters = new Dictionary<string, object?> { ["source"] = "signup" } }`, when the job is read back, then each value is stored. Options win over fluent and attribute metadata (SCH-4).
+- Given a queue name or tag that breaks the rules in arch §3.2 (queue name pattern; tag key pattern, value length and control characters, at most 50 tags), when enqueue runs, then `ArgumentException` names the value and the rule. Given a null job, `ArgumentNullException`.
+- Given a job type registered with `AddJob<T>()` and no handler on this node, then it can be enqueued (SET-7, client-only nodes).
 - Given an unregistered job type, when enqueue runs, then `InvalidOperationException` says: `Job type App.Foo is not registered. Add it with AddJob<App.Foo, YourHandler>() or AddJobsFromAssemblyContaining<...>() in AddBellhop.`
 - Given two `IEnqueueMiddleware` registrations, when enqueue runs, then they run in registration order, can add tags, set parameters and change queue and priority, and the stored job reflects their changes (EXT-2).
 - Given enqueue middleware that throws, when enqueue runs, then the exception reaches the caller and no job is stored.
@@ -25,6 +26,7 @@ Files: `src/Bellhop/Client/` (`JobClient`, `EnqueuePipeline`, internal `AmbientJ
 - Given the store throws on insert, when enqueue runs, then the store's exception reaches the caller unchanged, and error 1102 is logged with the job name (A-2).
 - Given an ambient job execution (simulated through `AmbientJobExecution` in this story; real in M1-10), when a job is enqueued, then its `ParentId` is the running job's id (SCH-10).
 - Given `CancelAsync`, `RequeueAsync`, `DeleteAsync` and `GetAsync`, when called for jobs in various states, then they return what the store reports (arch §5.3), and `GetAsync` maps `JobDetails` to `JobInfo` with history (SCH-6).
+- Given `CancelAsync` returns `Cancelled` (a job cancelled at once, not processing), then `IJobEvents.OnCancelledAsync` is raised (RET-6). For `CancellationRequested`, the event is raised later by the node that runs the job (M1-10).
 - Given a successful enqueue, then `IJobEvents.OnEnqueuedAsync` is called for each registered `IJobEvents`. An event handler that throws is logged (1209) and does not fail the enqueue.
 - Given a successful enqueue of an `Enqueued` job, then the local wake signal is raised once.
 - Given `IJobClient`, when it is mocked with Moq in a consumer's unit test, then setups on `EnqueueAsync<T>` work directly (TST-2). Shown in a test in `Bellhop.Tests`.

@@ -4,7 +4,7 @@
 
 Hangfire's static `JobStorage.Current` makes tests flaky (H11), and TickerQ had no deterministic test clock until 10.5 (T16). This story ships `Bellhop.Testing` (TST-3) and the core `Inline` execution mode (TST-4), both driving the engine's step functions directly (arch §7, §9). It is also the first place where the full path (client → store → claim → processor → retry → tick → recurring) runs as one deterministic unit, so it doubles as the engine's integration test bed.
 
-Files: `src/Bellhop.Testing/` (`BellhopTestHarness`, `HarnessJob`, `HarnessJob<T>`), `ExecutionMode.Inline` handling in `src/Bellhop/Client/JobClient.cs`, and tests in `tests/Bellhop.Testing.Tests/`.
+Files: `src/Bellhop.Testing/` (`BellhopTestHarness`, `HarnessJob`, `HarnessJob<T>`; uses the in-memory store's internal `GetNextDueAt` through `InternalsVisibleTo`, arch §9), `ExecutionMode.Inline` handling in `src/Bellhop/Client/JobClient.cs`, and tests in `tests/Bellhop.Testing.Tests/`.
 
 **As a** developer testing my application
 **I want** to enqueue, run and time-travel jobs deterministically without a database or background threads
@@ -21,7 +21,7 @@ Files: `src/Bellhop.Testing/` (`BellhopTestHarness`, `HarnessJob`, `HarnessJob<T
 - Given a test that doesn't call the harness, then nothing runs on a background thread (no hosted loops).
 - Given the harness with a handler that depends on a service registered through `services`, then the service is injected (DI works as in production).
 - Given two harnesses in one test, then they share nothing (TST-1).
-- Given `ExecutionMode = Inline` in a normal host, when `EnqueueAsync` is called, then the handler runs before `EnqueueAsync` returns, on the caller's async flow; the job is `Succeeded` in the store, and a handler exception propagates to the caller with the job left `DeadLettered` (retries are disabled in inline mode, TST-4, A-19).
+- Given `ExecutionMode = Inline` in a normal host with other `Enqueued` jobs already in the store, when `EnqueueAsync` is called, then exactly the new job is claimed (`ClaimRequest.OnlyId`) and its handler runs before `EnqueueAsync` returns, on the caller's async flow; the job is `Succeeded` in the store, and a handler exception propagates to the caller with the job left `DeadLettered` (retries are disabled in inline mode, TST-4, A-19).
 - Given `ExecutionMode = Inline`, when `ScheduleAsync` is called, then the job is stored as `Scheduled` and doesn't run, and no background loops run in that host (A-19).
 - Given a handler under test with `JobContext.CreateForTest(...)` and no harness, then it can be called directly (TST-5, shown in a sample test).
 

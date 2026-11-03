@@ -15,8 +15,9 @@ Files: `src/Bellhop.PostgreSql/PostgreSqlJobStore.Recurring.cs` (partial class) 
 - Given `RecurringConformanceTests` (M1-06), when it runs against PostgreSQL, then every test passes, including 5 concurrent reconciles and 8 concurrent fires (REC-3, REC-6, REC-7).
 - Given 100,000 recurring definitions of which 10 are due, when the tick's recurring sub-select is explained, then it uses `recurring_due` and reads only the due rows (REC-7: "one range query per poll").
 - Given concurrent reconciles, then no unique-violation exception escapes (ON CONFLICT handles it) and no deadlock occurs over 50 repetitions. Rows are upserted in name order, so lock order is consistent.
-- Given a fire whose overlap check and insert run while another node completes the active occurrence, then the outcome is consistent: either the fire sees the occurrence as active (and skips, queues or cancels) or it doesn't (and enqueues). It never leaves an `Awaiting` occurrence with no active predecessor. Proven by a stress test of 200 iterations racing `CompleteAsync` against `FireRecurringAsync` with `Queue` policy, then asserting that no `Awaiting` job remains once all active ones finish.
-- Given `CompleteAsync` of an occurrence, when the next `Awaiting` occurrence is promoted, then the promotion and the completion commit together (one transaction).
+- Given the lock order in arch §4.4 (definition row before job rows; complete, claim, recover, cancel and delete never lock definitions), when 200 iterations race `CompleteAsync`, `CancelAsync`, tick recovery and awaiting promotion against `FireRecurringAsync` with `CancelPrevious`, then no deadlock (SQLSTATE 40P01) occurs.
+- Given a fire whose overlap check and insert run while another node completes the active occurrence, then the outcome is consistent: either the fire sees the occurrence as active (and queues) or it doesn't (and enqueues). Any `Awaiting` occurrence left behind is promoted by a later tick. Proven by a stress test of 200 iterations racing `CompleteAsync` against `FireRecurringAsync` with `Queue` policy, then ticking until quiet and asserting that no `Awaiting` job remains and no two occurrences were ever `Processing` together (from `job_history`).
+- Given 8 concurrent manual triggers with `Skip` and nothing active, then exactly one occurrence is created (the definition row lock serializes them).
 
 ## Tests
 
@@ -28,7 +29,7 @@ Engine-side firing (M1-14) and end-to-end overlap (M1-15), which run on the in-m
 
 **Priority:** Must
 **Depends on:** M1-06, M1-19
-**Traces to:** REC-3, REC-6, REC-7, REC-9, REC-10, STO-8; arch §4.4, §5.3, §7.7
+**Traces to:** REC-3, REC-6, REC-7, REC-9, REC-10, STO-8, P3; arch §4.4, §5.3, §7.7, A-25
 
 ## Notes
 

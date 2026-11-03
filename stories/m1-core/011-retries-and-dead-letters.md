@@ -12,8 +12,8 @@ Files: `src/Bellhop/Engine/Retries/` (`DefaultRetryPolicy`, `RetryPolicyResolver
 
 ## Acceptance criteria
 
-- Given no retry configuration, when a job fails on attempts 1 to 4, then it is `Failed` with `due_at` about 10 s, 1 min, 5 min and 30 min after each failure (±20%), and attempt 5 failing dead-letters it with reason `AttemptsExhausted` (RET-1, RET-3).
-- Given a seeded `Random`, when the delays are computed, then they are deterministic, and over 1,000 samples every delay is within ±20% of its base.
+- Given no retry configuration, when a job fails on attempts 1 to 4, then it is `Failed` with `due_at` about 10 s, 1 min, 5 min and 30 min after each failure (±20%, computed from the estimated store clock, arch §7.4), and attempt 5 failing dead-letters it with reason `AttemptsExhausted` (RET-1, RET-3).
+- Given a seeded jitter source, when the delays are computed, then they are deterministic, and over 1,000 samples every delay is within ±20% of its base. Given 16 workers failing jobs concurrently, then the jitter source never throws or returns a constant (it is locked, arch §7.6).
 - Given `Retry.Delays = [1 s]` and `MaxAttempts = 4`, then the delays are 1 s, 1 s, 1 s (the last repeats).
 - Given `[Retry(2)]` on the job type, fluent `WithRetry(new(3))`, and `EnqueueOptions.Retry = new(6)`, then the stored `max_attempts` is 6. Without the enqueue option it is 3, and without fluent it is 2 (arch §7.6 precedence).
 - Given a handler that throws `PermanentJobFailureException`, then the job is dead-lettered on that attempt with the exception recorded, whatever attempts remain (RET-2).

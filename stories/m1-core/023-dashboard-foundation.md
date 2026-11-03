@@ -6,7 +6,7 @@ The dashboard is where both incumbents hurt most (H5: 401 for every remote reque
 
 The dashboard reads only through `IJobStore`, `IRecurringJobManager` and options. It is built and reviewed against the in-memory store seeded by a `DashboardFixture` (Bogus) in `tests/Bellhop.Dashboard.Tests`, and by a small dev host (`tests/Bellhop.Dashboard.DevHost`, not packed) that seeds the same data for manual review.
 
-Files: `src/Bellhop.Dashboard/` (`DashboardEndpointRouteBuilderExtensions.MapBellhopDashboard`, `DashboardSecurityCheck` hosted service, `ForbiddenNotChallengeFilter`, `CspHeaders`, `EmbeddedAssets`, `DashboardApi` group, `ProblemResults`, the summary contributor), `Assets/index.html`, `Assets/app.css`, `Assets/js/app.js` (router, `api.js` fetch wrapper, `theme.js`, `nav.js`), `tests/Bellhop.Dashboard.Tests/`, `tests/Bellhop.Dashboard.DevHost/`.
+Files: `src/Bellhop.Dashboard/` (`DashboardEndpointRouteBuilderExtensions.MapBellhopDashboard`, `DashboardSecurityCheck`, `DashboardAuthorizationResultHandler` (an `IAuthorizationMiddlewareResultHandler` decorator, arch §10.1), `CspHeaders`, `EmbeddedAssets`, `DashboardApi` group, `ProblemResults`, the summary contributor), `Assets/index.html`, `Assets/app.css`, `Assets/js/app.js` (router, `api.js` fetch wrapper, `theme.js`, `nav.js`), `tests/Bellhop.Dashboard.Tests/`, `tests/Bellhop.Dashboard.DevHost/`.
 
 **As a** operator
 **I want** to mount the dashboard with one line, secured by my app's own authorization, working behind any proxy
@@ -17,6 +17,9 @@ Files: `src/Bellhop.Dashboard/` (`DashboardEndpointRouteBuilderExtensions.MapBel
 - Given `app.MapBellhopDashboard("/jobs").RequireAuthorization("Admins")`, when an anonymous request hits `/jobs/` or `/jobs/api/overview`, then the response is the host's normal challenge (401 or a login redirect), and an authenticated user without the policy gets **403** with no redirect, for both the page and the API (DSH-1, DSH-2, M-4).
 - Given `.AllowAnonymous()` or `.RequireHost("admin.example.com")`, then they behave as on any endpoint (DSH-1).
 - Given `Production` and `MapBellhopDashboard("/jobs")` with no authorization call, when the host starts, then startup fails with the message in arch §10.1. In `Development`, it starts, and notice 1601 says the dashboard is anonymous (DSH-2, P5).
+- Given `Production`, no authorization call on the dashboard, and an `AuthorizationOptions.FallbackPolicy` that requires an authenticated user, then the host starts (the fallback policy counts).
+- Given the host's own endpoints with cookie authentication, when an authenticated user is forbidden on one of them, then the host's normal behaviour (a redirect) is unchanged. Only dashboard endpoints get the 403 (M-4).
+- Given a request to `/jobs` without a trailing slash, then it redirects to `/jobs/`, and the page's relative asset URLs resolve.
 - Given the host uses `UsePathBase("/app")`, or is accessed through a reverse proxy with `X-Forwarded-Prefix` and the forwarded-headers middleware, when `/app/jobs/` is loaded, then every asset and API call resolves under `/app/jobs/` (relative URLs only) and the page renders (DSH-4).
 - Given any dashboard response, then it has the CSP header from arch §10.3, and the HTML contains no inline `<script>` or `style=` attributes (DSH-10). A test parses the HTML to check.
 - Given the embedded assets, then their total size is under 300 KB (D5). A test sums them.
@@ -36,7 +39,7 @@ Files: `src/Bellhop.Dashboard/` (`DashboardEndpointRouteBuilderExtensions.MapBel
 Page contents (M1-24, M1-25). Operate level and auth presets (M2). OpenAPI document (A-21).
 
 **Priority:** Must
-**Depends on:** M1-08
+**Depends on:** M1-08 (reads the store through `IJobStore`; pages are built on the in-memory store, so M1-07 is needed before M1-24 and M1-25)
 **Traces to:** DSH-1, DSH-2, DSH-3 (view), DSH-4, DSH-7, DSH-9 (scaffold), DSH-10, SEC-1, SET-8, D5; arch §10.1 to §10.3, M-4, A-20, A-21
 
 ## Notes

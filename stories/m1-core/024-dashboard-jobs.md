@@ -12,7 +12,7 @@ Files: `src/Bellhop.Dashboard/Api/OverviewEndpoints.cs`, `JobsEndpoints.cs`, `St
 
 ## Acceptance criteria
 
-- Given the overview page open, when jobs change state, then the counts update within 3 s without a reload, through `api/stream` (DSH-7). When `EventSource` fails (simulated by blocking the stream endpoint), the page polls `api/overview` every 5 s, and a quiet "Live updates paused; refreshing every 5 s" note appears.
+- Given the overview page open, when jobs change state, then the counts update within 3 s without a reload, through `api/stream` (DSH-7). Terminal totals shown from approximate statistics carry a "≈" prefix (arch §5.2). An exception inside the stream is logged as 1602 and the client falls back as below. When `EventSource` fails (simulated by blocking the stream endpoint), the page polls `api/overview` every 5 s, and a quiet "Live updates paused; refreshing every 5 s" note appears.
 - Given 10 browser tabs on the overview, when the store calls are counted, then the store's statistics are read once per 2 s interval in total, not per tab. With no tab open, never (STO-6). Tested at the API level with 10 concurrent SSE clients.
 - Given the jobs page with filters state = Failed, name, queue, tag and time range, then the URL hash reflects them (`#/jobs?state=Failed&queue=emails`), reloading restores them, and results match `api/jobs` with the same query.
 - Given 120 matching jobs, then the first page shows 50, "Next page" shows the next 50, then 20, and "First page" returns to the start. The API never returns more than 500 (DSH-8).

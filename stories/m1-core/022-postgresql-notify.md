@@ -4,7 +4,7 @@
 
 EXE-8 requires stores with notifications to use them, so other nodes pick up work within about 100 ms. The PostgreSQL store implements `IJobStoreNotifications`: `pg_notify` in the same transaction as enqueue, promotion and cancel requests, and a dedicated listening connection that reconnects with backoff. The engine's `NotificationLoop` (arch §7.8) maps signals to the wake signal and the cancel path built in M1-12. Without notifications, polling still covers everything; notifications only cut latency.
 
-Files: `src/Bellhop.PostgreSql/PostgreSqlNotifications.cs` (listener), notify calls added to the relevant SQL (channel `bellhop_<schema>`; payload `r|<namespace>|<queue>` or `c|<namespace>|<jobId>`; signals for other namespaces are ignored), `src/Bellhop/Engine/NotificationLoop.cs`, and `StoreCapabilities.PushNotifications` reported when `UseNotifications = true`.
+Files: `src/Bellhop.PostgreSql/PostgreSqlNotifications.cs` (listener), notify calls added to every statement that moves a job into `Enqueued` (create, promote, recover, release on shutdown, requeue, reroute, awaiting promotion) and to cancel requests (channel `bellhop_<schema>`; payload `r|<namespace>|<queue>` or `c|<namespace>|<jobId>`; signals for other namespaces are ignored), `src/Bellhop/Engine/NotificationLoop.cs`, and `StoreCapabilities.PushNotifications` reported when `UseNotifications = true`.
 
 **As a** user with several nodes
 **I want** a job enqueued on one node to start on another within about 100 ms, and cancels to arrive at once
@@ -30,7 +30,7 @@ Files: `src/Bellhop.PostgreSql/PostgreSqlNotifications.cs` (listener), notify ca
 Redis-based hybrid notifications (RED-16, M2+).
 
 **Priority:** Must
-**Depends on:** M1-12, M1-19
+**Depends on:** M1-12, M1-13, M1-20, M1-21
 **Traces to:** EXE-8, SCH-6, STO-6, STO-9; arch §7.8
 
 ## Notes
