@@ -1,0 +1,101 @@
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 2: <ReadDue line 81, col 5 to line 85, col 100 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 1)
+/\ reporters = <<{}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 3: <CatchUpFire line 99, col 5 to line 106, col 52 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 2
+/\ winners = <<{n2}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 4: <Claim line 143, col 5 to line 146, col 92 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 2
+/\ winners = <<{n2}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Processing", "Awaiting", "None">>
+/\ attempt = <<1, 0, 0>>
+
+State 5: <RecoverLease line 190, col 5 to line 194, col 101 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 2
+/\ winners = <<{n2}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<1, 0, 0>>
+
+State 6: <ReadDue line 81, col 5 to line 85, col 100 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 2 @@ n2 :> 0)
+/\ reporters = <<{n2}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 2
+/\ winners = <<{n2}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<1, 0, 0>>
+
+State 7: <CatchUpFire line 99, col 5 to line 106, col 52 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {n1}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 3
+/\ winners = <<{n2}, {n1}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<1, 0, 0>>
+
+State 8: <MarkUnroutable line 223, col 5 to line 225, col 101 of module F3V_NoRequeue>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {n1}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 3
+/\ winners = <<{n2}, {n1}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Unroutable", "Awaiting", "None">>
+/\ attempt = <<1, 0, 0>>
+
+Back to state 7: <Reroute line 229, col 5 to line 231, col 101 of module F3V_NoRequeue>

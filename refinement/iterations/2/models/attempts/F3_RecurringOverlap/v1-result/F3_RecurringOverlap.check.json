@@ -1,0 +1,127 @@
+{
+  "module": "F3_RecurringOverlap",
+  "rules": [
+    {
+      "name": "NoOverlap",
+      "kind": "invariant",
+      "outcome": "not_checked"
+    },
+    {
+      "name": "OneFirePerInstant",
+      "kind": "invariant",
+      "outcome": "not_checked"
+    },
+    {
+      "name": "MissedReportedOnce",
+      "kind": "invariant",
+      "outcome": "not_checked"
+    },
+    {
+      "name": "AwaitingRunsInOrder",
+      "kind": "invariant",
+      "outcome": "not_checked"
+    },
+    {
+      "name": "SkipCreatesNothingWhileActive",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "PausedNeverFires",
+      "kind": "property",
+      "outcome": "not_checked"
+    },
+    {
+      "name": "AwaitingNeverStranded",
+      "kind": "property",
+      "outcome": "not_checked"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "policy",
+      "domain": "Policies",
+      "values": 4
+    },
+    {
+      "variable": "paused",
+      "domain": "BOOLEAN",
+      "values": 2
+    },
+    {
+      "variable": "nextRun",
+      "domain": "1..(NumInstants + 1)",
+      "values": 3
+    },
+    {
+      "variable": "dueRead",
+      "domain": "[Nodes -> 0..NumInstants]",
+      "values": 9
+    },
+    {
+      "variable": "status",
+      "domain": "[Occs -> Statuses]",
+      "values": 1331
+    },
+    {
+      "variable": "attempt",
+      "domain": "[Occs -> 0..MaxAttempts]",
+      "values": 27
+    },
+    {
+      "variable": "cancelReq",
+      "domain": "[Occs -> BOOLEAN]",
+      "values": 8
+    },
+    {
+      "variable": "winners",
+      "domain": "[Instants -> SUBSET Nodes]",
+      "values": 16
+    },
+    {
+      "variable": "reporters",
+      "domain": "[Instants -> SUBSET Nodes]",
+      "values": 16
+    },
+    {
+      "variable": "warned",
+      "domain": "[Occs -> BOOLEAN]",
+      "values": 8
+    }
+  ],
+  "typeOkProduct": 127179030528,
+  "status": "unfinished",
+  "because": "Reached the deadline after 152752342 states; the rest is unexplored.",
+  "states": 152752342,
+  "distinct": 24503060,
+  "depth": null,
+  "progress": [
+    "Progress(11) at 2026-11-03 19:50:07: 1,956,846 states generated (1,956,846 s/min), 523,109 distinct states found (523,109 ds/min), 309,288 states left on queue.",
+    "Progress(15) at 2026-11-03 19:51:07: 39,283,258 states generated (37,326,412 s/min), 7,518,495 distinct states found (6,995,386 ds/min), 3,322,342 states left on queue.",
+    "Progress(16) at 2026-11-03 19:52:07: 77,130,290 states generated (37,847,032 s/min), 13,619,619 distinct states found (6,101,124 ds/min), 5,368,764 states left on queue.",
+    "Progress(17) at 2026-11-03 19:53:07: 114,998,680 states generated (37,868,390 s/min), 19,219,803 distinct states found (5,600,184 ds/min), 6,880,808 states left on queue.",
+    "Progress(17) at 2026-11-03 19:54:07: 152,752,342 states generated (37,753,662 s/min), 24,503,060 distinct states found (5,283,257 ds/min), 8,128,908 states left on queue."
+  ],
+  "coverage": [
+    "<ReadDue line 80, col 1 to line 80, col 10 of module F3_RecurringOverlap>: 400:4418977",
+    "<FireDue line 88, col 1 to line 88, col 10 of module F3_RecurringOverlap>: 12236:619087",
+    "<CatchUpFire line 98, col 1 to line 98, col 14 of module F3_RecurringOverlap>: 748:417630",
+    "<FirePausedAfterDue line 109, col 1 to line 109, col 21 of module F3_RecurringOverlap>: 0:1789629",
+    "<FireLost line 116, col 1 to line 116, col 11 of module F3_RecurringOverlap>: 0:4192068",
+    "<Pause line 123, col 1 to line 123, col 5 of module F3_RecurringOverlap>: 13516:7633195",
+    "<ManualTrigger line 129, col 1 to line 129, col 13 of module F3_RecurringOverlap>: 97157:2585720",
+    "<PromoteAwaiting line 134, col 1 to line 134, col 18 of module F3_RecurringOverlap>: 103245:268300",
+    "<Claim line 142, col 1 to line 142, col 8 of module F3_RecurringOverlap>: 2086323:5589709",
+    "<CompleteSucceeded line 149, col 1 to line 149, col 20 of module F3_RecurringOverlap>: 2049786:5124708",
+    "<CompleteFailed line 155, col 1 to line 155, col 17 of module F3_RecurringOverlap>: 2181176:5124709",
+    "<CompletePermanent line 163, col 1 to line 163, col 20 of module F3_RecurringOverlap>: 902431:5124713",
+    "<CompleteCancelled line 169, col 1 to line 169, col 20 of module F3_RecurringOverlap>: 0:1983084",
+    "<RetryDue line 183, col 1 to line 183, col 11 of module F3_RecurringOverlap>: 0:1451983",
+    "<RecoverLease line 189, col 1 to line 189, col 15 of module F3_RecurringOverlap>: 1025706:5124719",
+    "<CancelOcc line 197, col 1 to line 197, col 12 of module F3_RecurringOverlap>: 3718069:14442046",
+    "<DeleteOcc line 208, col 1 to line 208, col 12 of module F3_RecurringOverlap>: 3266443:24915492",
+    "<Requeue line 214, col 1 to line 214, col 10 of module F3_RecurringOverlap>: 1276930:15067066",
+    "<MarkUnroutable line 222, col 1 to line 222, col 17 of module F3_RecurringOverlap>: 2485908:5589726",
+    "<Reroute line 228, col 1 to line 228, col 10 of module F3_RecurringOverlap>: 0:3538394"
+  ]
+}

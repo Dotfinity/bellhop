@@ -1,0 +1,128 @@
+{
+  "module": "F1_JobLifecycle",
+  "rules": [
+    {
+      "name": "SingleLeaseHolder",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "AttemptsWithinMax",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "CancelledNeverAwaitsRetry",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "StaleTokenChangesNothing",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "RepeatChangesNothing",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "CancelRequestHonoured",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "RequeueOnlyFromEndStates",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "NoDeleteWhileProcessing",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "ReleaseDoesNotCountAttempt",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "FinalStaysFinal",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "state",
+      "domain": "[Jobs -> Statuses]",
+      "values": 10
+    },
+    {
+      "variable": "attempt",
+      "domain": "[Jobs -> Counts]",
+      "values": 9
+    },
+    {
+      "variable": "token",
+      "domain": "[Jobs -> 0..MaxClaims]",
+      "values": 4
+    },
+    {
+      "variable": "leaseExpired",
+      "domain": "[Jobs -> BOOLEAN]",
+      "values": 2
+    },
+    {
+      "variable": "cancelReq",
+      "domain": "[Jobs -> BOOLEAN]",
+      "values": 2
+    },
+    {
+      "variable": "requeues",
+      "domain": "[Jobs -> 0..MaxRequeues]",
+      "values": 2
+    },
+    {
+      "variable": "recTok",
+      "domain": "[Jobs -> 0..MaxClaims]",
+      "values": 4
+    },
+    {
+      "variable": "recOut",
+      "domain": "[Jobs -> Outcomes \\cup {\"None\"}]",
+      "values": 5
+    },
+    {
+      "variable": "attemptBefore",
+      "domain": "[Jobs -> Counts]",
+      "values": 9
+    },
+    {
+      "variable": "recoveredSinceClaim",
+      "domain": "[Jobs -> BOOLEAN]",
+      "values": 2
+    },
+    {
+      "variable": "held",
+      "domain": "[Nodes -> [Jobs -> 0..MaxClaims]]",
+      "values": 16
+    },
+    {
+      "variable": "done",
+      "domain": "[Nodes -> [Jobs -> Outcomes \\cup {\"None\"}]]",
+      "values": 25
+    },
+    {
+      "variable": "knowsCancel",
+      "domain": "[Nodes -> [Jobs -> BOOLEAN]]",
+      "values": 4
+    }
+  ],
+  "typeOkProduct": 1658880000,
+  "status": "ok",
+  "because": "Explored the whole state space and found nothing.",
+  "states": 49385,
+  "distinct": 8995,
+  "depth": 16
+}

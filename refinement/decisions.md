@@ -2,7 +2,7 @@
 
 ## D-1 · How long may a handler keep running after its job could have been picked up by another node?
 
-Status: decided (2026-11-03): option 1, no overlap at all. REQ-015 changed. Severity: major. Source: analysis. Raised: before the first run.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1, no overlap at all. REQ-015 changed. Severity: major. Source: analysis. Raised: before the first run.
 Features: F2. Requirements: REQ-015.
 
 M1-12 AC9 says self-fencing exists "so no handler keeps running long after another node may have recovered its job". "Long" has no measure, so the check can't tell an acceptable overlap from a bug. Two nodes running the same job at once is what at-least-once delivery allows, but only for a bounded time.
@@ -13,7 +13,7 @@ Options:
 
 ## D-2 · When does a node count as live for routing?
 
-Status: decided (2026-11-03): option 1, within the node timeout. REQ-036 changed. Severity: major. Source: analysis. Raised: before the first run.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1, within the node timeout. REQ-036 changed. Severity: major. Source: analysis. Raised: before the first run.
 Features: F5. Requirements: REQ-036.
 
 M1-07 AC7 marks jobs `Unroutable` when "no live node" advertises their name, but no story says what makes a node live. If a node that can handle the job counts as dead while it is still running (say, between two heartbeats), its jobs are marked `Unroutable` and then moved back on its next tick, over and over.
@@ -24,7 +24,7 @@ Options:
 
 ## D-3 · A recurring job can run twice at once when one of its runs is marked Unroutable
 
-Status: open. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): the suggested edit. REQ-019 changed. Severity: major. Source: verification. Raised: iteration 1.
 Features: F3, F5. Requirements: REQ-019, REQ-020, REQ-021, REQ-024, REQ-036, REQ-037.
 Rule: NoOverlap.
 
@@ -41,7 +41,7 @@ Suggested edit to REQ-019. Old: "An occurrence counts as active when it is `Sche
 
 ## D-4 · An operator requeue can start an old run of a recurring job next to the current one
 
-Status: open. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "a warning should be shown to the user, otherwise if it's a manual operation, that's fine, we assume the user knows what they're doing". Read as: requeue ignores the overlap policy and warns when another run is active. REQ-010 changed. Severity: major. Source: verification. Raised: iteration 1.
 Features: F3, F1. Requirements: REQ-010, REQ-020, REQ-021, REQ-024.
 Rule: NoOverlap (also AwaitingRunsInOrder and AwaitingNeverStranded).
 
@@ -61,7 +61,7 @@ Options:
 
 ## D-5 · A cancelled job runs again if its node shuts down before the handler stops
 
-Status: open. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1. REQ-012 changed. Severity: major. Source: verification. Raised: iteration 1.
 Features: F1. Requirements: REQ-006, REQ-008, REQ-009, REQ-012.
 Rule: CancelRequestHonoured.
 
@@ -79,7 +79,7 @@ Options:
 
 ## D-6 · After another node recovers a job, the original node can still finish or release it
 
-Status: open. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "upon start of the original node, it should check if another node has picked up its jobs before continuing". Read as: recovery makes the old claim dead, and a node checks it still holds a job before writing anything about it. REQ-003 changed. Severity: major. Source: verification. Raised: iteration 1.
 Features: F1. Requirements: REQ-002, REQ-003, REQ-005, REQ-008, REQ-012.
 Rules: FinalStaysFinal, AttemptsWithinMax, ReleaseDoesNotCountAttempt.
 
@@ -97,7 +97,7 @@ Suggested edit to REQ-003. Old: "Completing a job with a stale token changes not
 
 ## D-7 · A node stops its handler too late to rule out two nodes running the same job
 
-Status: open. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), delegated ("pick the best decision from reliability and consistency stand point"). Assumed the answer: two thirds of the lease, counted from when the renewal was sent. REQ-015 changed. Severity: major. Source: verification. Raised: iteration 1.
 Features: F2. Requirements: REQ-015.
 Rules: NoDoubleRun, CancelledByRecoveryMoment.
 
@@ -117,7 +117,7 @@ Note: a handler that ignores cancellation keeps running after the node gives up 
 
 ## D-8 · A cleanup run can outlive its lease, and two nodes then clean up at once
 
-Status: open. Severity: major. Source: verification. Raised: iteration 1.
+Status: open. Still happens after your change in iteration 2 (you chose option 1 on 2026-11-03; REQ-040 and REQ-041 changed). Severity: major. Source: verification. Raised: iteration 1.
 Features: F6. Requirements: REQ-039, REQ-040, REQ-041.
 Rules: OnlyHolderPurges, OneCleanupRunAtATime.
 
@@ -133,9 +133,24 @@ Options:
 1. **Renew before each batch.** REQ-040 becomes: "A node renews the cleanup lease before each batch, and stops its run when it can't."
 2. **Only starting is guarded.** REQ-040 becomes: "Only the node holding the cleanup lease starts a cleanup run; a run already going may finish after the lease expires."
 
+### Still happens after your change (iteration 2)
+
+Renewing before each batch closes most of the gap, but not a batch that itself takes longer than the lease. The stories set no limit on how long one batch may take, so a node can still be purging when its lease runs out, and another node can take the lease and start purging too.
+
+How it happens now:
+1. Node 1 takes the cleanup lease, renews it before its first batch, and starts purging.
+2. That one batch is slow (a large table, a busy database), and the lease runs out while it is still going.
+3. Node 2's cleanup interval comes round. The lease has expired, so node 2 takes it and starts its own batch.
+4. Both nodes purge at the same time until node 1's batch finishes; node 1 then fails to renew and stops.
+
+Options now:
+1. **Bound the batch.** Add to REQ-040: "A purge batch is abandoned if it hasn't finished within half the cleanup lease."
+2. **Make the store refuse it.** Add to REQ-040: "Each purge batch is written in one store transaction that first checks the node still holds the cleanup lease; a batch from a node that doesn't is rolled back."
+3. **Accept it.** Add to REQ-040: "A batch already running when the lease runs out may finish; at most one batch per node can overlap like this."
+
 ## D-9 · During a rolling deploy, recurring jobs switch off and on as nodes restart
 
-Status: open. Severity: major. Source: modeling. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1. REQ-030 changed. Severity: major. Source: modeling. Raised: iteration 1.
 Features: F4. Requirements: REQ-030, REQ-034.
 Rule: RunningCodeKeepsItsJobs.
 
@@ -154,7 +169,7 @@ Options:
 
 ## D-10 · A code-defined recurring job can be removed and re-created at runtime with a different schedule
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "make it so runtime we can only disable/pause a job, then at start/restart of a node, it doesn't override the disabled job's state as disabled". Read as: at runtime a code-defined job can only be paused or resumed, and a reconcile never changes whether a job is paused. REQ-031, REQ-032 and REQ-033 changed. Follow-up question D-18. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F4. Requirements: REQ-031, REQ-033.
 Rule: CodeOnlyNamesKeepCodeSchedule.
 
@@ -166,7 +181,7 @@ Options:
 
 ## D-11 · Can a paused recurring job be triggered by hand?
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1. REQ-026 changed. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F3. Requirements: REQ-017, REQ-026.
 Rule: PausedNeverFires.
 
@@ -178,7 +193,7 @@ Options:
 
 ## D-12 · A busy node that stops ticking for a while can have its jobs marked Unroutable
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1. REQ-036 changed. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F5. Requirements: REQ-035, REQ-036, REQ-037.
 Rule: HandledEventually.
 
@@ -196,7 +211,7 @@ Options:
 
 ## D-13 · Confirm what the job lifecycle check assumed (F1)
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): assumptions confirmed as written. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F1. Requirements: REQ-001 to REQ-013.
 
 The F1 check passed some rules only under these assumptions, which the stories don't settle. Suggested answer: confirm them as written.
@@ -209,7 +224,7 @@ The F1 check passed some rules only under these assumptions, which the stories d
 
 ## D-14 · Confirm what the self-fencing check assumed (F2)
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): assumptions confirmed as written. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F2. Requirements: REQ-014 to REQ-016.
 
 Suggested answer: confirm them as written.
@@ -220,7 +235,7 @@ Suggested answer: confirm them as written.
 
 ## D-15 · Confirm what the recurring overlap check assumed (F3)
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): assumptions confirmed as written. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F3. Requirements: REQ-017 to REQ-027, REQ-043.
 
 Suggested answer: confirm them as written.
@@ -231,7 +246,7 @@ Suggested answer: confirm them as written.
 
 ## D-16 · Confirm what the reconciliation check assumed (F4)
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): assumptions confirmed as written. Whether an override can be cleared was not answered; it stays an assumption that it can't. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F4. Requirements: REQ-028 to REQ-034.
 
 Suggested answer: confirm them as written, and say whether an override can ever be cleared.
@@ -242,7 +257,7 @@ Suggested answer: confirm them as written, and say whether an override can ever 
 
 ## D-17 · Confirm what the routing and cleanup checks assumed (F5, F6)
 
-Status: open. Severity: minor. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): assumptions confirmed as written. No cleanup lease length was given; it stays an assumption. Severity: minor. Source: verification. Raised: iteration 1.
 Features: F5, F6. Requirements: REQ-035 to REQ-041.
 
 Suggested answer: confirm them as written, and give the cleanup lease length if you know it.
@@ -250,3 +265,38 @@ Suggested answer: confirm them as written, and give the cleanup lease length if 
 - Moving a job back from Unroutable doesn't reset its age.
 - The cleanup lease length isn't in the stories; the check used a lease shorter than a long run.
 - A node's cleanup lease isn't released when its run ends; it just runs out.
+
+## D-18 · What can be done at runtime with a code-defined job's override, and with an orphaned job?
+
+Status: open. Severity: minor. Source: analysis. Raised: after iteration 1, from the answer to D-10.
+Features: F4. Requirements: REQ-031, REQ-033.
+
+Your answer to D-10 limits runtime actions on a code-defined job to pausing and resuming. Two things it doesn't settle:
+
+1. REQ-031 also lets a code-defined job marked "allow runtime override" have its schedule edited at runtime. Does that stay?
+2. An orphaned job is code-defined but no longer in any code. Reconcile never deletes it (REQ-030), so if it can't be removed at runtime either, orphans pile up forever.
+
+Until you answer, iteration 2 assumes: overrides stay as REQ-031 says, and an orphaned job can be removed at runtime.
+
+Options:
+1. **Keep both.** Overrides stay; orphaned jobs can be removed at runtime.
+2. **Pause only, but orphans can go.** Drop runtime overrides: a code-defined job's schedule changes only in code. Orphaned jobs can be removed at runtime.
+3. **Pause only, everywhere.** Drop runtime overrides, and orphaned jobs stay until code defines them again or someone deletes them from the database.
+
+## D-19 · During a rolling deploy, a restarting old node puts back the old schedule of a job both versions define
+
+Status: open. Severity: major. Source: modeling. Raised: iteration 2.
+Features: F4. Requirements: REQ-029, REQ-034.
+Rule: NewScheduleNotReverted.
+
+Your D-9 answer stops jobs being orphaned while any running node still defines them. It doesn't say what happens to a job both versions define with different schedules. As written, each node start writes its own version's schedule, so while the deploy is under way the schedule flips with every restart, and each flip resets the job's next run time, which can skip or bring forward a run.
+
+How it happens:
+1. Both nodes run the old version, where `nightly-report` runs at 03:00.
+2. Node 2 restarts on the new version, where `nightly-report` runs at 02:00. Its start changes the schedule to 02:00.
+3. Node 1, still on the old version, crashes and restarts. Its start changes the schedule back to 03:00, with node 2 still running the new version.
+4. Each further restart of either version flips it again, until every node runs the new version.
+
+Options:
+1. **The newest version decides.** Add to REQ-029: "A reconcile changes a definition's schedule only if its version is at least as new as the version that last set it."
+2. **Accept and document it.** Add to REQ-034: "During a rolling deploy, a job whose schedule differs between the versions follows whichever version's node started last; this settles once every node runs the new version."

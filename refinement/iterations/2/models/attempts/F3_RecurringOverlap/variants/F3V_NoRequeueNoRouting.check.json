@@ -1,0 +1,98 @@
+{
+  "module": "F3V_NoRequeueNoRouting",
+  "rules": [
+    {
+      "name": "NoOverlap",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "OneFirePerInstant",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "MissedReportedOnce",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "AwaitingRunsInOrder",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "SkipCreatesNothingWhileActive",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "PausedNeverFires",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "AwaitingNeverStranded",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "policy",
+      "domain": "Policies",
+      "values": 4
+    },
+    {
+      "variable": "paused",
+      "domain": "BOOLEAN",
+      "values": 2
+    },
+    {
+      "variable": "nextRun",
+      "domain": "1..(NumInstants + 1)",
+      "values": 3
+    },
+    {
+      "variable": "dueRead",
+      "domain": "[Nodes -> 0..NumInstants]",
+      "values": 9
+    },
+    {
+      "variable": "status",
+      "domain": "[Occs -> Statuses]",
+      "values": 1331
+    },
+    {
+      "variable": "attempt",
+      "domain": "[Occs -> 0..MaxAttempts]",
+      "values": 27
+    },
+    {
+      "variable": "cancelReq",
+      "domain": "[Occs -> BOOLEAN]",
+      "values": 8
+    },
+    {
+      "variable": "winners",
+      "domain": "[Instants -> SUBSET Nodes]",
+      "values": 16
+    },
+    {
+      "variable": "reporters",
+      "domain": "[Instants -> SUBSET Nodes]",
+      "values": 16
+    },
+    {
+      "variable": "warned",
+      "domain": "[Occs -> BOOLEAN]",
+      "values": 8
+    }
+  ],
+  "typeOkProduct": 127179030528,
+  "status": "ok",
+  "because": "Explored the whole state space and found nothing.",
+  "states": 18586336,
+  "distinct": 3365008,
+  "depth": 27
+}

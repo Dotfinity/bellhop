@@ -1,0 +1,101 @@
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 2: <ReadDue line 86, col 5 to line 90, col 100 of module F3_RecurringOverlap>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 1)
+/\ reporters = <<{}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 1
+/\ winners = <<{}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"None", "None", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 3: <CatchUpFire line 105, col 5 to line 113, col 35 of module F3_RecurringOverlap>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 2
+/\ winners = <<{n2}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 4: <ReadDue line 86, col 5 to line 90, col 100 of module F3_RecurringOverlap>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 2)
+/\ reporters = <<{n2}, {}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 2
+/\ winners = <<{n2}, {}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 5: <CatchUpFire line 105, col 5 to line 113, col 35 of module F3_RecurringOverlap>
+/\ paused = FALSE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {n2}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 3
+/\ winners = <<{n2}, {n2}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 6: <Pause line 131, col 5 to line 133, col 101 of module F3_RecurringOverlap>
+/\ paused = TRUE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {n2}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 3
+/\ winners = <<{n2}, {n2}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 7: <CancelOcc line 211, col 5 to line 219, col 73 of module F3_RecurringOverlap>
+/\ paused = TRUE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {n2}>>
+/\ warned = <<FALSE, FALSE, FALSE>>
+/\ nextRun = 3
+/\ winners = <<{n2}, {n2}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Cancelled", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+State 8: <Requeue line 231, col 5 to line 235, col 84 of module F3_RecurringOverlap>
+/\ paused = TRUE
+/\ dueRead = (n1 :> 0 @@ n2 :> 0)
+/\ reporters = <<{n2}, {n2}>>
+/\ warned = <<TRUE, FALSE, FALSE>>
+/\ nextRun = 3
+/\ winners = <<{n2}, {n2}>>
+/\ policy = "Skip"
+/\ cancelReq = <<FALSE, FALSE, FALSE>>
+/\ status = <<"Enqueued", "Awaiting", "None">>
+/\ attempt = <<0, 0, 0>>
+
+Back to state 7: <CancelOcc line 211, col 5 to line 219, col 73 of module F3_RecurringOverlap>

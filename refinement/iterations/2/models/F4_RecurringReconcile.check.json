@@ -1,0 +1,76 @@
+{
+  "module": "F4_RecurringReconcile",
+  "rules": [
+    {
+      "name": "RunningCodeKeepsItsJobs",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "CodeOnlyNamesKeepCodeSchedule",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "NeverDeletedByReconcile",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "OtherAppUntouched",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "OverrideSurvives",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "NoCatchUpAfterRestoreOrResume",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "UnchangedReconcileKeepsNextRun",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "ReconcileKeepsPause",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "NewScheduleNotReverted",
+      "kind": "property",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F4_RecurringReconcile.trace-NewScheduleNotReverted.txt"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "def",
+      "domain": "[Defs -> Rows]",
+      "values": 2147483647,
+      "note": "more than this"
+    },
+    {
+      "variable": "node",
+      "domain": "[Nodes -> NodeStates]",
+      "values": 9
+    },
+    {
+      "variable": "lastReconciler",
+      "domain": "Apps \\cup {\"none\"}",
+      "values": 3
+    }
+  ],
+  "typeOkProduct": 57982058469,
+  "status": "issues",
+  "because": "One or more rules were broken; see their traces.",
+  "states": 351865,
+  "distinct": 24408,
+  "depth": 16
+}

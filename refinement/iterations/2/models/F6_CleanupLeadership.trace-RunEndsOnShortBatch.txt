@@ -1,0 +1,43 @@
+Error: Action property RunEndsOnShortBatch is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 0 @@ n2 :> 0)
+/\ phase = (n1 :> "Idle" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 0
+
+State 2: <TakeLease line 51, col 5 to line 56, col 22 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Running" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 0
+
+State 3: <Tick line 97, col 5 to line 99, col 62 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Running" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 1
+
+State 4: <Tick line 97, col 5 to line 99, col 62 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Running" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 2
+
+State 5: <TakeLease line 51, col 5 to line 56, col 22 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 0 @@ n2 :> 4)
+/\ phase = (n1 :> "Running" @@ n2 :> "Running")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 2
+
+State 6: <StopOnFailedRenewal line 81, col 5 to line 84, col 62 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 0 @@ n2 :> 4)
+/\ phase = (n1 :> "Idle" @@ n2 :> "Running")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 2

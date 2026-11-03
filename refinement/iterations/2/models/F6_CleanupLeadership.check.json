@@ -1,0 +1,67 @@
+{
+  "module": "F6_CleanupLeadership",
+  "rules": [
+    {
+      "name": "OneLeaseHolder",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "OnlyHolderPurges",
+      "kind": "invariant",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F6_CleanupLeadership.trace-OnlyHolderPurges.txt"
+    },
+    {
+      "name": "OneCleanupRunAtATime",
+      "kind": "invariant",
+      "outcome": "violated",
+      "class": "behaviour",
+      "trace": "F6_CleanupLeadership.trace-OneCleanupRunAtATime.txt"
+    },
+    {
+      "name": "TakeOnlyAfterExpiry",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "RunEndsOnShortBatch",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "clock",
+      "domain": "0..MaxClock",
+      "values": 6
+    },
+    {
+      "variable": "leaseUntil",
+      "domain": "[Nodes -> 0..(MaxClock + LeaseLength)]",
+      "values": 64
+    },
+    {
+      "variable": "phase",
+      "domain": "[Nodes -> Phases]",
+      "values": 9
+    },
+    {
+      "variable": "batchesDone",
+      "domain": "[Nodes -> 0..MaxBatches]",
+      "values": 16
+    },
+    {
+      "variable": "lastBatch",
+      "domain": "[Nodes -> BatchResults]",
+      "values": 9
+    }
+  ],
+  "typeOkProduct": 497664,
+  "status": "issues",
+  "because": "One or more rules were broken; see their traces.",
+  "states": 6776,
+  "distinct": 2364,
+  "depth": 20
+}

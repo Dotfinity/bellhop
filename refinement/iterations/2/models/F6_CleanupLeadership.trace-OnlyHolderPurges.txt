@@ -1,0 +1,36 @@
+Error: Invariant OnlyHolderPurges is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 0 @@ n2 :> 0)
+/\ phase = (n1 :> "Idle" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 0
+
+State 2: <TakeLease line 51, col 5 to line 56, col 22 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Running" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 0
+
+State 3: <StartBatch line 73, col 5 to line 77, col 50 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Purging" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 0
+
+State 4: <Tick line 97, col 5 to line 99, col 62 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Purging" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 1
+
+State 5: <Tick line 97, col 5 to line 99, col 62 of module F6_CleanupLeadership>
+/\ batchesDone = (n1 :> 0 @@ n2 :> 0)
+/\ leaseUntil = (n1 :> 2 @@ n2 :> 0)
+/\ phase = (n1 :> "Purging" @@ n2 :> "Idle")
+/\ lastBatch = (n1 :> "None" @@ n2 :> "None")
+/\ clock = 2
