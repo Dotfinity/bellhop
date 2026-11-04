@@ -2,7 +2,7 @@
 
 ## D-1 · How long may a handler keep running after its job could have been picked up by another node?
 
-Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03): option 1, no overlap at all. REQ-015 changed. Severity: major. Source: analysis. Raised: before the first run.
+Status: decided (2026-11-04, revised): no overlap within stated limits, and the lease token exposed to handlers. REQ-015 changed. Was: resolved (iteration 2), from decided (2026-11-03): option 1, no overlap at all. Severity: major. Source: analysis. Raised: before the first run.
 Features: F2. Requirements: REQ-015.
 
 M1-12 AC9 says self-fencing exists "so no handler keeps running long after another node may have recovered its job". "Long" has no measure, so the check can't tell an acceptable overlap from a bug. Two nodes running the same job at once is what at-least-once delivery allows, but only for a bounded time.
@@ -10,6 +10,14 @@ M1-12 AC9 says self-fencing exists "so no handler keeps running long after anoth
 Options:
 1. **No overlap at all.** A handler must be cancelled before another node can recover its job. REQ-015 becomes: "A node cancels its handlers no later than the moment another node could recover their jobs."
 2. **Overlap up to one renewal interval.** The old handler may run on for at most a third of the lease length after the job was recovered elsewhere. REQ-015 becomes: "…cancels every running handler, at the latest one renewal interval after another node could have recovered its job."
+
+### Revised after review (2026-11-04)
+
+"No overlap at all" can't be an absolute guarantee with leases. F2 holds only while clocks agree within the margin, the node is never paused for longer than the margin (GC, a VM freeze), and a cancelled handler stops. D-7 already notes that a handler ignoring cancellation breaks it. The architecture's failure table separately promises only at-least-once. See docs/tla-modelling-review.md, finding 3.
+
+Answer: no overlap stays the design goal, with its limits stated. The last sentence of REQ-015 becomes: "Two nodes never run the same job at once, provided clock skew plus any pause of the node stays under a third of the lease and the handler stops when cancelled. Outside those limits delivery is at-least-once, and handlers with external side effects must be idempotent."
+
+Also decided: `JobContext` gains `Guid LeaseToken { get; }`, the claim's lease token, which is fresh per claim. It is documented as a fencing token a handler can pass to its own downstream writes. `JobContext.CreateForTest` takes an optional token. It lands in arch §3.1 and the stories that build `JobContext` (issue 11).
 
 ## D-2 · When does a node count as live for routing?
 

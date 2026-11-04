@@ -9,7 +9,7 @@ Status: open, decided (answer recorded, not yet propagated), done.
 | # | Issue | Needs your call | Lands in | Status |
 |---|---|---|---|---|
 | 1 | Self-fencing has zero margin; REQ-015's history line contradicts results.md [2] | decided 2026-11-04: deadline timer at 2/3 (margin just under 1/3 lease) | decisions D-7, REQ-015 | decided |
-| 2 | "No overlap at all" (D-1) is stated as absolute; it holds only within skew and pause limits, and only for handlers that honour cancellation [3] | yes: wording; whether `JobContext` exposes the lease token | decisions D-1, REQ-015 | open |
+| 2 | "No overlap at all" (D-1) is stated as absolute; it holds only within skew and pause limits, and only for handlers that honour cancellation [3] | decided 2026-11-04: bounded no-overlap; `JobContext.LeaseToken` added in M1 | decisions D-1, REQ-015; arch §3.1 via issue 11 | decided |
 | 3 | D-6 is worded as check-then-write, and `Renew` and `ShutdownNodeAsync` lack a `state='Processing'` fence [5, 6] | no (wording and fence follow from D-6) | REQ-003, REQ-012 | open |
 | 4 | D-4's requeue warning has nowhere to appear in M1 [1, 7] | yes: return value, log event or dashboard | decisions D-4, REQ-010 | open |
 | 5 | A crash during a rolling deploy leaves a removed recurring job unorphaned [4] | yes: how orphans are swept | new decision D-20, REQ-030 | open |
