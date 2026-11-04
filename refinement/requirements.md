@@ -170,10 +170,11 @@ Code-defined recurring jobs are upserted at startup, orphaned when they disappea
   History: 2026-11-04, D-20: cleanup also orphans, as a backstop for nodes that crash during a deploy.
   History: 2026-11-03, D-9: orphaning waits until no live node of the application still defines the job.
 - **REQ-031** A runtime edit of a code-defined definition is refused unless it allows runtime override; an allowed override survives later reconciles and restarts.
-  Source: M1-06 AC4, AC5, M1-14 AC14, AC16. Status: changed by D-10.
+  Source: M1-06 AC4, AC5, M1-14 AC14, AC16. Status: changed by D-10, D-18.
   Verification (iteration 1): broken (D-10).
   Verification (iteration 2): holds.
-  Now: A runtime edit of a code-defined definition is refused unless it allows runtime override; an allowed override survives later reconciles and restarts. At runtime, a code-defined job can otherwise only be paused or resumed: removing it, or creating a job with a name its code defines, is refused.
+  Now: A runtime edit of a code-defined definition is refused unless it allows runtime override; an allowed override survives later reconciles and restarts. At runtime, a code-defined job can otherwise only be paused or resumed: removing it, or creating a job with a name its code defines, is refused. An override is permanent: no runtime action clears it, and later changes to the job's schedule in code don't apply to it. An orphaned definition can be removed.
+  History: 2026-11-04, D-18: overrides stay and can't be cleared; orphaned definitions can be removed at runtime.
   History: 2026-11-03, D-10: runtime actions on a code-defined job are limited to pause and resume (overrides kept pending D-18).
 - **REQ-032** A paused definition is not due; resuming sets the next run from now, with no catch-up for the paused period.
   Source: M1-06 AC6, M1-14 AC12. Status: changed by D-10.
@@ -182,10 +183,11 @@ Code-defined recurring jobs are upserted at startup, orphaned when they disappea
   Now: A paused definition is not due; resuming sets the next run from now, with no catch-up for the paused period. A reconcile never changes whether a definition is paused.
   History: 2026-11-03, D-10: a node's start never undoes a pause.
 - **REQ-033** Removing a definition keeps its existing occurrences.
-  Source: M1-06 AC7. Status: changed by D-10.
+  Source: M1-06 AC7. Status: changed by D-10, D-18.
   Verification (iteration 1): unchecked.
   Verification (iteration 2): unchecked (occurrences aren't in the F4 model).
-  Now: Removing a definition keeps its existing occurrences. Code-defined definitions can't be removed at runtime; orphaned ones can (assumed, see D-18).
+  Now: Removing a definition keeps its existing occurrences. Code-defined definitions can't be removed at runtime; orphaned ones can.
+  History: 2026-11-04, D-18: removing orphaned definitions confirmed.
   History: 2026-11-03, D-10: removal limited to runtime-defined and orphaned definitions.
 - **REQ-034** Reconciliation runs once at startup on worker nodes, before their loops start; client-only nodes don't reconcile.
   Source: M1-14 AC5, M1-13 AC11. Status: changed by D-19.

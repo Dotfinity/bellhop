@@ -294,7 +294,7 @@ Suggested answer: confirm them as written, and give the cleanup lease length if 
 
 ## D-18 · What can be done at runtime with a code-defined job's override, and with an orphaned job?
 
-Status: open. Severity: minor. Source: analysis. Raised: after iteration 1, from the answer to D-10.
+Status: decided (2026-11-04): option 1, keep both. An override is permanent; no runtime action clears it, which confirms D-16's assumption. REQ-031 and REQ-033 changed. Iteration 2 already assumed this answer, so no model changes. Severity: minor. Source: analysis. Raised: after iteration 1, from the answer to D-10.
 Features: F4. Requirements: REQ-031, REQ-033.
 
 Your answer to D-10 limits runtime actions on a code-defined job to pausing and resuming. Two things it doesn't settle:
