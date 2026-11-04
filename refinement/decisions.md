@@ -97,7 +97,7 @@ Suggested edit to REQ-003. Old: "Completing a job with a stale token changes not
 
 ## D-7 · A node stops its handler too late to rule out two nodes running the same job
 
-Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), delegated ("pick the best decision from reliability and consistency stand point"). Assumed the answer: two thirds of the lease, counted from when the renewal was sent. REQ-015 changed. Severity: major. Source: verification. Raised: iteration 1.
+Status: decided (2026-11-04, revised): a fencing deadline timer at two thirds of the lease. REQ-015 changed again; to be re-checked in iteration 3. Was: resolved (iteration 2), with a check once per renewal interval, which held only with zero margin. Before that: decided (2026-11-03), delegated ("pick the best decision from reliability and consistency stand point"). Assumed the answer: two thirds of the lease, counted from when the renewal was sent. Severity: major. Source: verification. Raised: iteration 1.
 Features: F2. Requirements: REQ-015.
 Rules: NoDoubleRun, CancelledByRecoveryMoment.
 
@@ -114,6 +114,16 @@ Even counting from when it sent the renewal, the node gives up exactly when the 
 This keeps your D-1 answer and needs a margin. Answer with a fraction of the lease, in: "A node counts from when it sent its last successful renewal, and cancels its handlers once ___ of the lease has passed without a successful renewal." Sensible values are between one third and two thirds: one third leaves a whole renewal interval of margin, two thirds makes nodes give up less often in a short outage.
 
 Note: a handler that ignores cancellation keeps running after the node gives up (M1-12 AC11 frees its slot after a grace period). For those handlers, the node alone can't rule out two runs at once.
+
+### Revised after review (2026-11-04)
+
+The iteration-2 answer held only with zero margin. A node that checks once per renewal interval and gives up at two thirds of the lease can, in the worst case, give up at 2/3 + 1/3 = the whole lease, which is the instant the store's lease expires. It held only because recovery needs the store's time to be strictly past the expiry. Re-running F2 with recovery allowed at the expiry instant (any clock skew or delay above zero) breaks NoDoubleRun in 11 steps. REQ-015's history line ("leaves one renewal interval before another node may recover the job") was wrong for a periodic check. It is corrected below. See docs/tla-modelling-review.md, finding 2 and Appendix A.
+
+Two options were checked against F2:
+1. **Deadline timer at two thirds.** Holds with recovery up to 1/6 of the lease early; ties at 1/3 early. Margin just under a third of the lease (20 s at the default 60 s).
+2. **Periodic check, giving up at half the lease.** Holds with recovery at the expiry instant; fails at 1/6 early. Margin just under a sixth of the lease (10 s).
+
+Answer: option 1. REQ-015 becomes: "A node arms a fencing deadline at the time it sent its last successful renewal plus two thirds of the lease, and re-arms it on every successful renewal. When the deadline passes, the node cancels its handlers at once. Two nodes never run the same job at once while clock skew plus any pause of the node stays under a third of the lease."
 
 ## D-8 · A cleanup run can outlive its lease, and two nodes then clean up at once
 

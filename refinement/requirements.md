@@ -79,8 +79,9 @@ A node keeps its leases alive while handlers run, and stops its handlers when it
   Source: M1-12 AC9. Status: changed by D-7.
   Verification (iteration 1): broken (D-7).
   Verification (iteration 2): holds.
-  Now: A node counts from when it sent its last successful renewal, and cancels its handlers once two thirds of the lease has passed without a successful renewal. Two nodes never run the same job at once.
-  History: 2026-11-03, D-7: my pick, delegated by the owner: two thirds of the lease, counted from the send time, leaves one renewal interval before another node may recover the job.
+  Now: A node arms a fencing deadline at the time it sent its last successful renewal plus two thirds of the lease, and re-arms it on every successful renewal. When the deadline passes, the node cancels its handlers at once. Two nodes never run the same job at once while clock skew plus any pause of the node stays under a third of the lease.
+  History: 2026-11-04, D-7 revised: a deadline timer instead of a check once per renewal interval, which gave up as late as the lease expiry (zero margin). Re-check in iteration 3.
+  History: 2026-11-03, D-7: my pick, delegated by the owner: two thirds of the lease, counted from the send time. (This line first said it "leaves one renewal interval before another node may recover the job". That holds only for a deadline checked continuously, not once per renewal interval; corrected 2026-11-04.)
   History: 2026-11-03, D-1 (no overlap at all) replaced "long" with "no later than the moment another node could recover their jobs".
 - **REQ-016** If releasing leases at shutdown fails, the lease expires and the job is recovered.
   Source: M1-12 AC14. Status: unchanged.
