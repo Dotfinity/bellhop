@@ -164,7 +164,8 @@ Code-defined recurring jobs are upserted at startup, orphaned when they disappea
   Source: M1-06 AC3. Status: changed by D-9.
   Verification (iteration 1): holds with an issue (D-9).
   Verification (iteration 2): holds.
-  Now: A reconcile orphans the code-defined definitions of its application that are missing from its code, but only when no live node of that application still defines them; it never deletes them, and restores them with a fresh next run time when they come back.
+  Now: A reconcile orphans the code-defined definitions of its application that are missing from its code, but only when no live node of that application still defines them; it never deletes them, and restores them with a fresh next run time when they come back. Cleanup applies the same orphaning rule on every run, so a definition that no live node of its application defines is orphaned within the node timeout plus one cleanup interval, even when no node starts. Only a reconcile restores.
+  History: 2026-11-04, D-20: cleanup also orphans, as a backstop for nodes that crash during a deploy.
   History: 2026-11-03, D-9: orphaning waits until no live node of the application still defines the job.
 - **REQ-031** A runtime edit of a code-defined definition is refused unless it allows runtime override; an allowed override survives later reconciles and restarts.
   Source: M1-06 AC4, AC5, M1-14 AC14, AC16. Status: changed by D-10.

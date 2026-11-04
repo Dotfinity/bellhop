@@ -320,3 +320,25 @@ How it happens:
 Options:
 1. **The newest version decides.** Add to REQ-029: "A reconcile changes a definition's schedule only if its version is at least as new as the version that last set it."
 2. **Accept and document it.** Add to REQ-034: "During a rolling deploy, a job whose schedule differs between the versions follows whichever version's node started last; this settles once every node runs the new version."
+
+## D-20 · A crash during a rolling deploy leaves a removed recurring job unorphaned
+
+Status: decided (2026-11-04): option 1, orphan at start and in cleanup. REQ-030 changed; to be checked in iteration 3. Severity: major. Source: review (docs/tla-modelling-review.md, finding 4). Raised: after iteration 2.
+Features: F4, F5. Requirements: REQ-030, REQ-034, REQ-036.
+Rule: RemovedJobOrphanedAfterDeploy (from the review; to be added to F4).
+
+F4 treats a stopped node as gone at once. In Bellhop, a node is live while its heartbeat is within the node timeout (D-2, 5 minutes), node ids are unique per process start, and only a graceful shutdown deletes the node row. A crashed node's row therefore keeps advertising its code for up to 5 minutes. Reconcile runs only when a node starts (REQ-034). If the last node of a deploy starts while a crashed old-version row is still live, it keeps the old version's jobs, and nothing reconciles after that row ages out.
+
+How it happens (checked with a variant of F4, 6 steps):
+1. Both nodes run the old version, which defines `weekly-digest`; the new version drops it.
+2. Node 1 restarts on the new version. Node 2 (old) is live, so `weekly-digest` is kept. That's correct under D-9.
+3. Node 2 crashes; its row still counts as live.
+4. Node 2 starts on the new version. The crashed old row still advertises `weekly-digest`, so it is kept.
+5. The old row ages out. Every node now runs the new version, but `weekly-digest` stays active and keeps firing until some later node start.
+
+Options:
+1. **Orphan at start and in cleanup.** Keep D-9's reconcile at start, and have cleanup apply the same rule on every run, the way it already marks jobs Unroutable from live nodes' routable names. Add to REQ-030: "Cleanup applies the same orphaning rule on every run, so a definition that no live node of its application defines is orphaned within the node timeout plus one cleanup interval, even when no node starts. Only a reconcile restores."
+2. **Orphan only in cleanup.** Reconcile creates, updates and restores; only cleanup orphans. One place for the rule, but every removed job fires for up to one cleanup interval after any deploy.
+3. **Accept and document it.** After a crash during a deploy, a removed job keeps firing until the next node start or until someone pauses it.
+
+Answer: option 1. Both paths use one store predicate. Nodes already advertise the recurring names their code defines (D-9). The cleanup half lands in arch §5.3 `PurgeAsync` and §7.4 with issue 11.
