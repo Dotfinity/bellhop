@@ -1,0 +1,11 @@
+{
+  "module": "CommonCheck",
+  "rules": [],
+  "sizes": [],
+  "typeOkProduct": 1,
+  "status": "ok",
+  "because": "Explored the whole state space and found nothing.",
+  "states": 3,
+  "distinct": 2,
+  "depth": 2
+}

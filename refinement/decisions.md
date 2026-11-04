@@ -329,7 +329,7 @@ Options:
 
 ## D-20 · A crash during a rolling deploy leaves a removed recurring job unorphaned
 
-Status: decided (2026-11-04): option 1, orphan at start and in cleanup. REQ-030 changed; to be checked in iteration 3. Severity: major. Source: review (docs/tla-modelling-review.md, finding 4). Raised: after iteration 2. Checked in iteration 3: the crash case is fixed (RemovedJobOrphanedAfterDeploy held, and broke without the sweep), but the sweep gave rise to D-22, so this stays decided until D-22 is settled.
+Status: resolved (iteration 4; every rule this answer touched held, with D-22's change). Was: decided (2026-11-04): option 1, orphan at start and in cleanup. REQ-030 changed; to be checked in iteration 3. Severity: major. Source: review (docs/tla-modelling-review.md, finding 4). Raised: after iteration 2. Checked in iteration 3: the crash case is fixed (RemovedJobOrphanedAfterDeploy held, and broke without the sweep), but the sweep gave rise to D-22, so this stays decided until D-22 is settled.
 Features: F4, F5. Requirements: REQ-030, REQ-034, REQ-036.
 Rule: RemovedJobOrphanedAfterDeploy (from the review; to be added to F4).
 
@@ -366,7 +366,7 @@ Options considered: a per-job `MaxAwaiting` cap (default 10); reusing `MisfireMa
 
 ## D-22 · When every node of an application is down, cleanup orphans all its recurring jobs, and they lose their catch-up
 
-Status: open. Severity: major. Source: modeling. Raised: iteration 3.
+Status: resolved (iteration 4; every rule this answer touched held). Was: decided (2026-11-04): option 1, sweep only running applications. REQ-030 changed. Severity: major. Source: modeling. Raised: iteration 3.
 Features: F4, F7. Requirements: REQ-030, REQ-042.
 Rule: DownAppKeepsItsJobs.
 

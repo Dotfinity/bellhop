@@ -25,4 +25,4 @@ Status: open, decided (answer recorded, not yet propagated), done.
 | 15 | Liveness gaps: a job leaves `Processing`, cleanup eventually runs; REQ-007 and REQ-027 to be owned by M1-19's tests [9] | no | iteration 3 models, M1-19 | done in the models (F1, F6 liveness held); the M1-19 note lands with issue 11 |
 | 16 | No way to re-run the checks; TLC logs ignored by git; a full copy of the models per iteration [10] | yes (repo layout) | refinement/README.md | open |
 | 17 | Counterexample traces aren't conformance tests yet [10] | no | M1-05, M1-06, M1-07 criteria | open |
-| 18 | Iteration 3: with every node of an application down, cleanup on another application's node orphans its recurring jobs, and they lose their catch-up (D-22) | yes | decisions D-22, REQ-030 | open |
+| 18 | Iteration 3: with every node of an application down, cleanup on another application's node orphans its recurring jobs, and they lose their catch-up (D-22) | decided 2026-11-04: sweep only running apps; all F4 rules held in iteration 4 | decisions D-22, REQ-030 | done |

@@ -1,0 +1,84 @@
+{
+  "module": "F4_RecurringReconcile",
+  "rules": [
+    {
+      "name": "RunningCodeKeepsItsJobs",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "CodeOnlyNamesKeepCodeSchedule",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "NeverDeletedByReconcile",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "OtherAppUntouched",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "OverrideSurvives",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "NoCatchUpAfterRestoreOrResume",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "UnchangedReconcileKeepsNextRun",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "ReconcileKeepsPause",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "RemovedJobOrphanedAfterDeploy",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "DownAppKeepsItsJobs",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "def",
+      "domain": "[Defs -> Rows]",
+      "values": 2147483647,
+      "note": "more than this"
+    },
+    {
+      "variable": "node",
+      "domain": "[Nodes -> NodeStates]",
+      "values": 9
+    },
+    {
+      "variable": "lastReconciler",
+      "domain": "Apps \\cup {\"none\", \"cleanup\"}",
+      "values": 4
+    },
+    {
+      "variable": "ghost",
+      "domain": "[Nodes -> Versions \\cup {\"none\"}]",
+      "values": 9
+    }
+  ],
+  "typeOkProduct": 695784701628,
+  "status": "ok",
+  "because": "Explored the whole state space and found nothing.",
+  "states": 2999593,
+  "distinct": 187380,
+  "depth": 20
+}

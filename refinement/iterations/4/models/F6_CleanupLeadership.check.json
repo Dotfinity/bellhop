@@ -1,0 +1,71 @@
+{
+  "module": "F6_CleanupLeadership",
+  "rules": [
+    {
+      "name": "OneLeaseHolder",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "OnlyHolderPurges",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "OneCleanupRunAtATime",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "TakeOnlyAfterExpiry",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "RunEndsOnShortBatch",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "CleanupKeepsRunning",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "clock",
+      "domain": "0..MaxClock",
+      "values": 6
+    },
+    {
+      "variable": "leaseUntil",
+      "domain": "[Nodes -> 0..(MaxClock + LeaseLength)]",
+      "values": 64
+    },
+    {
+      "variable": "phase",
+      "domain": "[Nodes -> Phases]",
+      "values": 9
+    },
+    {
+      "variable": "batchesDone",
+      "domain": "[Nodes -> 0..MaxBatches]",
+      "values": 16
+    },
+    {
+      "variable": "lastBatch",
+      "domain": "[Nodes -> BatchResults]",
+      "values": 9
+    }
+  ],
+  "typeOkProduct": 497664,
+  "status": "ok",
+  "because": "Explored the whole state space and found nothing.",
+  "states": 1508,
+  "distinct": 696,
+  "depth": 20,
+  "neverFired": [
+    "StopOnFailedRenewal"
+  ]
+}
