@@ -49,7 +49,7 @@ Suggested edit to REQ-019. Old: "An occurrence counts as active when it is `Sche
 
 ## D-4 · An operator requeue can start an old run of a recurring job next to the current one
 
-Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "a warning should be shown to the user, otherwise if it's a manual operation, that's fine, we assume the user knows what they're doing". Read as: requeue ignores the overlap policy and warns when another run is active. REQ-010 changed. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "a warning should be shown to the user, otherwise if it's a manual operation, that's fine, we assume the user knows what they're doing". Read as: requeue ignores the overlap policy and warns when another run is active. REQ-010 changed. Clarified (2026-11-04), after the review found that nothing in M1 could carry the warning (`RequeueAsync` returns `bool`, and the M1 dashboard has no requeue action): in M1 the warning is a log event naming both runs, and the user-facing warning comes with the dashboard's requeue action in M2. The architecture already lets a requeued occurrence bypass the overlap policy (§5.3 `RequeueAsync`); the new event id lands in arch §8.4, and the M2 item in §1.3, with issue 11. Severity: major. Source: verification. Raised: iteration 1.
 Features: F3, F1. Requirements: REQ-010, REQ-020, REQ-021, REQ-024.
 Rule: NoOverlap (also AwaitingRunsInOrder and AwaitingNeverStranded).
 

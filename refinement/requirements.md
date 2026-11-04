@@ -51,7 +51,8 @@ A job moves through claim, lease, completion, retry, recovery, cancel, requeue a
   Source: M1-05 AC18, M1-11 AC10. Status: changed by D-4.
   Verification (iteration 1): holds with an issue (D-4).
   Verification (iteration 2): holds.
-  Now: Requeue moves a `DeadLettered`, `Failed`, `Cancelled` or `Succeeded` job to `Enqueued` with its attempts reset. In any other state it is refused. Requeuing a run of a recurring job ignores its overlap policy; when another run of the same recurring job is active, the operator is warned that the two may run side by side, and the requeue goes ahead.
+  Now: Requeue moves a `DeadLettered`, `Failed`, `Cancelled` or `Succeeded` job to `Enqueued` with its attempts reset. In any other state it is refused. Requeuing a run of a recurring job ignores its overlap policy; when another run of the same recurring job is active, the requeue goes ahead, and Bellhop logs a warning event naming both runs and saying they may run side by side. In M1 the log event is the warning; showing it to the operator in the UI comes with the dashboard's requeue action in M2. `RequeueAsync` keeps returning `bool`.
+  History: 2026-11-04, D-4 clarified: the warning is a log event in M1, and appears in the UI in M2.
   History: 2026-11-03, D-4: requeue is a manual action that overrides the overlap policy, with a warning.
 - **REQ-011** A job can be deleted unless it is `Processing`.
   Source: M1-05 AC19. Status: unchanged.
