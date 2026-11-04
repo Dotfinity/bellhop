@@ -157,9 +157,11 @@ Code-defined recurring jobs are upserted at startup, orphaned when they disappea
   Verification (iteration 1): unchecked (one row per name by construction).
   Verification (iteration 2): unchecked (one row per name by construction).
 - **REQ-029** A reconcile that changes nothing leaves the next run time alone; a schedule change takes the newly computed next run, with no catch-up for the old schedule.
-  Source: M1-06 AC2, M1-14 AC11. Status: unchanged.
+  Source: M1-06 AC2, M1-14 AC11. Status: changed by D-19.
   Verification (iteration 1): holds.
   Verification (iteration 2): holds with an issue (D-19).
+  Now: A reconcile that changes nothing leaves the next run time alone; a schedule change takes the newly computed next run, with no catch-up for the old schedule. A schedule change whose newly computed next run is the same instant as the stored next run leaves the next run unchanged.
+  History: 2026-11-04, D-19: an unchanged next run instant is kept, so flipping a schedule and back between runs has no effect.
 - **REQ-030** A reconcile orphans the code-defined definitions of the same application that are missing from its code, never deletes them, and restores them with a fresh next run time when they come back.
   Source: M1-06 AC3. Status: changed by D-9.
   Verification (iteration 1): holds with an issue (D-9).
@@ -186,9 +188,11 @@ Code-defined recurring jobs are upserted at startup, orphaned when they disappea
   Now: Removing a definition keeps its existing occurrences. Code-defined definitions can't be removed at runtime; orphaned ones can (assumed, see D-18).
   History: 2026-11-03, D-10: removal limited to runtime-defined and orphaned definitions.
 - **REQ-034** Reconciliation runs once at startup on worker nodes, before their loops start; client-only nodes don't reconcile.
-  Source: M1-14 AC5, M1-13 AC11. Status: unchanged.
+  Source: M1-14 AC5, M1-13 AC11. Status: changed by D-19.
   Verification (iteration 1): holds with an issue (D-9).
   Verification (iteration 2): holds with an issue (D-19).
+  Now: Reconciliation runs once at startup on worker nodes, before their loops start; client-only nodes don't reconcile. During a rolling deploy, a job whose schedule differs between the versions follows whichever version's node started last; it settles once every node runs one version, including after a rollback.
+  History: 2026-11-04, D-19: schedule flips during a deploy are accepted and documented.
 
 ## F5 Job routing
 

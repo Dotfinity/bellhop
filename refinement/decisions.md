@@ -311,7 +311,7 @@ Options:
 
 ## D-19 · During a rolling deploy, a restarting old node puts back the old schedule of a job both versions define
 
-Status: open. Severity: major. Source: modeling. Raised: iteration 2.
+Status: decided (2026-11-04): option 2, accept and document, with a small mitigation in REQ-029. REQ-029 and REQ-034 changed; to be checked in iteration 3 (NewScheduleNotReverted becomes an accepted behaviour, not a rule). Severity: major. Source: modeling. Raised: iteration 2.
 Features: F4. Requirements: REQ-029, REQ-034.
 Rule: NewScheduleNotReverted.
 
@@ -348,3 +348,9 @@ Options:
 3. **Accept and document it.** After a crash during a deploy, a removed job keeps firing until the next node start or until someone pauses it.
 
 Answer: option 1. Both paths use one store predicate. Nodes already advertise the recurring names their code defines (D-9). The cleanup half lands in arch §5.3 `PurgeAsync` and §7.4 with issue 11.
+
+### Answered after review (2026-11-04)
+
+Option 1 would break rollbacks: after rolling back, the old version is older than the one that last set the schedule, so the old schedule could never be written again. It also needs an ordered application version, which Bellhop doesn't have. See docs/tla-modelling-review.md, finding 8. A third option, changing a schedule only once every live node advertises the same one, was considered and not chosen. It widens the heartbeat contract, and after a crash mid-deploy the old schedule would stay until the next node start.
+
+Answer: option 2. Add to REQ-034: "During a rolling deploy, a job whose schedule differs between the versions follows whichever version's node started last; it settles once every node runs one version, including after a rollback." Mitigation, added to REQ-029: "A schedule change whose newly computed next run is the same instant as the stored next run leaves the next run unchanged." With it, a flip and a flip back before the job's next run changes nothing.
