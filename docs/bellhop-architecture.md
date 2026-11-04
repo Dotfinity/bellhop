@@ -68,6 +68,7 @@ A deferred item is **omitted**, not stubbed: no type, option, button, menu entry
 | Job results, `IJob<TResult>`, `WaitForCompletionAsync`, `GetResultAsync` (JOB-8, SCH-7) | M2 (A-3) | Not present. |
 | `EnqueueManyAsync` (SCH-9) | M2 | The store method takes a list (§5.2) so M2 needs no store change. |
 | Bulk dead-letter requeue (RET-5 bulk) | M2 | Individual `RequeueAsync(id)`. |
+| Requeue warning shown to the operator in the dashboard (D-4) | M2, with the dashboard's requeue action | Warning event 1103 in the log. |
 | Queue pause and global maintenance pause (CON-5 for queues) | M2 | Recurring pause and resume exist (REC-9). |
 | `LongRunning` concurrency limit (CON-6) | M2 | One node-wide limit plus optional per-queue limits. |
 | Weighted round-robin queues (CON-1, MAY) | later | Strict priority order. |
@@ -190,7 +191,7 @@ public sealed class RecurringAttribute(string cron) : Attribute
 }
 [AttributeUsage(Property | Parameter)] public sealed class SensitiveAttribute : Attribute;   // JOB-9
 
-public enum OverlapPolicy { Skip, Queue, Allow, CancelPrevious }   // REC-6
+public enum OverlapPolicy { Skip, Queue, Allow, CancelPrevious }   // REC-6; Queue keeps every fire waiting, with no cap (D-21)
 public enum MisfireMode { RunOnce, Skip, RunAll }                  // REC-5
 
 public sealed record RetrySettings(int MaxAttempts, IReadOnlyList<TimeSpan>? Delays = null);  // null delays = default backoff
@@ -232,6 +233,7 @@ public sealed class JobContext                            // JOB-6
     public string Name { get; }
     public int Attempt { get; }                           // 1-based
     public int MaxAttempts { get; }
+    public Guid LeaseToken { get; }                       // fresh per claim; a fencing token for the handler's own downstream writes (D-1)
     public DateTimeOffset EnqueuedAt { get; }             // creation time
     public DateTimeOffset? ScheduledAt { get; }           // due time for scheduled, retried and recurring jobs
     public string Queue { get; }
@@ -243,7 +245,8 @@ public sealed class JobContext                            // JOB-6
     public ActivityContext TraceContext { get; }
     public Task ReportProgressAsync(double fraction, string? message = null, CancellationToken ct = default);
     public static JobContext CreateForTest(JobId? id = null, string name = "test", int attempt = 1, int maxAttempts = 5,
-        string queue = "default", IEnumerable<string>? tags = null, ILogger? logger = null, TimeProvider? time = null);  // TST-5
+        string queue = "default", IEnumerable<string>? tags = null, ILogger? logger = null, TimeProvider? time = null,
+        Guid? leaseToken = null);  // TST-5
 }
 
 public sealed class JobParameters                         // EXT-6
@@ -296,7 +299,7 @@ public interface IRecurringJobManager
 {
     Task<RecurringUpsertResult> AddOrUpdateAsync<TJob>(string name, ISchedule schedule, TJob? job = default,
         RecurringOptions? options = null, CancellationToken ct = default) where TJob : IJob;
-    Task<bool> RemoveAsync(string name, CancellationToken ct = default);
+    Task<bool> RemoveAsync(string name, CancellationToken ct = default);   // runtime-defined or orphaned only (D-10, D-18)
     Task<TriggerResult> TriggerAsync(string name, CancellationToken ct = default);
     Task<TriggerResult> TriggerAsync<TJob>(string name, TJob payloadOverride, CancellationToken ct = default) where TJob : IJob;
     Task<bool> PauseAsync(string name, CancellationToken ct = default);
@@ -573,6 +576,8 @@ CREATE TABLE {schema}.nodes (
   worker_count  int NOT NULL,
   in_flight     int NOT NULL,
   routable_names text[] NOT NULL,       -- job names this node can handle (JOB-3 cluster-wide check)
+  application   text NOT NULL,         -- IHostEnvironment.ApplicationName; matches recurring_jobs.defined_by (D-9)
+  recurring_names text[] NOT NULL,     -- code-defined recurring names this node's code defines (D-9, D-20)
   version       text NOT NULL,
   started_at    timestamptz NOT NULL,
   heartbeat_at  timestamptz NOT NULL,
@@ -595,13 +600,13 @@ M1-18 owns this schema. Index changes found necessary during M1-19 to M1-21 are 
 |---|---|
 | Create jobs | One transaction: `INSERT` jobs + history + index rows; `pg_notify` in the same transaction (delivered on commit). |
 | Claim (EXE-2) | One statement: a CTE selecting `FOR UPDATE SKIP LOCKED` from `jobs_ready` across the requested queues in their order, then `UPDATE … SET state='Processing', attempt=attempt+1, lease_*` with a new `lease_token`, plus a history insert, `RETURNING` the claimed rows. |
-| Renew leases | One `UPDATE … WHERE (id, lease_token) IN (…)`; returns the rows renewed and their `cancel_requested_at`. Rows not returned were lost. |
+| Renew leases | One `UPDATE … WHERE (id, lease_token) IN (…) AND state = 'Processing'`; returns the rows renewed and their `cancel_requested_at`. Rows not returned were lost. Recovery always moves a job out of `Processing`, and only a new claim with a new token moves it back, so this condition is exactly "this node still holds the job". Every other write a node makes about a job it runs (complete, shutdown release, progress, parameters) carries the same condition in the same statement (D-6). |
 | Complete | One transaction fenced by `WHERE id=@id AND state='Processing' AND lease_token=@token`. 0 rows: if the job already finished with this token and outcome (a retried call whose first commit succeeded), return `true`; otherwise the lease was lost, nothing is written, and `false` is returned. Complete never touches `recurring_jobs` (lock order, below). |
 | Tick | One statement of data-modifying CTEs (promote due, recover expired leases, reroute unroutable, promote awaiting recurring occurrences, heartbeat node, select due recurring, return `now()` and per-queue ready flags). `SKIP LOCKED` in every sub-select that updates, so concurrent ticks on N nodes never block or double-process. All CTEs share one snapshot, so the ready flags are computed as "ready before the statement" OR "made ready by this statement" (from the CTEs' `RETURNING`). The awaiting-promotion step locks each candidate `recurring_jobs` row `FOR UPDATE SKIP LOCKED` before checking it. If one statement proves impractical, at most two round-trips per tick are allowed, recorded in M1-19's Notes. |
 | Fire recurring (REC-7) | One transaction that first locks the definition row (`SELECT … FOR UPDATE`, also for manual triggers). Scheduled fires then compare-and-set: `UPDATE recurring_jobs SET next_run_at=@new … WHERE namespace=@ns AND name=@name AND next_run_at=@expected AND NOT paused AND orphaned_at IS NULL`. 0 rows: another node fired (or it was paused), return `Fired = false`. Otherwise run the overlap check against `jobs_recurring` and insert the occurrence jobs. |
 | Lock order | Whenever a transaction locks both a `recurring_jobs` row and `jobs` rows, it locks the definition first (fire, awaiting promotion). Paths that lock only `jobs` rows (claim, complete, recover, cancel, delete) never take a definition lock. This rules out the fire/complete deadlock. |
-| Reconcile recurring (REC-3) | One transaction: `INSERT … ON CONFLICT (namespace, name) DO UPDATE` per definition, only when a field changed. `next_run_at` is recomputed only when the schedule or time zone changed (REC-10). Then mark orphans. |
-| Purge (STO-7) | `DELETE … WHERE id IN (SELECT id … ORDER BY finished_at LIMIT @batch FOR UPDATE SKIP LOCKED)` using `jobs_finished`; history and index cascade. |
+| Reconcile recurring (REC-3) | One transaction. It first takes a transaction-scoped advisory lock keyed by namespace and application (`pg_advisory_xact_lock`, as migrations do, §4.3), so reconciles of one application run one at a time, and upserts the starting node's row with its recurring names (REQ-045). Then `INSERT … ON CONFLICT (namespace, name) DO UPDATE` per definition, only when a field changed. `next_run_at` is recomputed only when the schedule or time zone changed (REC-10), and kept when the recomputed value is the same instant (D-19). Then it marks orphaned the rows absent from the request and from the `recurring_names` of every live node of the application (D-9). |
+| Purge (STO-7) | `DELETE … WHERE id IN (SELECT id … ORDER BY finished_at LIMIT @batch FOR UPDATE SKIP LOCKED)` using `jobs_finished`; history and index cascade. Each batch is bounded by `CommandTimeout` (D-8, §7.4). The same call orphans code-defined recurring definitions that no live node of their application defines, only for applications with at least one live node (D-20, D-22). |
 
 ### 4.5 Ids
 
@@ -630,7 +635,7 @@ Each library version declares `SchemaVersion` (the version it writes) and accept
 
 ## 5. Store contract (`namespace Bellhop.Storage`)
 
-`IJobStore` has 24 methods and one property (STO-1 target: under 25). Every method is async, takes a `CancellationToken`, and is atomic as described in §4.4. Stores implement exactly this, plus `IJobIndex`, plus `IJobStoreNotifications` if they can push.
+`IJobStore` has 24 methods and one property (STO-1 target: under 25). Every method is async, takes a `CancellationToken`, and is atomic as described in §4.4. Every method is linearizable in every store: it takes effect as one step, as if the methods ran one at a time. The conformance suite checks this, and the refinement models rest on it (REQ-044). Stores implement exactly this, plus `IJobIndex`, plus `IJobStoreNotifications` if they can push.
 
 ### 5.1 Interfaces
 
@@ -650,7 +655,7 @@ public interface IJobStore
     Task UpdateProgressAsync(LeaseRef lease, double fraction, string? message, CancellationToken ct);
     Task<bool> SetParameterAsync(JobId id, Guid? leaseToken, string key, string json, CancellationToken ct);   // fenced when a token is given
     Task<CancelResult> CancelAsync(JobId id, string reason, CancellationToken ct);
-    Task<bool> RequeueAsync(JobId id, string reason, CancellationToken ct);
+    Task<RequeueResult> RequeueAsync(JobId id, string reason, CancellationToken ct);   // the client logs D-4's warning from it
     Task<bool> DeleteAsync(JobId id, CancellationToken ct);
 
     // background
@@ -698,7 +703,9 @@ The store is scoped to one namespace and one node, which it takes from `BellhopO
 ### 5.2 Records
 
 ```csharp
-public sealed record StoreInfo(string Description, int SchemaVersion);        // "PostgreSQL 16.4, schema bellhop v1"; never a connection string (SEC-5)
+public sealed record StoreInfo(string Description, int SchemaVersion, TimeSpan CommandTimeout);
+    // Description: "PostgreSQL 16.4, schema bellhop v1"; never a connection string (SEC-5).
+    // CommandTimeout bounds every store call (zero for in-memory) and sizes the cleanup lease (§7.4, D-8).
 
 public sealed record NewJob(JobId Id, string Name, string Payload, string Queue, int Priority, JobState State,   // Enqueued | Scheduled | Awaiting
     DateTimeOffset? DueAt, TimeSpan? Delay,                    // Scheduled: exactly one of them; Delay resolved on the store clock (EXE-9)
@@ -716,6 +723,7 @@ public sealed record ClaimedJob(JobId Id, string Name, string Payload, string Qu
     LeaseRef Lease, DateTimeOffset LeaseExpiresAt);
 
 public sealed record LeaseRef(JobId Id, Guid Token);
+public sealed record RequeueResult(bool Requeued, JobId? ActiveSibling);   // ActiveSibling: another active occurrence of the same recurring job (D-4)
 public sealed record RenewResult(IReadOnlyList<JobId> Lost, IReadOnlyList<JobId> CancelRequested);
 
 public enum CompletionOutcome { Succeeded, Failed, DeadLettered, Cancelled }
@@ -724,7 +732,7 @@ public sealed record Completion(LeaseRef Lease, string NodeId, CompletionOutcome
 public sealed record TickRequest(string NodeId, int BatchSize, IReadOnlyCollection<string> RoutableNames,
     IReadOnlyList<string> Queues, NodeHeartbeat? Heartbeat, bool IncludeRecurring);
 public sealed record NodeHeartbeat(string Host, string Mode, IReadOnlyList<string> Queues, int WorkerCount, int InFlight, string Version,
-    IReadOnlyCollection<string> RoutableNames);
+    IReadOnlyCollection<string> RoutableNames, string Application, IReadOnlyCollection<string> RecurringNames);   // RecurringNames: code-defined (D-9, D-20)
 public sealed record TickResult(DateTimeOffset StoreNow, int Promoted, IReadOnlyList<RecoveredJob> Recovered, int Rerouted,
     int AwaitingPromoted, IReadOnlyList<string> QueuesWithReadyJobs, IReadOnlyList<RecurringDefinition> DueRecurring, bool MoreDue);
 public sealed record RecoveredJob(JobId Id, string Name, string Queue, int Attempt, JobState NewState);   // Enqueued, DeadLettered or Cancelled
@@ -737,9 +745,12 @@ public sealed record RecurringDefinition(string Name, string JobName, string? Pa
     bool CodeDefined, string? DefinedBy, bool AllowRuntimeOverride, DateTimeOffset? OverriddenAt, bool Paused, DateTimeOffset? OrphanedAt,
     DateTimeOffset? NextRunAt, DateTimeOffset? LastRunAt, RecurringOutcome? LastFireOutcome, JobId? LastJobId, JobState? LastJobState);
 
-public sealed record ReconcileRequest(string DefinedBy, IReadOnlyList<RecurringDefinition> CodeDefined);
+public sealed record ReconcileRequest(string DefinedBy, IReadOnlyList<RecurringDefinition> CodeDefined, string NodeId, NodeHeartbeat Node,
+    TimeSpan NodeTimeout);
     // Each definition carries NextRunAt computed by the engine from the estimated store clock (§7.4). The store uses it only
-    // for new rows, rows whose schedule or time zone changed, and orphans being restored; otherwise it keeps the stored value.
+    // for new rows, rows whose schedule or time zone changed (unless it is the same instant as the stored value, D-19), and
+    // orphans being restored; otherwise it keeps the stored value. Node is registered in the same serialized step (REQ-045);
+    // NodeTimeout decides which nodes are live (D-2).
 public sealed record ReconcileResult(int Created, int Updated, int Unchanged, IReadOnlyList<string> Orphaned, IReadOnlyList<string> Restored);
 
 public sealed record RecurringFire(string Name, DateTimeOffset ExpectedNextRunAt, DateTimeOffset? NewNextRunAt,
@@ -772,17 +783,18 @@ public sealed record NodeRecord(string Id, string Host, string Mode, IReadOnlyLi
 |---|---|
 | `CreateJobsAsync` | Inserts all or none. `Enqueued` sets `enqueued_at = now`. `Scheduled` with `Delay` sets `due_at = store now + delay`. Duplicate id: `DuplicateJobIdException`, nothing written. Tags go into the index under `tag`. With push, every transition into `Enqueued` (create, promote, recover, release, requeue, reroute, awaiting promotion) notifies that queue; waking local workers is the client's and scheduler's job, not the store's. |
 | `ClaimAsync` | Claims at most `MaxTotal` jobs, filling queues in their listed order, at most `Max` from each, then priority descending, then `enqueued_at`, then id. Only jobs whose name is in `RoutableNames` are claimed. Each claimed job goes to `Processing`, `attempt + 1`, new lease. With `OnlyId`, claims that job if it is `Enqueued` and returns nothing otherwise. N concurrent claimers never get the same job (conformance: 8 claimers, 1,000 jobs, each claimed exactly once). |
-| `RenewLeasesAsync` | Extends the leases still held by `(id, token)`. Returns the ones lost, and the ones with a cancel request. |
+| `RenewLeasesAsync` | Extends the leases still held: `(id, token)` and still `Processing` (D-6). Returns the ones lost, and the ones with a cancel request. |
 | `CompleteAsync` | Fenced by lease token. `Succeeded`/`DeadLettered`/`Cancelled` set `finished_at`; `Failed` sets `due_at = RetryAt`. Clears the lease owner and expiry and keeps the token (idempotent retry, §4.4). Appends history with the error. If the job has `cancel_requested_at` set, `Failed` is recorded as `Cancelled` instead, so a cancel request is never lost to a retry. |
 | `CancelAsync` | `Scheduled`/`Enqueued`/`Failed`/`Awaiting`/`Unroutable` → `Cancelled` immediately. `Processing` → sets `cancel_requested_at` and signals (`CancellationRequested`). Terminal → `AlreadyFinished`. Missing → `NotFound`. |
-| `RequeueAsync` | `DeadLettered`, `Failed`, `Cancelled` or `Succeeded` → `Enqueued`, `attempt = 0`, `cancel_requested_at` cleared, history reason as given. Any other state → false. A requeued recurring occurrence bypasses the overlap policy (it is an operator action). |
+| `RequeueAsync` | `DeadLettered`, `Failed`, `Cancelled` or `Succeeded` → `Enqueued`, `attempt = 0`, `cancel_requested_at` cleared, history reason as given. Any other state → false. A requeued recurring occurrence bypasses the overlap policy (it is an operator action). `RequeueResult.ActiveSibling` names another active occurrence of the same recurring job when there is one, read in the same transaction, so the client can log warning 1103 (D-4). |
 | `DeleteAsync` | Removes a non-Processing job with its history and index rows. `Processing` → false. |
 | `TickAsync` | In one round-trip: (1) promote `Scheduled` and `Failed` jobs with `due_at <= now` to `Enqueued`, up to `BatchSize`; (2) recover `Processing` jobs with `lease_expires_at < now`: cancel requested → `Cancelled`; attempts remaining → `Enqueued` with reason `Interrupted`; else `DeadLettered` with reason `Interrupted` (EXE-4); (3) move `Unroutable` jobs whose name is in `RoutableNames` back to `Enqueued`; (4) for each recurring name with `Awaiting` occurrences and no other active occurrence, promote the oldest `Awaiting` one to `Enqueued`, holding the definition's row lock (§4.4 lock order; this is the only place `Awaiting` occurrences are promoted, so any way the active occurrence ends, including recovery, cancel, delete or dead-letter, is covered); (5) upsert the node heartbeat when given; (6) when `IncludeRecurring`, return up to `BatchSize` definitions with `next_run_at <= now`, not paused and not orphaned; (7) return which of `Queues` have ready jobs, `now`, and `MoreDue` when a batch was full. |
-| `ShutdownNodeAsync` | Releases the given leases back to `Enqueued` with reason `Shutdown`, attempt restored (A-9). Deletes the node row. |
+| `ShutdownNodeAsync` | Releases the given leases still held (`(id, token)` and `Processing`, D-6) back to `Enqueued` with reason `Shutdown`, attempt restored (A-9). A job with a cancel request ends `Cancelled` instead, attempt restored too (D-5). Leases no longer held are skipped. Deletes the node row. |
 | `TryAcquireLeaseAsync` | Inserts, or takes over an expired lease, or renews its own. Returns whether `owner` holds it. |
-| `PurgeAsync` | Deletes up to `BatchSize` terminal jobs older than their state's retention (by `finished_at`), and nodes whose heartbeat is older than `NodeTimeout`. Never deletes non-terminal jobs. Also marks `Enqueued` jobs older than `UnroutableAfter` (1 min) whose name is in no live node's `routable_names` as `Unroutable` (JOB-3); a node advertising the name later reroutes them in its tick. |
-| `ReconcileRecurringAsync` | Upserts every code-defined definition by name (idempotent, safe under concurrent calls). Marks orphaned the code-defined rows with the same `DefinedBy` that are absent from the request; clears `orphaned_at` on rows present again and takes their `NextRunAt` from the request (no catch-up for the orphaned period) (A-15). Never deletes. A runtime-defined row with the same name as a code-defined one is replaced, since the code wins. A row with `overridden_at` set keeps its schedule, payload and options; reconcile updates only `defined_by`, `allow_runtime_override` and the orphan state. |
-| `UpsertRecurringAsync` | Runtime-defined create or update. Throws `RecurringDefinitionConflictException` when the existing row is code-defined and `AllowRuntimeOverride` is false; with it, the edit is stored and `overridden_at` is set. On create, or when the schedule or time zone changes, `next_run_at` takes the definition's `NextRunAt`, which the engine computed from now (REC-10); otherwise it is kept. |
+| `PurgeAsync` | Deletes up to `BatchSize` terminal jobs older than their state's retention (by `finished_at`), and nodes whose heartbeat is older than `NodeTimeout`. Never deletes non-terminal jobs. Also marks `Enqueued` jobs older than `UnroutableAfter` (1 min) whose name is in no live node's `routable_names` as `Unroutable` (JOB-3); a node advertising the name later reroutes them in its tick. Also orphans code-defined recurring definitions that no live node of their application lists in `recurring_names`, but only for an application with at least one live node, so an application that is down keeps its jobs and their catch-up (D-20, D-22). |
+| `ReconcileRecurringAsync` | Registers the starting node's row first; reconciles of one application are serialized (REQ-045). Upserts every code-defined definition by name (idempotent, safe under concurrent calls). Marks orphaned the code-defined rows with the same `DefinedBy` that are absent from the request and from the `recurring_names` of every live node of that application (D-9); clears `orphaned_at` on rows present again and takes their `NextRunAt` from the request (no catch-up for the orphaned period) (A-15). Never deletes. A runtime-defined row with the same name as a code-defined one is replaced, since the code wins. A row with `overridden_at` set keeps its schedule, payload and options; reconcile updates only `defined_by`, `allow_runtime_override` and the orphan state. During a rolling deploy, a schedule that differs between versions follows the node that started last (D-19, accepted). |
+| `UpsertRecurringAsync` | Runtime-defined create or update. Throws `RecurringDefinitionConflictException` when the existing row is code-defined and `AllowRuntimeOverride` is false; with it, the edit is stored and `overridden_at` is set. On create, or when the schedule or time zone changes, `next_run_at` takes the definition's `NextRunAt`, which the engine computed from now (REC-10); otherwise it is kept. `overridden_at` is never cleared at runtime (D-18). |
+| `RemoveRecurringAsync` | Removes a runtime-defined or orphaned definition; its existing occurrences stay. A code-defined definition that isn't orphaned → `RecurringDefinitionConflictException` (D-10, D-18). Missing → false. |
 | `FireRecurringAsync` | Locks the definition row, then compare-and-set on `next_run_at` with not paused and not orphaned (skipped when `Manual`). Then applies the overlap policy (§7.7), inserts the occurrences, and sets `last_run_at`, `last_fire_outcome` and `last_job_id`. Returns `Fired = false` when the CAS lost. |
 | `SetParameterAsync` | With a lease token, writes only while that lease holds (returns false otherwise); without one (enqueue-time and API use), writes to any non-terminal job. |
 | `SetRecurringPausedAsync` | Pausing sets `paused`. Resuming clears it and sets `next_run_at` to the given value, which the engine computed from now (no catch-up for the paused period). |
@@ -862,7 +874,7 @@ The tick (§7.4) runs every `PollInterval` and is the **only** periodic query wh
 
 - Every `LeaseDuration / 3`, one `RenewLeasesAsync` for all in-flight jobs on the node (nothing when idle).
 - `Lost` ids: cancel the job's token with reason `LeaseLost` and log warning 1206. The final `CompleteAsync` returns false and the outcome is discarded with log 1207 (the job was recovered elsewhere; at-least-once, EXE-5).
-- **Self-fencing.** If renewals fail (store errors, not `Lost`) for longer than `LeaseDuration` since the last successful renewal, every in-flight job is treated as lost: tokens are cancelled with reason `LeaseLost` and warning 1206 is logged. This bounds the duplicate window to the lease length during an outage (EXE-5), instead of the job's whole duration.
+- **Self-fencing.** The node keeps a fencing deadline: the time it sent its last successful `RenewLeasesAsync` plus two thirds of `LeaseDuration`, re-armed on every success. When the deadline passes without a successful renewal (store errors, not `Lost`), every in-flight job is treated as lost: tokens are cancelled with reason `LeaseLost` and warning 1206 is logged. It is a timer, not a check at the next renewal attempt: checking once per renewal interval gives up as late as the lease's expiry, with no margin (D-7). The timer leaves a third of the lease (20 s by default) for clock skew plus node pauses. Within that margin, and for handlers that stop when cancelled, two nodes never run one job at once; beyond it, delivery is at-least-once (D-1, REQ-015).
 - Heartbeats continue during graceful shutdown until the leases are released (§7.5).
 - `CancelRequested` ids, or a push `CancelRequested` signal: cancel the job's token with reason `Cancelled`. Cross-node cancel latency is therefore ≤ `LeaseDuration / 3` without push and about 100 ms with PostgreSQL notifications.
 
@@ -899,14 +911,14 @@ Every `PollInterval` on every `Both`/`WorkerOnly` node:
 6. When `MoreDue` is true, tick again at once instead of waiting `PollInterval`.
 7. Errors: as §7.1 step 5, event 1303.
 
-Cleanup runs every `Cleanup.Interval` on the node that wins `TryAcquireLeaseAsync("cleanup", node, 2 × Interval)`. It calls `PurgeAsync` repeatedly, with `PauseBetweenBatches` between calls, until a batch returns fewer than `BatchSize` rows (STO-7). It logs the total deleted at debug level, any jobs it marked Unroutable as warning 1202 (grouped by job name), and errors as 1304.
+Cleanup runs every `Cleanup.Interval` on the node that wins `TryAcquireLeaseAsync("cleanup", node, L)`, where `L` is the larger of `2 × Interval` and `2 × StoreInfo.CommandTimeout`. It renews the lease with the same call before each `PurgeAsync` batch, and stops the run when it no longer holds it. A batch is bounded by the command timeout and the pause between batches by 10 s, so a batch always ends before its lease can run out, and two nodes never purge at once (D-8). It calls `PurgeAsync` repeatedly, with `PauseBetweenBatches` between calls, until a batch returns fewer than `BatchSize` rows (STO-7). It logs the total deleted at debug level, any jobs it marked Unroutable as warning 1202 (grouped by job name), any recurring definitions it orphaned as info 1406 (D-20), and errors as 1304.
 
 ### 7.5 Graceful shutdown (EXE-6)
 
 1. Stop claiming and ticking. Lease heartbeats continue.
 2. Wait up to `ShutdownTimeout` for in-flight jobs. If the host's `StopAsync` token fires first, skip straight to step 4, so the release always happens inside the host's shutdown budget.
 3. Cancel the remaining tokens with reason `Shutdown`, then wait up to `CancellationGracePeriod`.
-4. `ShutdownNodeAsync` with the leases of jobs that still haven't completed, so another node picks them up at once. Log 1210 with their ids.
+4. `ShutdownNodeAsync` with the leases of jobs that still haven't completed, so another node picks them up at once. A job whose cancel was requested ends `Cancelled` instead of going back to the queue (D-5). Log 1210 with their ids.
 5. If the store call fails, the leases expire normally and recovery handles them (logged 1211).
 
 ### 7.6 Retries and dead letters (RET-1 to RET-4)
@@ -923,7 +935,7 @@ Cleanup runs every `Cleanup.Interval` on the node that wins `TryAcquireLeaseAsyn
 
 **Definitions.** Code-defined (`[Recurring]`, `AddRecurring`, `JobBuilder.Recurring`) or runtime-defined (`IRecurringJobManager`). The recurring name defaults to the job name. A cron expression or time zone that fails to parse fails startup for code-defined jobs and throws `ArgumentException` at the call for runtime ones (REC-2).
 
-**Reconciliation (REC-3).** At start on worker nodes: `ReconcileRecurringAsync(DefinedBy = IHostEnvironment.ApplicationName, …)`. Log 1401 with the counts and the orphaned names. Orphaned definitions are not fired and show as orphaned; they are restored when code defines them again.
+**Reconciliation (REC-3).** At start on worker nodes: `ReconcileRecurringAsync(DefinedBy = IHostEnvironment.ApplicationName, …)`. Log 1401 with the counts and the orphaned names. Orphaned definitions are not fired and show as orphaned; they are restored when code defines them again. A definition is orphaned only when no live node of its application still defines it (nodes advertise their recurring names in the heartbeat), so a rolling deploy doesn't switch jobs off while old nodes still run them (D-9). Cleanup applies the same rule on every run, for applications with at least one live node, which catches a node that crashed mid-deploy without stripping an application that is down (D-20, D-22). A schedule that differs between versions follows the version whose node started last until the deploy finishes (D-19, accepted). At runtime a code-defined definition can be paused, resumed and triggered, and edited only with `AllowRuntimeOverride`; such an edit is permanent. Removal is refused unless the definition is orphaned (D-10, D-18).
 
 **Next occurrence.** `ISchedule.GetNextOccurrence(after, tz)` returns the first occurrence strictly after `after`.
 
@@ -938,18 +950,18 @@ Cleanup runs every `Cleanup.Interval` on the node that wins `TryAcquireLeaseAsyn
 4. `FireRecurringAsync` with `ExpectedNextRunAt = NextRunAt`. `Fired = false` means another node won; this is normal and not logged above debug.
 5. Only when `Fired = true` and some late occurrence was not run: log 1402 with the count and policy, and raise `OnRecurringMissedAsync` (REC-5). So the warning and the event happen once per occurrence across the cluster, not once per node. Raise `OnEnqueuedAsync` for each created occurrence that is `Enqueued`.
 
-**Overlap (REC-6), enforced inside `FireRecurringAsync` in the same transaction, under the definition's row lock.** An occurrence is *active* when it is in `Scheduled`, `Enqueued`, `Processing`, `Failed` or `Awaiting` with this `recurring_name`. `Awaiting` occurrences are promoted only by the tick (§5.3 step 4): the oldest one moves to `Enqueued` once no non-`Awaiting` occurrence is active. A `Failed` occurrence waiting for its retry is active, so nothing is promoted past it.
+**Overlap (REC-6), enforced inside `FireRecurringAsync` in the same transaction, under the definition's row lock.** An occurrence is *active* when it is in `Scheduled`, `Enqueued`, `Processing`, `Failed`, `Awaiting` or `Unroutable` with this `recurring_name`. An `Unroutable` occurrence is waiting for a handler, so a newer one must not start beside it when a handler returns (D-3). `Awaiting` occurrences are promoted only by the tick (§5.3 step 4): the oldest one moves to `Enqueued` once no non-`Awaiting` occurrence is active. A `Failed` occurrence waiting for its retry is active, so nothing is promoted past it.
 
 | Policy | No active occurrence | Active occurrence exists |
 |---|---|---|
 | `Skip` (default) | Insert as `Enqueued`; outcome `Enqueued` | Insert nothing; `last_fire_outcome = Skipped`; log 1403 |
-| `Queue` | Insert as `Enqueued` | Insert as `Awaiting`; outcome `Queued`. The tick promotes it once nothing else is active |
+| `Queue` | Insert as `Enqueued` | Insert as `Awaiting`; outcome `Queued`. The tick promotes it once nothing else is active. There is no cap: every fire while a run is active waits its turn (D-21); use `Skip` where stale runs make no sense |
 | `Allow` | Insert as `Enqueued` | Insert as `Enqueued` |
 | `CancelPrevious` | Insert as `Enqueued` | Cancel the active ones (non-Processing → `Cancelled` at once; Processing → cancel requested), insert the new one as `Awaiting`; outcome `CancelledPrevious`. The tick promotes it once the previous one has finished (A-16) |
 
 Several occurrences in one fire (`RunAll`) form a sequence. Under `Allow` all are `Enqueued`. Under every other policy the first gets the decision in the table, and the rest are inserted as `Awaiting`, so they run one after another. Under `Skip` with an active occurrence, the whole fire is skipped.
 
-`TriggerAsync` (REC-9) calls `FireRecurringAsync` with `Manual = true`. It applies the same overlap policy, leaves `next_run_at` unchanged, and uses the override payload when given. `TriggerAsync` works on paused definitions (an explicit operator action). Pause and resume flip `paused`; resume passes `next_run_at` recomputed from the estimated store now (REC-10 applies, so no catch-up for the paused period).
+`TriggerAsync` (REC-9) calls `FireRecurringAsync` with `Manual = true`. It applies the same overlap policy, leaves `next_run_at` unchanged, and uses the override payload when given. `TriggerAsync` works on paused definitions (an explicit operator action, D-11). A requeued occurrence bypasses the overlap policy (§5.3); when another occurrence of the same recurring job is active, the requeue goes ahead and the client logs warning 1103 naming both (D-4). Pause and resume flip `paused`; resume passes `next_run_at` recomputed from the estimated store now (REC-10 applies, so no catch-up for the paused period).
 
 **Time zones (REC-4).** Every definition stores an IANA id, default `UTC`. On Windows .NET resolves IANA ids through ICU (so `InvariantGlobalization` breaks them), and on Linux through the tz database (minimal images may lack `tzdata`). An unknown id is a validation error whose message names both causes. The cron evaluator works on local wall time and converts to UTC:
 
@@ -1010,10 +1022,10 @@ The data dictionary contains each value, for example `lagP50Seconds`.
 | Range | Area | Ids fixed by this document |
 |---|---|---|
 | 1000–1099 | Startup and configuration | 1001 summary, 1002 in-memory default, 1003 options invalid, 1004 registry invalid, 1005 job without explicit name, 1006 shutdown budget exceeds host's, 1007 jobs without a handler on this node |
-| 1100–1199 | Client | 1101 payload over soft limit, 1102 enqueue failed |
+| 1100–1199 | Client | 1101 payload over soft limit, 1102 enqueue failed, 1103 recurring occurrence requeued beside an active one (D-4) |
 | 1200–1299 | Worker and execution | 1201 claim failed, 1202 jobs marked unroutable, 1203 deserialization failed, 1204 retry policy failed, 1205 handler abandoned, 1206 lease lost, 1207 completion discarded, 1208 completion failed, 1209 `IJobEvents` handler failed (also used by the client for `OnEnqueuedAsync`), 1210 leases released on shutdown, 1211 release failed |
 | 1300–1399 | Scheduler and cleanup | 1301 lease recovered, 1302 clock skew, 1303 tick failed, 1304 cleanup failed |
-| 1400–1499 | Recurring | 1401 reconciled, 1402 occurrences missed, 1403 occurrence skipped (overlap), 1404 invalid definition, 1405 fire failed |
+| 1400–1499 | Recurring | 1401 reconciled, 1402 occurrences missed, 1403 occurrence skipped (overlap), 1404 invalid definition, 1405 fire failed, 1406 definitions orphaned by cleanup (D-20) |
 | 1500–1599 | PostgreSQL store | 1501 migration applied, 1502 notification connection lost, 1503 notification reconnected |
 | 1600–1699 | Dashboard | 1601 anonymous in Development, 1602 dashboard SSE error |
 
@@ -1106,9 +1118,9 @@ Empty states use plain sentences: `No jobs match these filters.`, `No recurring 
 |---|---|---|---|---|---|
 | `IJobClient` calls | Null job → `ArgumentNullException`. Empty tag string → `ArgumentException`. | Store command timeout surfaces as the store's exception to the caller | Same `JobId` twice → `DuplicateJobIdException` (only possible on a caller retry of a failed insert) | Safe; no shared mutable state | Insert is one transaction: either the job exists or it doesn't |
 | Store from engine loops | Empty claim/tick results are the idle case | Logged, backed off, health degraded after the threshold | Claims cannot double-claim (SKIP LOCKED / lock) | N nodes tick and claim concurrently by design (§4.4) | Complete fails after the handler succeeded → retried 3 times, then recovery re-runs the job (at-least-once, documented) |
-| Handler | Handler returns null `Task` → treated as failure `InvalidOperationException` | Timeout → cancel, grace, abandon (§7.3) | At-least-once means duplicates within the lease window (EXE-5); docs recommend idempotent handlers | Concurrency is bounded by slots | Partial work before a crash is the handler's responsibility (documented) |
+| Handler | Handler returns null `Task` → treated as failure `InvalidOperationException` | Timeout → cancel, grace, abandon (§7.3) | No overlap while clock skew plus node pause stays under a third of the lease and the handler honours cancellation (REQ-015); beyond that at-least-once (EXE-5), so docs recommend idempotent handlers and offer `JobContext.LeaseToken` as a fencing token (D-1) | Concurrency is bounded by slots | Partial work before a crash is the handler's responsibility (documented) |
 | Payload JSON | Missing properties take defaults; unknown properties ignored (JOB-4) | — | — | — | Undeserializable → dead-letter `DeserializationFailed` |
-| Recurring definitions | No recurring jobs → nothing fires | Fire error on one definition is logged (1405) and the others continue | Two nodes fire → CAS lets exactly one win | Two nodes reconcile at start → upsert is idempotent | Fire is one transaction: CAS, overlap and insert together |
+| Recurring definitions | No recurring jobs → nothing fires | Fire error on one definition is logged (1405) and the others continue | Two nodes fire → CAS lets exactly one win | Two nodes reconcile at start → serialized per application (REQ-045); upsert is idempotent | Fire is one transaction: CAS, overlap and insert together |
 | PostgreSQL notifications | — | Connection drop → reconnect with backoff, then one catch-up claim | Duplicate signals only cause an extra empty claim | — | Lost signals are covered by the tick |
 | Dashboard | Unknown job id → 404 problem detail | Store timeout → 503 problem detail; the UI shows the store-error sentence | — | Many viewers share one SSE broadcaster | A failed SSE connection falls back to polling |
 | Startup | Missing store → in-memory + warning | Database unreachable at start → host start fails with the store's message; an orchestrator restarts the process (A-5) | Two nodes migrate at once → advisory lock | — | Migration is one transaction |
@@ -1195,3 +1207,14 @@ An independent cold review of this document and the M1 stories found 2 blockers 
 - **Lifecycle.** Shutdown defaults fit the host's 30 s budget and honour its stop token; heartbeats continue until release; self-fencing when renewals fail for a lease length.
 - **Routing.** Claims filter by routable names; cleanup marks jobs `Unroutable` only when no live node can handle them (A-26). Client-only nodes may register job types without handlers.
 - **Other.** The dashboard's 403 uses an `IAuthorizationMiddlewareResultHandler` decorator (M-4); the §3 snippet needs an auth block (M-6); indexes for every single list filter; PostgreSQL 15 minimum (A-4); the fall-back DST rule for elapsed-time crons (A-24); `JobId` generation is per instance, not static; deferred capability flags removed; the copy rule is scoped to the dashboard UI.
+
+---
+
+## 16. Refinement changes (2026-11-04)
+
+The M1 stories' order-of-events rules were checked against formal models in [refinement/](../refinement/README.md), iterations 1 to 4. The owner's decisions, D-1 to D-22 in [refinement/decisions.md](../refinement/decisions.md), are folded into the sections above. The main ones:
+
+- **Leases and self-fencing.** Every write about a running job is conditional on `state = 'Processing'` and its token; renewal and shutdown release now carry it too (D-6). Self-fencing is a deadline timer at two thirds of the lease (D-7), and the no-overlap guarantee states its limits (D-1); `JobContext.LeaseToken` is new. A cancel request wins over a shutdown release (D-5).
+- **Recurring jobs.** `Unroutable` occurrences count as active (D-3). Orphaning waits until no live node of the application defines the job; nodes advertise their recurring names, and reconciles of one application are serialized (D-9, REQ-045). Cleanup also orphans, for applications with a live node (D-20, D-22). Schedule flips during a rolling deploy are accepted (D-19). Runtime actions on code-defined jobs are pause, resume, trigger and permitted overrides; overrides are permanent and only orphans can be removed (D-10, D-11, D-18). `Queue` has no cap (D-21). A requeue beside an active run logs warning 1103 (D-4).
+- **Cleanup.** The lease is the larger of twice the interval and twice the store's command timeout, and is renewed before each batch (D-8).
+- **Store contract.** Every method is linearizable (REQ-044). `RequeueAsync` returns `RequeueResult`, `StoreInfo` carries `CommandTimeout`, `NodeHeartbeat` and the `nodes` table carry the application and its recurring names, and `ReconcileRequest` registers the starting node.
