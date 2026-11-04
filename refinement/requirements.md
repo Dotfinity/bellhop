@@ -114,11 +114,10 @@ Each due recurring definition creates its occurrences once across all nodes, and
   Verification (iteration 1): not settled: broke only through my wording error in REQ-025, re-checked next iteration.
   Verification (iteration 2): holds.
 - **REQ-021** `Queue`: while an occurrence is active, a fire creates the new occurrence as `Awaiting`. It is promoted only once nothing else is active, and two occurrences never run at the same time.
-  Source: M1-06 AC14, AC21, M1-15 AC2, AC3. Status: changed (transcription corrected), changed by D-21.
+  Source: M1-06 AC14, AC21, M1-15 AC2, AC3. Status: changed (transcription corrected).
   Verification (iteration 1): broken (D-3, D-4).
   Verification (iteration 2): holds.
-  Now: `Queue`: while an occurrence is active, a fire creates the new occurrence as `Awaiting`, unless one is already `Awaiting`; then it creates nothing, records `Skipped`, and the next run time still advances. Once no occurrence other than `Awaiting` ones is active, the next tick promotes the oldest `Awaiting` occurrence, and two occurrences never run at the same time. A catch-up sequence (REQ-025) is unaffected.
-  History: 2026-11-04, D-21: `Queue` keeps at most one waiting run from scheduled fires, rather than a backlog.
+  Now: `Queue`: while an occurrence is active, a fire creates the new occurrence as `Awaiting`. Once no occurrence other than `Awaiting` ones is active, the next tick promotes the oldest `Awaiting` occurrence, and two occurrences never run at the same time.
   History: 2026-11-03, after iteration 1. My first wording dropped "the oldest" from M1-06 AC14 and contradicted AC21 (two waiting runs, nothing active, one is promoted). Corrected to the stories' text; no owner decision involved.
 - **REQ-022** An `Awaiting` occurrence is never stranded: however its predecessor ends (completion, recovery, cancel or delete), the next tick promotes it.
   Source: M1-06 AC15, M1-15 AC4. Status: unchanged.

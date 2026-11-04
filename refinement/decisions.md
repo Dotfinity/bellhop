@@ -357,12 +357,9 @@ Answer: option 2. Add to REQ-034: "During a rolling deploy, a job whose schedule
 
 ## D-21 · The `Queue` overlap policy builds an unbounded backlog of waiting runs
 
-Status: decided (2026-11-04), owner's own words: "If this is a cron type of work, might not make sense to keep a queue of pending actions. instead we should have a configuration where a user can speciffy if they want it skipped or queued fo immediate execution", then, on being reminded that `OverlapPolicy` already offers `Skip` and `Queue`: "ok, i forgot about the overlap policy". Read as: `Queue` keeps at most one waiting run, which starts as soon as the active run ends; `Skip` and `Queue` remain the per-job choice. REQ-021 changed; to be checked in iteration 3. Severity: minor. Source: review (docs/tla-modelling-review.md, finding 9). Raised: after iteration 2.
-Features: F3. Requirements: REQ-019, REQ-021, REQ-025.
-Rule: AtMostOneAwaitingFromFires (to be added to F3; F3's cap of 3 occurrences hid the growth).
+Status: decided (2026-11-04): no change; `Queue` stays as it is. Owner's own words: "queue should stay as it is", after first noting that for cron-style work a user should be able to choose between skipping and queuing, which `OverlapPolicy.Skip` and `OverlapPolicy.Queue` already offer. No requirement changed. Severity: minor. Source: review (docs/tla-modelling-review.md, finding 9). Raised: after iteration 2.
+Features: F3. Requirements: REQ-019, REQ-021.
 
-Under `Queue`, every fire while a run is active adds another `Awaiting` occurrence, and nothing caps them. Since D-3, an `Unroutable` run counts as active, so a job that fires every minute and has no live handler for an hour queues 60 runs, which then run one after another once a handler appears. For cron-style work, these are 60 stale runs of the same thing.
+Under `Queue`, every fire while a run is active adds another `Awaiting` occurrence, and nothing caps them. Since D-3, an `Unroutable` run counts as active, so a job that fires every minute and has no live handler for an hour queues 60 runs, which then run one after another once a handler appears.
 
-Options considered: a per-job `MaxAwaiting` cap (default 10); reusing `MisfireMax` as the cap; warning only. The owner chose none of these. Instead, `Queue` itself stops building a backlog.
-
-Answer: REQ-021 becomes "`Queue`: while an occurrence is active, a fire creates the new occurrence as `Awaiting`, unless one is already `Awaiting`; then it creates nothing, records `Skipped`, and the next run time still advances. …" A `RunAll` catch-up sequence (REQ-025) is unaffected: it is an explicit choice to run every missed instant, already capped by `MisfireMax`. `CancelPrevious` needs no change, since it cancels a waiting run when it creates the next. No new option. It lands in M1-06, M1-15 and arch §7.7 with issue 11.
+Options considered: a per-job `MaxAwaiting` cap (default 10); reusing `MisfireMax` as the cap; keeping at most one waiting run. Answer: none of them. `Queue` keeps every fire by design. A job for which stale runs make no sense should use `Skip`. The documentation for `OverlapPolicy.Queue` should say that the backlog is unbounded and runs back to back (issue 11).

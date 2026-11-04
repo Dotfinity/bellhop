@@ -17,7 +17,7 @@ Status: open, decided (answer recorded, not yet propagated), done.
 | 7 | D-19 still open; its option 1 breaks rollbacks [8] | decided 2026-11-04: accept and document; keep next run when the instant is unchanged | decisions D-19, REQ-029, REQ-034 | decided |
 | 8 | D-18 still open (runtime overrides, removing orphans) | decided 2026-11-04: keep overrides (permanent, no reset); orphans removable at runtime | decisions D-18, REQ-031, REQ-033 | decided |
 | 9 | Store atomicity is assumed by every model but stated nowhere; D-9's reconcile needs an ordering rule [6] | no: added REQ-044 (every store operation linearizable) and REQ-045 (reconciles of one app serialized, node row registered inside) | requirements.md; arch §4.4 / §5.3, M1-05 to M1-07 via issue 11 | decided |
-| 10 | The `Queue` policy's `Awaiting` backlog has no cap [9] | decided 2026-11-04: `Queue` keeps at most one waiting run; further fires are `Skipped` (D-21) | decisions D-21, REQ-021; M1-06, M1-15, arch §7.7 via issue 11 | decided |
+| 10 | The `Queue` policy's `Awaiting` backlog has no cap [9] | decided 2026-11-04: no change, `Queue` stays as it is; document the unbounded backlog and point to `Skip` (D-21) | decisions D-21; `OverlapPolicy.Queue` docs via issue 11 | decided |
 | 11 | Carry D-3 to D-12 and every decision above into the stories and the architecture; add a "Propagated to" line to each decision [1] | no | stories/m1-core, docs/bellhop-architecture.md, decisions.md | open |
 | 12 | F1 and F3 disagree on whether a requeue clears a cancel request; re-run F3 [7] | no | iteration 3 models | open |
 | 13 | F3's main config keeps a known-failing rule; `NoOverlap` checks a warning flag the design lacks [7] | no | iteration 3 models | open |
