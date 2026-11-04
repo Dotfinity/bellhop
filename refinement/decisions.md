@@ -354,3 +354,15 @@ Answer: option 1. Both paths use one store predicate. Nodes already advertise th
 Option 1 would break rollbacks: after rolling back, the old version is older than the one that last set the schedule, so the old schedule could never be written again. It also needs an ordered application version, which Bellhop doesn't have. See docs/tla-modelling-review.md, finding 8. A third option, changing a schedule only once every live node advertises the same one, was considered and not chosen. It widens the heartbeat contract, and after a crash mid-deploy the old schedule would stay until the next node start.
 
 Answer: option 2. Add to REQ-034: "During a rolling deploy, a job whose schedule differs between the versions follows whichever version's node started last; it settles once every node runs one version, including after a rollback." Mitigation, added to REQ-029: "A schedule change whose newly computed next run is the same instant as the stored next run leaves the next run unchanged." With it, a flip and a flip back before the job's next run changes nothing.
+
+## D-21 · The `Queue` overlap policy builds an unbounded backlog of waiting runs
+
+Status: decided (2026-11-04), owner's own words: "If this is a cron type of work, might not make sense to keep a queue of pending actions. instead we should have a configuration where a user can speciffy if they want it skipped or queued fo immediate execution", then, on being reminded that `OverlapPolicy` already offers `Skip` and `Queue`: "ok, i forgot about the overlap policy". Read as: `Queue` keeps at most one waiting run, which starts as soon as the active run ends; `Skip` and `Queue` remain the per-job choice. REQ-021 changed; to be checked in iteration 3. Severity: minor. Source: review (docs/tla-modelling-review.md, finding 9). Raised: after iteration 2.
+Features: F3. Requirements: REQ-019, REQ-021, REQ-025.
+Rule: AtMostOneAwaitingFromFires (to be added to F3; F3's cap of 3 occurrences hid the growth).
+
+Under `Queue`, every fire while a run is active adds another `Awaiting` occurrence, and nothing caps them. Since D-3, an `Unroutable` run counts as active, so a job that fires every minute and has no live handler for an hour queues 60 runs, which then run one after another once a handler appears. For cron-style work, these are 60 stale runs of the same thing.
+
+Options considered: a per-job `MaxAwaiting` cap (default 10); reusing `MisfireMax` as the cap; warning only. The owner chose none of these. Instead, `Queue` itself stops building a backlog.
+
+Answer: REQ-021 becomes "`Queue`: while an occurrence is active, a fire creates the new occurrence as `Awaiting`, unless one is already `Awaiting`; then it creates nothing, records `Skipped`, and the next run time still advances. …" A `RunAll` catch-up sequence (REQ-025) is unaffected: it is an explicit choice to run every missed instant, already capped by `MisfireMax`. `CancelPrevious` needs no change, since it cancels a waiting run when it creates the next. No new option. It lands in M1-06, M1-15 and arch §7.7 with issue 11.
