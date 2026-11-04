@@ -255,6 +255,18 @@ Which occurrences a due definition creates after missed time.
   Verification (iteration 1): holds.
   Verification (iteration 2): holds.
 
+## Store-wide
+
+Rules every model rests on but no story stated. They come from the review of the models (docs/tla-modelling-review.md, finding 6), not from a story criterion.
+
+- **REQ-044** Every store operation takes effect as one atomic step, as if operations ran one at a time (linearizable): claim, renew, complete, release, cancel, requeue, delete, tick, fire, reconcile, purge and lease take-or-renew. Every store (in-memory, PostgreSQL, and the later ones) must give the same guarantee; the conformance suite checks it.
+  Source: review, finding 6. Status: new (2026-11-04).
+  Verification: assumed by every model (each operation is one step); not checked by a rule of its own.
+- **REQ-045** Reconciles of one application are serialized. A starting node registers its node row, with the job names and recurring job names its code defines, in the same serialized step as its reconcile, and the reconcile judges which nodes are live within that step.
+  Source: review, finding 6 (D-9 relies on it). Status: new (2026-11-04).
+  Verification: assumed by F4 (a node start and its reconcile are one step); iteration 3 checks it.
+  Note: without it, two nodes of different versions starting together each miss the other's uncommitted row, and each orphans the other's jobs. In PostgreSQL, a transaction-scoped advisory lock per application does it, the same pattern migrations use (arch §4.3).
+
 ## Not requirements
 
 Statements that can't be checked as an order of events. They are left to each story's own tests.
