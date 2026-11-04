@@ -2,7 +2,7 @@
 
 ## D-1 · How long may a handler keep running after its job could have been picked up by another node?
 
-Status: decided (2026-11-04, revised): no overlap within stated limits, and the lease token exposed to handlers. REQ-015 changed. Was: resolved (iteration 2), from decided (2026-11-03): option 1, no overlap at all. Severity: major. Source: analysis. Raised: before the first run.
+Status: resolved (iteration 3; every rule this answer touched held). Was: decided (2026-11-04, revised): no overlap within stated limits, and the lease token exposed to handlers. REQ-015 changed. Was: resolved (iteration 2), from decided (2026-11-03): option 1, no overlap at all. Severity: major. Source: analysis. Raised: before the first run.
 Features: F2. Requirements: REQ-015.
 
 M1-12 AC9 says self-fencing exists "so no handler keeps running long after another node may have recovered its job". "Long" has no measure, so the check can't tell an acceptable overlap from a bug. Two nodes running the same job at once is what at-least-once delivery allows, but only for a bounded time.
@@ -49,7 +49,7 @@ Suggested edit to REQ-019. Old: "An occurrence counts as active when it is `Sche
 
 ## D-4 · An operator requeue can start an old run of a recurring job next to the current one
 
-Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "a warning should be shown to the user, otherwise if it's a manual operation, that's fine, we assume the user knows what they're doing". Read as: requeue ignores the overlap policy and warns when another run is active. REQ-010 changed. Clarified (2026-11-04), after the review found that nothing in M1 could carry the warning (`RequeueAsync` returns `bool`, and the M1 dashboard has no requeue action): in M1 the warning is a log event naming both runs, and the user-facing warning comes with the dashboard's requeue action in M2. The architecture already lets a requeued occurrence bypass the overlap policy (§5.3 `RequeueAsync`); the new event id lands in arch §8.4, and the M2 item in §1.3, with issue 11. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "a warning should be shown to the user, otherwise if it's a manual operation, that's fine, we assume the user knows what they're doing". Read as: requeue ignores the overlap policy and warns when another run is active. REQ-010 changed. Clarified (2026-11-04), after the review found that nothing in M1 could carry the warning (`RequeueAsync` returns `bool`, and the M1 dashboard has no requeue action): in M1 the warning is a log event naming both runs, and the user-facing warning comes with the dashboard's requeue action in M2. The architecture already lets a requeued occurrence bypass the overlap policy (§5.3 `RequeueAsync`); the new event id lands in arch §8.4, and the M2 item in §1.3, with issue 11. Severity: major. Source: verification. Raised: iteration 1. Re-checked in iteration 3 with the clarified answer: every rule it touches held.
 Features: F3, F1. Requirements: REQ-010, REQ-020, REQ-021, REQ-024.
 Rule: NoOverlap (also AwaitingRunsInOrder and AwaitingNeverStranded).
 
@@ -87,7 +87,7 @@ Options:
 
 ## D-6 · After another node recovers a job, the original node can still finish or release it
 
-Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "upon start of the original node, it should check if another node has picked up its jobs before continuing". Read as: recovery makes the old claim dead, and a node checks it still holds a job before writing anything about it. REQ-003 changed. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 2; every rule this answer touched held). Was: decided (2026-11-03), owner's own words: "upon start of the original node, it should check if another node has picked up its jobs before continuing". Read as: recovery makes the old claim dead, and a node checks it still holds a job before writing anything about it. REQ-003 changed. Severity: major. Source: verification. Raised: iteration 1. Re-checked in iteration 3 with the clarified wording: every rule it touches held.
 Features: F1. Requirements: REQ-002, REQ-003, REQ-005, REQ-008, REQ-012.
 Rules: FinalStaysFinal, AttemptsWithinMax, ReleaseDoesNotCountAttempt.
 
@@ -107,7 +107,7 @@ Suggested edit to REQ-003. Old: "Completing a job with a stale token changes not
 
 ## D-7 · A node stops its handler too late to rule out two nodes running the same job
 
-Status: decided (2026-11-04, revised): a fencing deadline timer at two thirds of the lease. REQ-015 changed again; to be re-checked in iteration 3. Was: resolved (iteration 2), with a check once per renewal interval, which held only with zero margin. Before that: decided (2026-11-03), delegated ("pick the best decision from reliability and consistency stand point"). Assumed the answer: two thirds of the lease, counted from when the renewal was sent. Severity: major. Source: verification. Raised: iteration 1.
+Status: resolved (iteration 3; every rule this answer touched held). Was: decided (2026-11-04, revised): a fencing deadline timer at two thirds of the lease. REQ-015 changed again; to be re-checked in iteration 3. Was: resolved (iteration 2), with a check once per renewal interval, which held only with zero margin. Before that: decided (2026-11-03), delegated ("pick the best decision from reliability and consistency stand point"). Assumed the answer: two thirds of the lease, counted from when the renewal was sent. Severity: major. Source: verification. Raised: iteration 1.
 Features: F2. Requirements: REQ-015.
 Rules: NoDoubleRun, CancelledByRecoveryMoment.
 
@@ -137,7 +137,7 @@ Answer: option 1. REQ-015 becomes: "A node arms a fencing deadline at the time i
 
 ## D-8 · A cleanup run can outlive its lease, and two nodes then clean up at once
 
-Status: decided (2026-11-04): every batch is bounded by the store's command timeout, and the cleanup lease always covers it. REQ-040 changed; to be checked in iteration 3. Was: open; still happened after iteration 2 (you chose option 1 on 2026-11-03; REQ-040 and REQ-041 changed). Severity: minor (was major; load only, see below). Source: verification. Raised: iteration 1.
+Status: resolved (iteration 3; every rule this answer touched held). Was: decided (2026-11-04): every batch is bounded by the store's command timeout, and the cleanup lease always covers it. REQ-040 changed; to be checked in iteration 3. Was: open; still happened after iteration 2 (you chose option 1 on 2026-11-03; REQ-040 and REQ-041 changed). Severity: minor (was major; load only, see below). Source: verification. Raised: iteration 1.
 Features: F6. Requirements: REQ-039, REQ-040, REQ-041.
 Rules: OnlyHolderPurges, OneCleanupRunAtATime.
 
@@ -294,7 +294,7 @@ Suggested answer: confirm them as written, and give the cleanup lease length if 
 
 ## D-18 · What can be done at runtime with a code-defined job's override, and with an orphaned job?
 
-Status: decided (2026-11-04): option 1, keep both. An override is permanent; no runtime action clears it, which confirms D-16's assumption. REQ-031 and REQ-033 changed. Iteration 2 already assumed this answer, so no model changes. Severity: minor. Source: analysis. Raised: after iteration 1, from the answer to D-10.
+Status: resolved (iteration 3; every rule this answer touched held). Was: decided (2026-11-04): option 1, keep both. An override is permanent; no runtime action clears it, which confirms D-16's assumption. REQ-031 and REQ-033 changed. Iteration 2 already assumed this answer, so no model changes. Severity: minor. Source: analysis. Raised: after iteration 1, from the answer to D-10.
 Features: F4. Requirements: REQ-031, REQ-033.
 
 Your answer to D-10 limits runtime actions on a code-defined job to pausing and resuming. Two things it doesn't settle:
@@ -311,7 +311,7 @@ Options:
 
 ## D-19 · During a rolling deploy, a restarting old node puts back the old schedule of a job both versions define
 
-Status: decided (2026-11-04): option 2, accept and document, with a small mitigation in REQ-029. REQ-029 and REQ-034 changed; to be checked in iteration 3 (NewScheduleNotReverted becomes an accepted behaviour, not a rule). Severity: major. Source: modeling. Raised: iteration 2.
+Status: resolved (iteration 3; accepted, so the rule that found it is no longer checked, and every other rule this answer touched held). Was: decided (2026-11-04): option 2, accept and document, with a small mitigation in REQ-029. REQ-029 and REQ-034 changed; to be checked in iteration 3 (NewScheduleNotReverted becomes an accepted behaviour, not a rule). Severity: major. Source: modeling. Raised: iteration 2.
 Features: F4. Requirements: REQ-029, REQ-034.
 Rule: NewScheduleNotReverted.
 
@@ -329,7 +329,7 @@ Options:
 
 ## D-20 · A crash during a rolling deploy leaves a removed recurring job unorphaned
 
-Status: decided (2026-11-04): option 1, orphan at start and in cleanup. REQ-030 changed; to be checked in iteration 3. Severity: major. Source: review (docs/tla-modelling-review.md, finding 4). Raised: after iteration 2.
+Status: decided (2026-11-04): option 1, orphan at start and in cleanup. REQ-030 changed; to be checked in iteration 3. Severity: major. Source: review (docs/tla-modelling-review.md, finding 4). Raised: after iteration 2. Checked in iteration 3: the crash case is fixed (RemovedJobOrphanedAfterDeploy held, and broke without the sweep), but the sweep gave rise to D-22, so this stays decided until D-22 is settled.
 Features: F4, F5. Requirements: REQ-030, REQ-034, REQ-036.
 Rule: RemovedJobOrphanedAfterDeploy (from the review; to be added to F4).
 
@@ -357,9 +357,29 @@ Answer: option 2. Add to REQ-034: "During a rolling deploy, a job whose schedule
 
 ## D-21 · The `Queue` overlap policy builds an unbounded backlog of waiting runs
 
-Status: decided (2026-11-04): no change; `Queue` stays as it is. Owner's own words: "queue should stay as it is", after first noting that for cron-style work a user should be able to choose between skipping and queuing, which `OverlapPolicy.Skip` and `OverlapPolicy.Queue` already offer. No requirement changed. Severity: minor. Source: review (docs/tla-modelling-review.md, finding 9). Raised: after iteration 2.
+Status: resolved (iteration 3; no change, so nothing new to check). Was: decided (2026-11-04): no change; `Queue` stays as it is. Owner's own words: "queue should stay as it is", after first noting that for cron-style work a user should be able to choose between skipping and queuing, which `OverlapPolicy.Skip` and `OverlapPolicy.Queue` already offer. No requirement changed. Severity: minor. Source: review (docs/tla-modelling-review.md, finding 9). Raised: after iteration 2.
 Features: F3. Requirements: REQ-019, REQ-021.
 
 Under `Queue`, every fire while a run is active adds another `Awaiting` occurrence, and nothing caps them. Since D-3, an `Unroutable` run counts as active, so a job that fires every minute and has no live handler for an hour queues 60 runs, which then run one after another once a handler appears.
 
 Options considered: a per-job `MaxAwaiting` cap (default 10); reusing `MisfireMax` as the cap; keeping at most one waiting run. Answer: none of them. `Queue` keeps every fire by design. A job for which stale runs make no sense should use `Skip`. The documentation for `OverlapPolicy.Queue` should say that the backlog is unbounded and runs back to back (issue 11).
+
+## D-22 · When every node of an application is down, cleanup orphans all its recurring jobs, and they lose their catch-up
+
+Status: open. Severity: major. Source: modeling. Raised: iteration 3.
+Features: F4, F7. Requirements: REQ-030, REQ-042.
+Rule: DownAppKeepsItsJobs.
+
+D-20's cleanup sweep orphans a recurring job when no live node of its application defines it. When every node of an application is down for longer than the node timeout (an outage, a scale to zero, a maintenance window), that is true of all its jobs. A node of another application sharing the store still runs cleanup. When the application comes back, its start restores the jobs with a fresh next run (REQ-030), so the catch-up after downtime that REQ-042 promises (`RunOnce`, `RunAll`) never happens. A store used by one application only is safe: no node is left to run cleanup, and the first node to start reconciles before its loops start.
+
+How it happens:
+1. `billing` and `reports` share one store. `billing` defines `nightly-invoice` at 02:00, with `RunOnce` catch-up.
+2. Both `billing` nodes stop at 01:00 for maintenance.
+3. Five minutes later, cleanup on the `reports` node finds no live `billing` node defining `nightly-invoice`, and orphans it.
+4. `billing` comes back at 04:00. Its start restores `nightly-invoice` with its next run at 02:00 tomorrow. Tonight's 02:00 invoice run, which `RunOnce` should have caught up at 04:00, never runs.
+
+Options:
+1. **Sweep only running applications.** Add to REQ-030: "Cleanup orphans a definition only while at least one node of its application is live." Checked: with it, every F4 rule holds, including the crash-during-deploy case of D-20. An application retired for good keeps its jobs until someone removes them, as before D-20.
+2. **Keep the catch-up on restore.** Change REQ-030's restore to keep a stored next run that is in the past, so catch-up applies. Not checked. It would also catch up runs for a job that was removed from code and later added back, which REQ-030 and A-15 rule out today.
+3. **Accept and document it.** Add to REQ-030: "A job of an application that is down for longer than the node timeout, in a store shared with other applications, is orphaned and loses its catch-up."
+

@@ -1,0 +1,86 @@
+{
+  "module": "F2_SelfFencing",
+  "rules": [
+    {
+      "name": "NoDoubleRun",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "HealthyNeverRecovered",
+      "kind": "invariant",
+      "outcome": "held"
+    },
+    {
+      "name": "CancelledByRecoveryMoment",
+      "kind": "property",
+      "outcome": "held"
+    },
+    {
+      "name": "RecoveredAfterFailedRelease",
+      "kind": "property",
+      "outcome": "held"
+    }
+  ],
+  "sizes": [
+    {
+      "variable": "now",
+      "domain": "Times",
+      "values": 13
+    },
+    {
+      "variable": "expiry",
+      "domain": "0..(MaxTime + LeaseLength)",
+      "values": 19
+    },
+    {
+      "variable": "jobState",
+      "domain": "{\"Processing\", \"Enqueued\", \"Succeeded\"}",
+      "values": 3
+    },
+    {
+      "variable": "owner",
+      "domain": "Nodes",
+      "values": 2
+    },
+    {
+      "variable": "handler",
+      "domain": "[Nodes -> HandlerStates]",
+      "values": 25
+    },
+    {
+      "variable": "lastOk",
+      "domain": "Times",
+      "values": 13
+    },
+    {
+      "variable": "pending",
+      "domain": "{\"none\", \"sent\"}",
+      "values": 2
+    },
+    {
+      "variable": "sentAt",
+      "domain": "Times",
+      "values": 13
+    },
+    {
+      "variable": "attempted",
+      "domain": "BOOLEAN",
+      "values": 2
+    },
+    {
+      "variable": "healthy",
+      "domain": "BOOLEAN",
+      "values": 2
+    }
+  ],
+  "typeOkProduct": 50091600,
+  "status": "ok",
+  "because": "Explored the whole state space and found nothing.",
+  "states": 1797,
+  "distinct": 1357,
+  "depth": 21,
+  "neverFired": [
+    "RenewToldLost"
+  ]
+}

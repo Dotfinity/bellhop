@@ -1,0 +1,157 @@
+Error: Invariant NoDoubleRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 0
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = TRUE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 2: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 1
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = TRUE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 3: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 2
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = TRUE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 4: <RenewStoreDown line 110, col 5 to line 113, col 83 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 2
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 5: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 3
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 6: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 4
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 7: <RenewStoreDown line 110, col 5 to line 113, col 83 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 4
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 8: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 5
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 9: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 6
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = FALSE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 10: <RenewStoreDown line 110, col 5 to line 113, col 83 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 6
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 11: <Tick line 164, col 5 to line 170, col 78 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 7
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 12: <Recover line 146, col 5 to line 149, col 93 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Enqueued"
+/\ now = 7
+/\ owner = n1
+/\ expiry = 6
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Idle")
+
+State 13: <RecovererStarts line 153, col 5 to line 158, col 69 of module F2_SelfFencing>
+/\ sentAt = 0
+/\ pending = "none"
+/\ jobState = "Processing"
+/\ now = 7
+/\ owner = n2
+/\ expiry = 13
+/\ healthy = FALSE
+/\ lastOk = 0
+/\ attempted = TRUE
+/\ handler = (n1 :> "Running" @@ n2 :> "Running")

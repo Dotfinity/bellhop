@@ -2,7 +2,7 @@
 
 Source: [tla-modelling-review.md](tla-modelling-review.md) (finding numbers in brackets). Issues are listed in the order they should be worked: a decision comes before the edits that depend on it.
 
-New owner decisions are recorded in `refinement/decisions.md` (continuing from D-19), and requirement changes in `refinement/requirements.md`, as before. Issue 11 then carries every settled decision into the stories and the architecture in one pass. Issues 12 to 15 are iteration 3 of the models, run after the decisions settle.
+New owner decisions are recorded in `refinement/decisions.md` (continuing from D-19), and requirement changes in `refinement/requirements.md`, as before. Issue 11 then carries every settled decision into the stories and the architecture in one pass. Issues 12 to 15 are iteration 3 of the models, run after the decisions settle and before issue 11, so the stories change once. Issue 18 came out of iteration 3.
 
 Status: open, decided (answer recorded, not yet propagated), done.
 
@@ -19,9 +19,10 @@ Status: open, decided (answer recorded, not yet propagated), done.
 | 9 | Store atomicity is assumed by every model but stated nowhere; D-9's reconcile needs an ordering rule [6] | no: added REQ-044 (every store operation linearizable) and REQ-045 (reconciles of one app serialized, node row registered inside) | requirements.md; arch §4.4 / §5.3, M1-05 to M1-07 via issue 11 | decided |
 | 10 | The `Queue` policy's `Awaiting` backlog has no cap [9] | decided 2026-11-04: no change, `Queue` stays as it is; document the unbounded backlog and point to `Skip` (D-21) | decisions D-21; `OverlapPolicy.Queue` docs via issue 11 | decided |
 | 11 | Carry D-3 to D-12 and every decision above into the stories and the architecture; add a "Propagated to" line to each decision [1] | no | stories/m1-core, docs/bellhop-architecture.md, decisions.md | open |
-| 12 | F1 and F3 disagree on whether a requeue clears a cancel request; re-run F3 [7] | no | iteration 3 models | open |
-| 13 | F3's main config keeps a known-failing rule; `NoOverlap` checks a warning flag the design lacks [7] | no | iteration 3 models | open |
-| 14 | Models miss the crash, timer and fence cases: F2 deadline timer and skew, F4 crashed nodes and a convergence rule, the architecture's fences as an input [4, 5] | no | iteration 3 models | open |
-| 15 | Liveness gaps: a job leaves `Processing`, cleanup eventually runs; REQ-007 and REQ-027 to be owned by M1-19's tests [9] | no | iteration 3 models, M1-19 | open |
+| 12 | F1 and F3 disagree on whether a requeue clears a cancel request; re-run F3 [7] | no | iteration 3 models | done: F3 now clears it; all 7 F3 rules held |
+| 13 | F3's main config keeps a known-failing rule; `NoOverlap` checks a warning flag the design lacks [7] | no | iteration 3 models | done: accepted loops bounded, F3 config green; the flag stands for D-4's log event |
+| 14 | Models miss the crash, timer and fence cases: F2 deadline timer and skew, F4 crashed nodes and a convergence rule, the architecture's fences as an input [4, 5] | no | iteration 3 models | done: F2 deadline with skew, F4 crashed rows and sweep; mutants confirm each fix |
+| 15 | Liveness gaps: a job leaves `Processing`, cleanup eventually runs; REQ-007 and REQ-027 to be owned by M1-19's tests [9] | no | iteration 3 models, M1-19 | done in the models (F1, F6 liveness held); the M1-19 note lands with issue 11 |
 | 16 | No way to re-run the checks; TLC logs ignored by git; a full copy of the models per iteration [10] | yes (repo layout) | refinement/README.md | open |
 | 17 | Counterexample traces aren't conformance tests yet [10] | no | M1-05, M1-06, M1-07 criteria | open |
+| 18 | Iteration 3: with every node of an application down, cleanup on another application's node orphans its recurring jobs, and they lose their catch-up (D-22) | yes | decisions D-22, REQ-030 | open |

@@ -1,0 +1,223 @@
+Error: Action property UnchangedReconcileKeepsNextRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "old" @@ n2 :> "old")
+/\ ghost = (n1 :> "none" @@ n2 :> "none")
+/\ lastReconciler = "none"
+
+State 2: <StopNode line 103, col 5 to line 106, col 31 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> FALSE,
+        app |-> "rt",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "Rt",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "down" @@ n2 :> "old")
+/\ ghost = (n1 :> "none" @@ n2 :> "none")
+/\ lastReconciler = "none"
+
+State 3: <StartNode line 96, col 5 to line 99, col 22 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S2",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> TRUE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "down" @@ n2 :> "new")
+/\ ghost = (n1 :> "none" @@ n2 :> "none")
+/\ lastReconciler = "svc1"
+
+State 4: <StopNode line 103, col 5 to line 106, col 31 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S2",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> TRUE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "down" @@ n2 :> "down")
+/\ ghost = (n1 :> "none" @@ n2 :> "none")
+/\ lastReconciler = "none"
+
+State 5: <Elapse line 171, col 5 to line 174, col 32 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S2",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> TRUE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "stale" ],
+  d3 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "down" @@ n2 :> "down")
+/\ ghost = (n1 :> "none" @@ n2 :> "none")
+/\ lastReconciler = "none"
+
+State 6: <StartBothUnserialized line 184, col 5 to line 190, col 22 of module F4_RecurringReconcile>
+/\ def = [ d1 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S2",
+        next |-> "fresh" ],
+  d2 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> TRUE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d3 |->
+      [ ex |-> TRUE,
+        app |-> "svc1",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ],
+  d4 |->
+      [ ex |-> TRUE,
+        app |-> "svc2",
+        orph |-> FALSE,
+        ovr |-> FALSE,
+        paused |-> FALSE,
+        sched |-> "S1",
+        next |-> "fresh" ] ]
+/\ node = (n1 :> "new" @@ n2 :> "old")
+/\ ghost = (n1 :> "none" @@ n2 :> "none")
+/\ lastReconciler = "svc1"
