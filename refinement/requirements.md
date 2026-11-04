@@ -226,7 +226,8 @@ One node at a time runs cleanup, under a short lease in the store.
   Source: M1-13 AC7. Status: changed by D-8.
   Verification (iteration 1): broken (D-8).
   Verification (iteration 2): broken (D-8, still happens).
-  Now: A node renews the cleanup lease before each batch, and stops its run when it can't. Only the node holding the cleanup lease purges.
+  Now: A node renews the cleanup lease before each batch, and stops its run when it can't. Only the node holding the cleanup lease purges. Every purge batch is bounded by the store's command timeout, and the cleanup lease is the larger of twice the cleanup interval and twice the store's command timeout, so a batch always ends before its lease can expire.
+  History: 2026-11-04, D-8 answered: the batch bound is the store's command timeout, and the lease always covers it.
   History: 2026-11-03, D-8: the lease is renewed before every batch.
 - **REQ-041** Cleanup keeps purging in batches until a batch comes back short.
   Source: M1-13 AC8. Status: changed by D-8.

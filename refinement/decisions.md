@@ -137,7 +137,7 @@ Answer: option 1. REQ-015 becomes: "A node arms a fencing deadline at the time i
 
 ## D-8 · A cleanup run can outlive its lease, and two nodes then clean up at once
 
-Status: open. Still happens after your change in iteration 2 (you chose option 1 on 2026-11-03; REQ-040 and REQ-041 changed). Severity: major. Source: verification. Raised: iteration 1.
+Status: decided (2026-11-04): every batch is bounded by the store's command timeout, and the cleanup lease always covers it. REQ-040 changed; to be checked in iteration 3. Was: open; still happened after iteration 2 (you chose option 1 on 2026-11-03; REQ-040 and REQ-041 changed). Severity: minor (was major; load only, see below). Source: verification. Raised: iteration 1.
 Features: F6. Requirements: REQ-039, REQ-040, REQ-041.
 Rules: OnlyHolderPurges, OneCleanupRunAtATime.
 
@@ -167,6 +167,12 @@ Options now:
 1. **Bound the batch.** Add to REQ-040: "A purge batch is abandoned if it hasn't finished within half the cleanup lease."
 2. **Make the store refuse it.** Add to REQ-040: "Each purge batch is written in one store transaction that first checks the node still holds the cleanup lease; a batch from a node that doesn't is rolled back."
 3. **Accept it.** Add to REQ-040: "A batch already running when the lease runs out may finish; at most one batch per node can overlap like this."
+
+### Answered after review (2026-11-04)
+
+The architecture, which the models didn't read, already bounds a batch. Every PostgreSQL statement has `CommandTimeout` (30 s), and the cleanup lease is `2 × Cleanup.Interval` (10 minutes by default). So with renewal before each batch, an overlap needs a lease shorter than the command timeout, which happens only when `Cleanup.Interval` is set below 15 s. The cost of an overlap is load only: purges use `FOR UPDATE SKIP LOCKED`, so two nodes never delete the same rows. Severity is lowered to minor. See docs/tla-modelling-review.md, finding 8.
+
+Answer: option 1, using the bound that already exists. Add to REQ-040: "Every purge batch is bounded by the store's command timeout, and the cleanup lease is the larger of twice the cleanup interval and twice the store's command timeout, so a batch always ends before its lease can expire." Every store must have a command timeout (the in-memory store's operations are instant). The lease formula lands in arch §7.4 with issue 11, and F6 gets "a batch takes at most half the lease" in iteration 3.
 
 ## D-9 · During a rolling deploy, recurring jobs switch off and on as nodes restart
 

@@ -13,7 +13,7 @@ Status: open, decided (answer recorded, not yet propagated), done.
 | 3 | D-6 is worded as check-then-write, and `Renew` and `ShutdownNodeAsync` lack a `state='Processing'` fence [5, 6] | no: every job write is conditional on `state='Processing' AND lease_token=@token` | REQ-003, D-6; arch §4.4 / §5.3 via issue 11 | decided |
 | 4 | D-4's requeue warning has nowhere to appear in M1 [1, 7] | decided 2026-11-04: a log event in M1; the UI warning arrives with the dashboard's requeue action in M2 | decisions D-4, REQ-010; arch §8.4, §1.3 via issue 11 | decided |
 | 5 | A crash during a rolling deploy leaves a removed recurring job unorphaned [4] | decided 2026-11-04: orphan at start and in cleanup (D-20) | decisions D-20, REQ-030; arch §5.3 / §7.4 via issue 11 | decided |
-| 6 | D-8 still open, and its severity overstates a load issue [8] | yes | decisions D-8, REQ-040 | open |
+| 6 | D-8 still open, and its severity overstates a load issue [8] | decided 2026-11-04: batch bounded by command timeout; lease = max(2 × interval, 2 × timeout); severity minor | decisions D-8, REQ-040; arch §7.4 via issue 11 | decided |
 | 7 | D-19 still open; its option 1 breaks rollbacks [8] | yes | decisions D-19, REQ-029 | open |
 | 8 | D-18 still open (runtime overrides, removing orphans) | yes | decisions D-18, REQ-031, REQ-033 | open |
 | 9 | Store atomicity is assumed by every model but stated nowhere; D-9's reconcile needs an ordering rule [6] | no (states what the models already assume) | REQ list (new cross-cutting rule), arch §4.4 / §5 | open |
