@@ -12,7 +12,8 @@ Files: `src/Bellhop.PostgreSql/PostgreSqlJobStore.cs` (methods as in M1-05), `sr
 
 ## Acceptance criteria
 
-- Given `JobLifecycleConformanceTests` (M1-05), when it runs against PostgreSQL, then every test passes, including the 8-claimer and concurrent-tick tests (EXE-2, EXE-4, STO-8).
+- Given `JobLifecycleConformanceTests` (M1-05), when it runs against PostgreSQL, then every test passes, including the 8-claimer and concurrent-tick tests (EXE-2, EXE-4, STO-8) and the *(refinement)* fencing tests. The concurrent-tick test is where REQ-007 (each due job promoted once) is checked; the models treat a tick as one step and can't.
+- Given the renew statement, then it is fenced on `state = 'Processing'` as well as `(id, lease_token)`, like complete, progress and parameter writes (arch §4.4, refinement D-6).
 - Given a claim, when its SQL runs, then it is one statement (one round-trip), and the history insert happens in the same statement or transaction.
 - Given an idle database (no jobs), when `EXPLAIN` is run on the tick statement, then every sub-select uses a partial index (`jobs_due`, `jobs_lease`, `jobs_unroutable`, `jobs_ready`) and none uses a sequential scan on `jobs` once the table holds 100,000 terminal rows (STO-6, STO-7). Asserted by a test that parses `EXPLAIN (FORMAT JSON)`.
 - Given the tick, when it runs, then it is one round-trip, or two if Notes justify it (arch §4.4) (STO-6). Counted with Npgsql's logging or `NpgsqlDataSource` statistics in the test.
@@ -33,7 +34,7 @@ Recurring (M1-20). Nodes, leases, purge, index and statistics (M1-21). Notificat
 
 **Priority:** Must
 **Depends on:** M1-05, M1-18
-**Traces to:** STO-1, STO-2, STO-6, STO-8, EXE-2, EXE-4, EXE-9, DSH-8; arch §4.4, §5.3
+**Traces to:** STO-1, STO-2, STO-6, STO-8, EXE-2, EXE-4, EXE-9, DSH-8; arch §4.4, §5.3; refinement D-6, REQ-007, REQ-044
 
 ## Notes
 

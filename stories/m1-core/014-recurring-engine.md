@@ -16,7 +16,9 @@ Files: `src/Bellhop/Engine/Recurring/` (`RecurringRegistry` from `[Recurring]`, 
 - Given `AddRecurring<TenantReport>("report:tenant-42", Schedule.Cron("0 6 * * *"), new TenantReport(42))` and the same for tenant 43, then two definitions exist, each firing its own payload (REC-8).
 - Given an invalid cron in `[Recurring]` or an unknown time zone, when the host starts, then startup fails naming the job, the field and the fix (REC-2). Given the same through `IRecurringJobManager.AddOrUpdateAsync`, then `ArgumentException` is thrown at the call.
 - Given a recurring name that breaks the name rule, or two code-defined recurring jobs with the same name, then startup fails naming both.
-- Given startup on a `Both` node, then reconciliation runs once before the loops start, and info 1401 logs created, updated, unchanged and orphaned counts with the orphaned names (REC-3).
+- Given startup on a `Both` node, then reconciliation runs once before the loops start, and info 1401 logs created, updated, unchanged and orphaned counts with the orphaned names (REC-3). The `ReconcileRequest` carries this node's id and heartbeat (application name and code-defined recurring names) and `NodeTimeout`, so the store registers the node and judges which nodes are live in the same step (refinement D-9, REQ-045).
+- *(refinement, D-9)* Given two schedulers sharing one store, one on code {A, B} (the old version) and one starting on {A, C} (the new version), then B is not orphaned while the old one's heartbeat is live, and C is not orphaned when the old one restarts. Once the old one stops gracefully, the next start or cleanup run orphans B.
+- Given a rolling deploy where both versions define one job with different schedules, then the job follows the version whose node started last, until every node runs one version. This is accepted (refinement D-19) and documented in the getting-started guide (M1-26).
 - Given a due definition with `NextRunAt = 03:00`, a tick at 03:00:00.4 and `RunOnce`, then one occurrence job is created with `ScheduledAt` 03:00 and `RecurringName` set, and `NextRunAt` becomes the next day's 03:00.
 - Given the node was down from 01:30 to 08:30 with an hourly schedule (`0 * * * *`, so `NextRunAt` was 02:00 and the due occurrences are 02:00 to 08:00, 7 in all), when it comes back, then:
   - `RunOnce` creates one occurrence (for 08:00) and logs 1402 for the 6 not run,
@@ -27,6 +29,7 @@ Files: `src/Bellhop/Engine/Recurring/` (`RecurringRegistry` from `[Recurring]`, 
 - Given two nodes that both see the same due definition, then 1402 and `OnRecurringMissedAsync` happen only on the node whose fire returned `Fired = true` (arch §7.7 step 5). `OnEnqueuedAsync` is raised for each created `Enqueued` occurrence.
 - Given two scheduler instances sharing one store, when both tick a due definition at once, then exactly one occurrence exists, and the losing fire is not logged above debug (REC-7).
 - Given `IRecurringJobManager.AddOrUpdateAsync` changes an hourly schedule to daily at 10:00 while `NextRunAt` was 09:00 (overdue), then `NextRunAt` becomes the next 10:00 after now, and no catch-up runs for the old schedule (REC-10).
+- Given the manager and a code-defined job that isn't orphaned, when `RemoveAsync` runs, then the store's conflict exception reaches the caller; for a runtime-defined or orphaned job it is removed (refinement D-10, D-18). A runtime override is never cleared by any manager call.
 - Given the manager, then `RemoveAsync`, `PauseAsync`, `ResumeAsync` (passing `NextRunAt` recomputed from the estimated store now, so no catch-up for the paused period), `ListAsync` (keyset-paged, with `LastFireOutcome` and `LastJobState`), `GetAsync` and `GetNextOccurrencesAsync(name, 5)` behave as described in arch §3.1 and §7.7 (REC-9).
 - Given `IRecurringJobManager` mocked with Moq in a consumer's test, then setups on its methods work directly (TST-2).
 - Given a code-defined job with `AllowRuntimeOverride`, when the manager changes its schedule and the host restarts, then the runtime schedule is kept (REC-3, arch §5.3).
@@ -45,7 +48,7 @@ Overlap behaviour end to end, including `CancelPrevious` cancellation delivery (
 
 **Priority:** Must
 **Depends on:** M1-04, M1-06, M1-13
-**Traces to:** REC-1 to REC-5, REC-7 to REC-10, SET-8, TST-2, RET-6; arch §7.7, A-12, A-13, A-14, A-15
+**Traces to:** REC-1 to REC-5, REC-7 to REC-10, SET-8, TST-2, RET-6; arch §7.7, A-12, A-13, A-14, A-15; refinement D-9, D-10, D-18, D-19, REQ-045
 
 ## Notes
 

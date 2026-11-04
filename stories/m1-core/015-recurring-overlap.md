@@ -23,6 +23,9 @@ Each scenario runs two nodes (two worker loops and two schedulers) sharing one i
 - **CancelPrevious.** Given occurrence 1 is running on node A and node B fires the next occurrence, then occurrence 1's token is cancelled (through the heartbeat cancel path on A within one heartbeat interval), and occurrence 1 ends as `Cancelled`. Only then does the next tick move occurrence 2 from `Awaiting` to `Enqueued`, and it runs. The two never overlap (A-16).
 - **CancelPrevious on the same node.** Given the fire happens on the node running occurrence 1, then cancellation is delivered at once from `FireResult.CancelRequested`, without waiting for a heartbeat.
 - **Retrying occurrence.** Given occurrence 1 failed and is `Failed`, awaiting retry, when the next minute fires with `Skip`, then it is skipped (a retrying occurrence is active, arch §7.7).
+- **Unroutable occurrence** *(refinement, D-3)*. Given `Skip`, occurrence 1 enqueued, and no node with the handler live for longer than `UnroutableAfter`, so cleanup marks it `Unroutable`, when the next minute fires, then nothing is created. When a node with the handler starts, occurrence 1 is moved back and runs alone; no second occurrence runs beside it.
+- **Queue backlog.** Given `Queue` and occurrence 1 running for 3 minutes, then occurrences 2, 3 and 4 are `Awaiting` and run one after another afterwards: `Queue` keeps every fire (refinement D-21).
+- **Requeue beside a running occurrence** *(refinement, D-4)*. Given occurrence 1 `Succeeded` and occurrence 2 running, when an operator requeues occurrence 1 through `IJobClient.RequeueAsync`, then it is requeued whatever the policy, warning 1103 names both occurrences, and the two may run at once. This is accepted overlap, so the scenario asserts the warning, not exclusion.
 - **Trigger now.** Given `Skip` and a running occurrence, when `TriggerAsync` is called, then the result's outcome is `Skipped` and no job is created.
 
 ## Tests
@@ -35,7 +38,7 @@ Dashboard display of occurrences (M1-25). The last-50 occurrence history (M2, BL
 
 **Priority:** Must
 **Depends on:** M1-12, M1-14 (and M1-11 through M1-12)
-**Traces to:** REC-5, REC-6, SCH-6, CON-7; arch §7.7, A-16, A-25, M-5
+**Traces to:** REC-5, REC-6, SCH-6, CON-7; arch §7.7, A-16, A-25, M-5; refinement D-3, D-4, D-21
 
 ## Notes
 

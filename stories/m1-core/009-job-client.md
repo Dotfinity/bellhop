@@ -25,7 +25,8 @@ Files: `src/Bellhop/Client/` (`JobClient`, `EnqueuePipeline`, internal `AmbientJ
 - Given a payload over the soft limit, then the job is stored and warning 1101 logs the job name and size. Over the hard limit, `JobPayloadTooLargeException` reaches the caller and nothing is stored (STO-10).
 - Given the store throws on insert, when enqueue runs, then the store's exception reaches the caller unchanged, and error 1102 is logged with the job name (A-2).
 - Given an ambient job execution (simulated through `AmbientJobExecution` in this story; real in M1-10), when a job is enqueued, then its `ParentId` is the running job's id (SCH-10).
-- Given `CancelAsync`, `RequeueAsync`, `DeleteAsync` and `GetAsync`, when called for jobs in various states, then they return what the store reports (arch §5.3), and `GetAsync` maps `JobDetails` to `JobInfo` with history (SCH-6).
+- Given `CancelAsync`, `RequeueAsync`, `DeleteAsync` and `GetAsync`, when called for jobs in various states, then they return what the store reports (arch §5.3), and `GetAsync` maps `JobDetails` to `JobInfo` with history (SCH-6). `RequeueAsync` returns `RequeueResult.Requeued` as its `bool`.
+- Given a recurring occurrence requeued while another occurrence of the same recurring job is active (the store reports `ActiveSibling`), when `RequeueAsync` runs, then it returns true and warning 1103 is logged: `Requeued occurrence {JobId} of recurring job "{RecurringName}" while occurrence {OtherJobId} is active; the two may run side by side.` With no active sibling, nothing is logged (refinement D-4).
 - Given `CancelAsync` returns `Cancelled` (a job cancelled at once, not processing), then `IJobEvents.OnCancelledAsync` is raised (RET-6). For `CancellationRequested`, the event is raised later by the node that runs the job (M1-10).
 - Given a successful enqueue, then `IJobEvents.OnEnqueuedAsync` is called for each registered `IJobEvents`. An event handler that throws is logged (1209) and does not fail the enqueue.
 - Given a successful enqueue of an `Enqueued` job, then the local wake signal is raised once.
@@ -41,7 +42,7 @@ Execution (M1-10). Tracing spans and metrics (M1-16). Inline mode (M1-17). Uniqu
 
 **Priority:** Must
 **Depends on:** M1-08
-**Traces to:** SCH-1, SCH-2, SCH-4, SCH-6, SCH-10, EXT-2, EXT-6, STO-10, TST-2, RET-6; arch §6.4, A-2
+**Traces to:** SCH-1, SCH-2, SCH-4, SCH-6, SCH-10, EXT-2, EXT-6, STO-10, TST-2, RET-6; arch §6.4, A-2; refinement D-4
 
 ## Notes
 

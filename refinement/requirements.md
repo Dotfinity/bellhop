@@ -53,6 +53,7 @@ A job moves through claim, lease, completion, retry, recovery, cancel, requeue a
   Verification (iteration 2): unchecked (promotion is one step in the model).
   Verification (iteration 3): unchecked (promotion is one step in the model; M1-19's concurrency tests are to cover it).
   Verification (iteration 4): unchecked (promotion is one step in the model; M1-19's concurrency tests are to cover it).
+  Covered by: the concurrent-tick conformance test in M1-05, run on PostgreSQL by M1-19; the models treat a tick as one step.
 - **REQ-008** A `Processing` job whose lease has expired is recovered by a tick: back to `Enqueued` if attempts remain, `DeadLettered` if its attempt equals the maximum, `Cancelled` if a cancel was requested.
   Source: M1-05 AC14, M1-13 AC4. Status: unchanged.
   Verification (iteration 1): broken (D-5, D-6).
@@ -201,6 +202,7 @@ Each due recurring definition creates its occurrences once across all nodes, and
   Verification (iteration 2): unchecked (a tick is one step in the model).
   Verification (iteration 3): unchecked (a tick is one step in the model; M1-19's concurrency tests are to cover it).
   Verification (iteration 4): unchecked (a tick is one step in the model; M1-19's concurrency tests are to cover it).
+  Covered by: the concurrent-tick test over `Awaiting` occurrences in M1-06, run on PostgreSQL by M1-20; the models treat a tick as one step.
 
 ## F4 Recurring definitions and reconciliation
 

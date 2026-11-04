@@ -14,7 +14,7 @@ Files: `src/Bellhop/Engine/` (`JobProcessor`, `JobContextImpl` or the `JobContex
 
 - Given a claimed job, when it is executed, then the handler is resolved from a new async DI scope (scoped services are distinct per execution) and the scope is disposed with `DisposeAsync` (EXE-1, BLT-3).
 - Given a handler that returns normally, then `CompleteAsync` is called with `Succeeded`, and `IJobEvents.OnStartedAsync` and `OnSucceededAsync` are raised in that order.
-- Given a handler that reads `JobContext`, then `Id`, `Name`, `Attempt`, `MaxAttempts`, `EnqueuedAt`, `ScheduledAt`, `Queue`, `Tags`, `ParentId`, `RecurringName` and `Parameters` match the claimed job (JOB-6).
+- Given a handler that reads `JobContext`, then `Id`, `Name`, `Attempt`, `MaxAttempts`, `LeaseToken`, `EnqueuedAt`, `ScheduledAt`, `Queue`, `Tags`, `ParentId`, `RecurringName` and `Parameters` match the claimed job (JOB-6). `LeaseToken` is the claim's token, so it changes on every attempt (refinement D-1).
 - Given a handler that calls `ctx.ReportProgressAsync(0.3, "step 1")`, then the store holds progress 0.3 and the message. Calls more often than once per second are coalesced, with the last value always written before completion.
 - Given a handler that calls `ctx.Parameters.SetAsync("k", 1)`, then the parameter is persisted at once and visible through `GetAsync` (EXT-6).
 - Given a handler that logs through `ctx.Logger` or an injected `ILogger<T>`, then the log entries carry a scope with `JobId`, `JobName`, `Attempt` and `Queue` (OBS-4).
@@ -38,7 +38,7 @@ Retry policy, backoff and `PermanentJobFailureException` (M1-11). Claiming, slot
 
 **Priority:** Must
 **Depends on:** M1-09
-**Traces to:** JOB-1, JOB-5, JOB-6, EXE-1, EXT-1, EXT-6, OBS-4, RET-4, RET-6, SCH-10, BLT-3; arch §7.3, §4.7
+**Traces to:** JOB-1, JOB-5, JOB-6, EXE-1, EXT-1, EXT-6, OBS-4, RET-4, RET-6, SCH-10, BLT-3; arch §7.3, §4.7; refinement D-1
 
 ## Notes
 

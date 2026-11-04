@@ -6,7 +6,7 @@ requirements.md §3 is a promise: the documentation's first page must match it e
 
 Files: `samples/Bellhop.Samples.Web/` (Program.cs, `Jobs/SendWelcomeEmail.cs`, `Jobs/SendFollowUpEmail.cs`, `Jobs/NightlyCleanup.cs`, `RegisterUser.cs`, a fake `IEmailSender`, a minimal endpoint to register a user, plus demo endpoints for the acceptance run in a separate `DemoEndpoints.cs`: enqueue N configurable no-op, slow or always-failing jobs; cancel a job by id; requeue a job by id; and the health check at `/health`, `appsettings.json`, a `docker-compose.yml` with PostgreSQL), `docs/getting-started.md`, `tests/Bellhop.Tests/Docs/GettingStartedSnippetTests.cs`, and README "Status" and quick-start updates.
 
-The getting-started page covers, in this order: install packages; the §3 code; run PostgreSQL with Docker; run the app and open `/jobs`; what happened (schema created automatically, D4, and how to get the script instead, `BellhopPostgreSqlSchema.GetScript`); testing with `Bellhop.Testing` (one example); at-least-once delivery, the lease window (60 s) and idempotent handlers (EXE-5); OpenTelemetry and Prometheus in two lines (BLT-5 doc part); the defaults table with a link to arch §3.2 for now.
+The getting-started page covers, in this order: install packages; the §3 code; run PostgreSQL with Docker; run the app and open `/jobs`; what happened (schema created automatically, D4, and how to get the script instead, `BellhopPostgreSqlSchema.GetScript`); testing with `Bellhop.Testing` (one example); delivery guarantees: two nodes never run one job at once while clock skew plus node pauses stay under a third of the lease (20 s by default) and the handler honours cancellation, and beyond that delivery is at-least-once, so handlers should be idempotent and can use `JobContext.LeaseToken` as a fencing token (EXE-5, refinement D-1); recurring jobs during a rolling deploy (removed jobs stop once no live node defines them; a schedule both versions define follows the version that started last, D-9, D-19); `OverlapPolicy.Queue` keeps every fire waiting, so use `Skip` where stale runs make no sense (D-21); OpenTelemetry and Prometheus in two lines (BLT-5 doc part); the defaults table with a link to arch §3.2 for now.
 
 **As a** developer evaluating Bellhop
 **I want** a getting-started page whose code is exactly what runs
@@ -32,7 +32,7 @@ The docs site, samples repo, worker-service and multi-tenant samples (M2, NFR-6)
 
 **Priority:** Must
 **Depends on:** M1-15, M1-16, M1-17, M1-20, M1-21, M1-22, M1-24, M1-25
-**Traces to:** P1, NFR-6 (M1 part), SET-1, EXE-5, DSH-2, D4; requirements.md §3; arch M-6
+**Traces to:** P1, NFR-6 (M1 part), SET-1, EXE-5, DSH-2, D4; requirements.md §3; arch M-6; refinement D-1, D-9, D-19, D-21
 
 ## Notes
 

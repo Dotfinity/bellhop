@@ -22,6 +22,7 @@ Files: `src/Bellhop/*.cs` for namespace `Bellhop`, `src/Bellhop/Storage/*.cs` fo
 - Given a `JobId`, when it is formatted and parsed back, then it round-trips. Given `"not-an-id"`, `TryParse` returns false and `Parse` throws `FormatException` whose message contains the input.
 - Given `JobContext.CreateForTest(attempt: 2)`, when a handler calls `ReportProgressAsync(0.5, "half")` and `Parameters.SetAsync("k", 42)`, then the context exposes progress 0.5 with message "half", and `Parameters.Get<int>("k")` returns 42, with no store or DI involved.
 - Given `JobContext.CreateForTest`, when `ReportProgressAsync` is called with a fraction outside 0 to 1, then it throws `ArgumentOutOfRangeException` naming the parameter.
+- Given `JobContext.CreateForTest(leaseToken: t)`, then `LeaseToken` is `t`; without one, it is a fresh non-empty `Guid` (refinement D-1).
 - Given `BellhopEventIds`, when it is read, then it contains every id named in arch §8.4 with the documented value, as `public const int`.
 - Given none of the deferred types in arch §1.3 (for example `ContinueWithAsync`, `UniqueKey`, `IJob<TResult>`, `StoreCapabilities.TransactionalEnqueue`), when the public API file is searched, then none appears.
 - Given the attribute classes, then each constructor argument is exposed as a get-only property (arch §3.1 note), and the build has no CS9113 warning.
@@ -39,7 +40,7 @@ Any implementation of the interfaces (M1-03 onward). Options binding and validat
 
 **Priority:** Must
 **Depends on:** M1-01
-**Traces to:** STO-1, JOB-5, JOB-6, TST-2, TST-5, EXT-1 to EXT-6, RET-2, RET-6, OBS-3; arch §3, §5, §8.4
+**Traces to:** STO-1, JOB-5, JOB-6, TST-2, TST-5, EXT-1 to EXT-6, RET-2, RET-6, OBS-3; arch §3, §5, §8.4; refinement D-1
 
 ## Notes
 
