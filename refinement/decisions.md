@@ -101,6 +101,8 @@ How it happens:
 
 The same window lets node 1 release the job at shutdown after an operator requeued it with attempts reset to 0, which takes the count to -1.
 
+Clarified after review (2026-11-04): "checks that it still holds the job" means a condition of the write itself, not a separate read before it, which would race with recovery. Recovery always moves a job out of `Processing`, and the only way back is a new claim with a fresh token. So `state = 'Processing' AND lease_token = @token` in the same statement is exactly "still holds the job", and no extra column is needed. Arch §4.4 already fences `Complete` this way. `Renew` (fenced on `(id, lease_token)` only) and `ShutdownNodeAsync` (no fence stated) must add it. The same applies to progress and parameter writes. These land in arch §4.4 and §5.3 with issue 11. See docs/tla-modelling-review.md, findings 5 and 6.
+
 Suggested edit to REQ-003. Old: "Completing a job with a stale token changes nothing. A node told its lease is lost cancels the handler and completes nothing." New: "Completing, renewing or releasing a job with a stale token changes nothing, and recovering a job makes its old token stale. A node told its lease is lost cancels the handler and completes nothing."
 
 ## D-7 · A node stops its handler too late to rule out two nodes running the same job

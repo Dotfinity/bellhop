@@ -20,7 +20,8 @@ A job moves through claim, lease, completion, retry, recovery, cancel, requeue a
   Source: M1-05 AC9, M1-12 AC8. Status: changed by D-6.
   Verification (iteration 1): holds with an issue (D-6).
   Verification (iteration 2): holds.
-  Now: Completing, renewing or releasing a job with a stale token changes nothing, and recovering a job makes its old token stale. Before a node writes anything about a job it runs (a result, a renewal or a release), it checks that it still holds the job; if another node has recovered or picked it up, the node stops the handler and writes nothing. A node told its lease is lost cancels the handler and completes nothing.
+  Now: Completing, renewing or releasing a job with a stale token changes nothing, and recovering a job makes its old token stale. Every write a node makes about a job it runs (a result, a renewal, a release, progress or a parameter) is conditional, in the same store operation, on the job still being `Processing` under that node's token. If the condition fails, nothing is written and the node stops the handler. A node told its lease is lost cancels the handler and completes nothing.
+  History: 2026-11-04, D-6 clarified: the check is a condition of the write itself, not a separate read before it, which would race with recovery.
   History: 2026-11-03, D-6: recovery now retires the old claim, and a node checks it still holds a job before writing.
 - **REQ-004** Completing again with the same token and outcome (a retry after a lost response) reports success and changes nothing.
   Source: M1-05 AC10. Status: unchanged.
