@@ -1,0 +1,1105 @@
+{
+  "schemaVersion": "1.0",
+  "id": "jobs",
+  "name": "Bellhop job lifecycle",
+  "description": "A job from enqueue to removal: scheduling, uniqueness, claiming, leases and recovery, success, retries and dead-lettering, cancellation, timeouts, routing, queues, priority, concurrency keys, rate limits, continuations, chains, batches, retention, captured logs, tags and correlation. Node lifecycle and health are in the hosting module; recurring definitions are in the recurring module.",
+  "uses": ["hosting"],
+
+  "actors": ["Application", "Operator", "Handler", "Host"],
+
+  "entities": [
+    {
+      "name": "Job",
+      "description": "One stored job: a stable name, a JSON payload and its execution state.",
+      "states": ["Scheduled", "Enqueued", "Processing", "Succeeded", "Failed", "DeadLettered", "Cancelled", "Awaiting", "Unroutable"],
+      "initial": ["Scheduled", "Enqueued", "Awaiting"],
+      "attributes": ["name", "payload", "queue", "priority", "uniqueKey", "duplicatePolicy", "concurrencyKey", "rateLimitKey", "attempt", "maxAttempts", "scheduledAt", "retryAt", "leaseOwner", "leaseExpiresAt", "timeout", "cancelRequested", "tags", "parentId", "batchId", "continuationCondition", "traceContext", "correlationId", "result", "progress", "stateHistory", "attempts", "capturedLogs", "parameters", "namespace", "longRunning"],
+      "bound": 3
+    },
+    {
+      "name": "Queue",
+      "description": "A named queue that workers drain.",
+      "states": ["Active", "Paused"],
+      "initial": ["Active"],
+      "attributes": ["name", "concurrencyLimit"]
+    },
+    {
+      "name": "Batch",
+      "description": "A named group of jobs created atomically, with batch-level continuations.",
+      "states": ["Open", "Succeeded", "Completed"],
+      "initial": ["Open"],
+      "final": ["Succeeded", "Completed"],
+      "attributes": ["name", "members"]
+    },
+    {
+      "name": "Throttle",
+      "description": "A concurrency key (mutex or semaphore) or a rate-limit key enforced by the store across nodes.",
+      "attributes": ["key", "max", "holders", "rateLimit", "window", "windowKind"]
+    },
+    {
+      "name": "Maintenance",
+      "description": "The global maintenance pause.",
+      "states": ["Off", "On"],
+      "initial": ["Off"]
+    }
+  ],
+
+  "requirements": [
+    {
+      "id": "REQ-100", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "retry a failing job up to MaxAttempts = 5 attempts in total by default, with exponential backoff and jitter of roughly 10 s, 1 min, 5 min and 30 min between attempts, configurable globally, per job type and per enqueue" },
+      "mentions": ["Job.maxAttempts", "Job.retryAt"],
+      "notes": "Open question: the precedence between the three levels is not stated. INV-123 proposes enqueue over job type over global.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-1" }]
+    },
+    {
+      "id": "REQ-101", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "use the stable job name from [JobName], or the type's simple name when none is given, as the job's identity in storage, and treat each alias listed on [JobName] as the same job" },
+      "mentions": ["Job.name"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-2, JOB-3" }]
+    },
+    {
+      "id": "REQ-102", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "give every claim a lease of LeaseDuration and renew it by heartbeat every LeaseDuration / 3 (HeartbeatInterval)" },
+      "mentions": ["Job.leaseExpiresAt"],
+      "notes": "The default LeaseDuration is not in the source, but the docs must state it as the duplicate window (EXE-5). Ask the owner for a value.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-2, EXE-3" }]
+    },
+    {
+      "id": "REQ-103", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "poll for work at PollInterval, 1 second by default, when no notification mechanism wakes the node (PollInterval)" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-8" }]
+    },
+    {
+      "id": "REQ-104", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "retain jobs per state for RetentionSucceeded = 24 hours, RetentionCancelled = 7 days and RetentionDeadLettered = 30 days by default" },
+      "notes": "§9 question 5 asks whether Succeeded retention should be 7 days instead. The value stays 24 h until the owner decides.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-7; §4.6 RET-3; §9 Q5" }]
+    },
+    {
+      "id": "REQ-105", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "apply a payload soft limit of PayloadSoftLimit = 64 KB and a hard limit of PayloadHardLimit = 1 MB by default" },
+      "mentions": ["Job.payload"],
+      "notes": "The Redis store lowers the hard limit to 256 KB (REQ-513).",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-10" }]
+    },
+    {
+      "id": "REQ-106", "kind": "assumption", "status": "proposed",
+      "ears": { "shall": "default a node's concurrency limit to max(8, 2 × ProcessorCount) (NodeConcurrency)" },
+      "mentions": ["hosting.Node.concurrencyLimit"],
+      "notes": "The source marks the value as a proposal.",
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-6", "quote": "proposal: max(8, 2 × ProcessorCount)" }]
+    },
+    {
+      "id": "REQ-107", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "treat Scheduled, Enqueued, Processing and Awaiting as the active states for uniqueness, and Ignore as the default duplicate policy" },
+      "mentions": ["Job.uniqueKey", "Job.duplicatePolicy"],
+      "notes": "Open question: Failed (waiting to retry) and Unroutable are not in the list, so a second job with the same unique key can be created while the first is waiting to retry or is unroutable. Is that intended? Ask the owner.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5", "quote": "an active job (Scheduled, Enqueued, Processing, Awaiting) with the same key exists" }]
+    },
+    {
+      "id": "REQ-108", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "give every job a priority of 0 unless one is set, and capture log lines at Information level and above, up to CapturedLogLimit = 256 KB per job, by default" },
+      "mentions": ["Job.priority", "Job.capturedLogs"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-2; §4.15 BLT-1" }]
+    },
+    {
+      "id": "REQ-109", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "remove expired jobs in batches of at most CleanupBatchSize = 500 rows with a short pause between batches" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-7" }]
+    },
+
+    {
+      "id": "REQ-120", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "to": ["Enqueued"],
+      "ears": { "when": "an application enqueues a job", "shall": "store the job as enqueued and return its job id" },
+      "mentions": ["Job.name", "Job.payload", "Job.queue"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-1", "quote": "EnqueueAsync(job, options?) runs as soon as a worker is free. Returns a JobId." }]
+    },
+    {
+      "id": "REQ-121", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "to": ["Scheduled"],
+      "ears": { "when": "an application schedules a job for a point in time or after a delay", "shall": "store the job as scheduled with scheduledAt set to that time, or to now plus the delay, and return its job id" },
+      "mentions": ["Job.scheduledAt"],
+      "notes": "Open question: what happens when the time is already in the past? Promoting it on the next scheduler pass (REQ-122) is the obvious reading but is not stated.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-2" }]
+    },
+    {
+      "id": "REQ-122", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Scheduled"], "to": ["Enqueued"],
+      "ears": { "while": "a job is scheduled", "when": "its scheduledAt has passed according to the database clock", "shall": "move the job to enqueued" },
+      "mentions": ["Job.scheduledAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-9, EXE-10" }]
+    },
+    {
+      "id": "REQ-123", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Enqueued"], "to": ["Processing"],
+      "ears": { "while": "a job is enqueued in an active queue, the maintenance pause is off and its concurrency key and rate limit admit it", "when": "a worker on a running node that is not ClientOnly has a free slot and the job is the next one by queue order and priority", "shall": "claim the job for that worker, record the claiming node, increment the attempt number and set leaseExpiresAt to the database time plus LeaseDuration" },
+      "mentions": ["Job.leaseOwner", "Job.leaseExpiresAt", "Job.attempt", "Queue.Active", "Maintenance.Off", "Throttle.holders", "hosting.Node.Running", "hosting.Node.mode"],
+      "dependsOn": ["REQ-102"],
+      "notes": "The attempt number is counted at claim time; that is what makes EXE-4 'attempt counted' hold for interrupted runs.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-2", "quote": "A job can be claimed by exactly one worker using store-native primitives. Claims carry a lease with an expiry." }]
+    },
+    {
+      "id": "REQ-124", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Enqueued"], "to": ["Unroutable"],
+      "ears": { "while": "a job is enqueued", "if": "neither its name nor any alias has a registered handler", "shall": "mark the job unroutable without failing, retrying or deleting it" },
+      "mentions": ["Job.name"],
+      "dependsOn": ["REQ-101"],
+      "notes": "Open question (rolling deploys): 'no registered handler' on which node? During a rolling deploy node A may know the name and node B may not. If B marks the job Unroutable, it stays there until 'a handler appears' (REQ-125), even though A could run it now. Should Unroutable mean 'no live node has a handler', or should a node without the handler simply skip the job? Ask the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-3", "quote": "Jobs whose name has no registered handler MUST enter an Unroutable state, visible in the dashboard, and MUST NOT be failed or deleted." }]
+    },
+    {
+      "id": "REQ-125", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Unroutable"], "to": ["Enqueued"],
+      "ears": { "while": "a job is unroutable", "when": "a running node registers a handler for its name or one of its aliases", "shall": "return the job to enqueued" },
+      "mentions": ["Job.name", "hosting.Node.Running"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-3", "quote": "They resume automatically when a handler appears." }]
+    },
+    {
+      "id": "REQ-126", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Processing"],
+      "ears": { "while": "a job is processing", "when": "HeartbeatInterval has passed since the last renewal", "shall": "extend leaseExpiresAt by LeaseDuration without any action by the handler" },
+      "mentions": ["Job.leaseExpiresAt"],
+      "dependsOn": ["REQ-102"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-3" }]
+    },
+    {
+      "id": "REQ-127", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Succeeded"],
+      "ears": { "while": "a job is processing", "when": "its handler returns without an exception", "shall": "mark the job succeeded" },
+      "notes": "Open question (stale owner): after a lease expires and the job is recovered (REQ-133), the original node may still be running it, for example after a network partition. If that original run then returns, is its result accepted, ignored, or rejected because the node no longer holds the lease? The answer decides whether a job can 'succeed' twice or succeed while it is Processing elsewhere. Ask the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-11" }]
+    },
+    {
+      "id": "REQ-128", "kind": "transition", "status": "approved", "strength": "should",
+      "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Succeeded"],
+      "ears": { "while": "a job is processing", "when": "its handler returns without an exception", "if": "the job returns a result", "shall": "store the result, capped at ResultSizeLimit, so it can be read by job id" },
+      "mentions": ["Job.result"],
+      "notes": "Same event as REQ-127 with a second consequence. ResultSizeLimit is configurable but has no default in the source; what happens to a result over the cap (truncate or fail the job) is not stated. Ask the owner.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-8" }]
+    },
+    {
+      "id": "REQ-129", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Failed"],
+      "ears": { "while": "a job is processing", "when": "its handler throws an exception", "if": "the attempt number is below maxAttempts and the retry policy allows another attempt", "shall": "mark the job failed and set retryAt from the backoff" },
+      "mentions": ["Job.attempt", "Job.maxAttempts", "Job.retryAt"],
+      "dependsOn": ["REQ-100"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-1, RET-2; §4.5 EXE-11" }]
+    },
+    {
+      "id": "REQ-130", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Failed"], "to": ["Enqueued"],
+      "ears": { "while": "a job is failed", "when": "its retryAt has passed according to the database clock", "shall": "move the job to enqueued" },
+      "mentions": ["Job.retryAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-11", "quote": "Failed (will retry)" }]
+    },
+    {
+      "id": "REQ-131", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["DeadLettered"],
+      "ears": { "while": "a job is processing", "when": "its handler throws an exception", "if": "the attempt number has reached maxAttempts, the retry policy declines another attempt, or the exception is a PermanentJobFailureException", "shall": "move the job to dead-lettered" },
+      "mentions": ["Job.attempt", "Job.maxAttempts"],
+      "dependsOn": ["REQ-100"],
+      "notes": "Same event as REQ-129; the guards are complementary, so exactly one of the two applies. PermanentJobFailureException skips retries (RET-2).",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-2, RET-3", "quote": "When attempts are exhausted the job MUST move to DeadLettered" }]
+    },
+    {
+      "id": "REQ-132", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Enqueued"],
+      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number is below maxAttempts", "shall": "let any running node return the job to enqueued with reason Interrupted, keeping the attempt counted" },
+      "mentions": ["Job.leaseExpiresAt", "Job.attempt", "Job.maxAttempts", "hosting.Node.Running"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-4", "quote": "When a lease expires (node crash, network partition) the job MUST be returned to Enqueued with the attempt counted and reason Interrupted, or dead-lettered if attempts are exhausted. Recovery is performed by any live node" }]
+    },
+    {
+      "id": "REQ-133", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["DeadLettered"],
+      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number has reached maxAttempts", "shall": "let any running node move the job to dead-lettered with reason Interrupted" },
+      "mentions": ["Job.leaseExpiresAt", "Job.attempt", "Job.maxAttempts", "hosting.Node.Running"],
+      "notes": "Same event as REQ-132 with the complementary guard.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-4" }]
+    },
+    {
+      "id": "REQ-134", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "from": ["Scheduled", "Enqueued"], "to": ["Cancelled"],
+      "ears": { "when": "an application or operator cancels a scheduled or enqueued job", "shall": "mark the job cancelled immediately" },
+      "notes": "Open question: cancelling an Awaiting, Failed (waiting to retry) or Unroutable job is not covered. Ask the owner whether those are cancellable too.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6" }]
+    },
+    {
+      "id": "REQ-135", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "from": ["Processing"], "to": ["Processing"],
+      "ears": { "while": "a job is processing", "when": "an application or operator cancels it", "shall": "record the cancellation request and signal the handler's cancellation token on whichever node runs the job" },
+      "mentions": ["Job.cancelRequested", "Job.leaseOwner"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6", "quote": "MUST signal the CancellationToken of a Processing job on whichever node runs it (cross-node)" }]
+    },
+    {
+      "id": "REQ-136", "kind": "transition", "status": "proposed",
+      "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Cancelled"],
+      "ears": { "while": "a job is processing and its cancellation was requested", "when": "its handler ends", "shall": "mark the job cancelled" },
+      "mentions": ["Job.cancelRequested"],
+      "notes": "Gap: the source says how the token is signalled but not which state a cancelled processing job ends in, nor what wins if the handler returns success after the request, or ignores the token for ever. Cancelled is my reading. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6 (implied)" }]
+    },
+    {
+      "id": "REQ-137", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Processing"],
+      "ears": { "while": "a job is processing", "when": "it has run for longer than its timeout", "shall": "signal the handler's cancellation token" },
+      "mentions": ["Job.timeout"],
+      "notes": "No default timeout is given; the reading is 'no timeout unless set'.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7" }]
+    },
+    {
+      "id": "REQ-138", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Failed"],
+      "ears": { "while": "a job is processing and its timeout token was signalled", "if": "the handler is still running TimeoutGracePeriod later", "shall": "abandon the handler and mark the job failed with reason Timeout" },
+      "mentions": ["Job.timeout"],
+      "dependsOn": ["REQ-137"],
+      "notes": "Open questions: (1) TimeoutGracePeriod has no default. (2) Failed means 'will retry' (EXE-11); if the attempts are exhausted, does a timeout go to DeadLettered like any other failure? (3) If the handler honours the token and throws OperationCanceledException within the grace period, is that a Timeout failure or a normal failure? (4) An abandoned handler keeps running in the process, so the job can be retried while the old run is still going. Ask the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7", "quote": "a handler that ignores cancellation is abandoned after a grace period and the job is marked Failed with reason Timeout" }]
+    },
+    {
+      "id": "REQ-139", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Host", "from": ["Processing"], "to": ["Processing"],
+      "ears": { "while": "the job's node is draining", "when": "ShutdownTimeout has passed and the job is still running", "shall": "signal the handler's cancellation token" },
+      "mentions": ["hosting.Node.Draining"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6" }]
+    },
+    {
+      "id": "REQ-140", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Host", "from": ["Processing"], "to": ["Enqueued"],
+      "ears": { "while": "the job's node is draining and the job's token was cancelled for shutdown", "if": "the handler is still running", "shall": "release the job's lease so another node can claim it immediately" },
+      "mentions": ["hosting.Node.Draining", "Job.leaseOwner", "Job.leaseExpiresAt"],
+      "dependsOn": ["REQ-139"],
+      "notes": "Open questions: (1) does a released attempt count towards maxAttempts like an interrupted one? (2) how long after the cancel is the lease released? (3) the old handler may still be running in the stopping process when another node claims the job, which is an expected at-least-once duplicate.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6", "quote": "then any still-running jobs have their leases released so another node picks them up immediately" }]
+    },
+    {
+      "id": "REQ-141", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Operator", "from": ["DeadLettered"], "to": ["Enqueued"],
+      "ears": { "when": "an operator requeues a dead-lettered job through the API or the dashboard", "shall": "enqueue the job again with its attempt number reset to zero" },
+      "mentions": ["Job.attempt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-5" }]
+    },
+    {
+      "id": "REQ-142", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Operator", "from": ["DeadLettered"], "to": ["Enqueued"],
+      "ears": { "when": "an operator requeues dead-lettered jobs in bulk by name, queue, tag or time range", "shall": "enqueue every matching dead-lettered job again with its attempt number reset to zero" },
+      "mentions": ["Job.attempt", "Job.name", "Job.queue", "Job.tags"],
+      "notes": "Open question: is a bulk requeue all-or-nothing, or may it partly succeed?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-5" }]
+    },
+    {
+      "id": "REQ-143", "kind": "transition", "status": "draft",
+      "entity": "Job", "actor": "Operator", "from": ["Succeeded", "Cancelled"], "to": ["Enqueued"],
+      "ears": { "when": "an application or operator requeues a succeeded or cancelled job", "shall": "enqueue the job again" },
+      "notes": "SCH-6 says RequeueAsync(id) must exist but not which states it accepts or whether it resets the attempt number. This item makes the gap visible. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6" }]
+    },
+    {
+      "id": "REQ-144", "kind": "transition", "status": "draft",
+      "entity": "Job", "actor": "Operator", "from": ["Scheduled", "Enqueued", "Failed", "Succeeded", "DeadLettered", "Cancelled", "Awaiting", "Unroutable"],
+      "ears": { "when": "an application or operator deletes a job", "shall": "remove the job with its history, captured logs and parameters" },
+      "notes": "SCH-6 says DeleteAsync(id) must exist but not for which states. Open questions: may a Processing job be deleted? What happens to continuations Awaiting a deleted parent (see LIV-101)? Does deleting a DeadLettered job count as the 'silent deletion' RET-3 forbids?",
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6" }]
+    },
+    {
+      "id": "REQ-145", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Succeeded", "Cancelled", "DeadLettered"],
+      "ears": { "when": "a job has been succeeded, cancelled or dead-lettered for longer than that state's retention", "shall": "remove the job together with its state history, captured logs and parameters, in batches of at most CleanupBatchSize" },
+      "mentions": ["Job.stateHistory", "Job.capturedLogs", "Job.parameters"],
+      "dependsOn": ["REQ-104", "REQ-109"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-7", "quote": "state history and logs follow the job" }]
+    },
+    {
+      "id": "REQ-146", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "where": "the execution mode is Inline", "when": "an application enqueues a job", "shall": "run the handler on the caller's thread before the enqueue call returns and rethrow any handler exception to the caller" },
+      "notes": "Open question: in Inline mode, do retries, continuations, scheduled jobs and unique keys apply?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.12 TST-4" }]
+    },
+    {
+      "id": "REQ-147", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "to": ["Enqueued", "Scheduled"],
+      "ears": { "when": "an application enqueues or schedules a job whose payload is larger than PayloadSoftLimit and not larger than PayloadHardLimit", "shall": "store the job and log a warning with its size" },
+      "mentions": ["Job.payload"],
+      "dependsOn": ["REQ-105"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-10" }]
+    },
+    {
+      "id": "REQ-148", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "if": "an application enqueues or schedules a job whose payload is larger than PayloadHardLimit", "shall": "reject the call with an exception that names the size and the limit, and store nothing" },
+      "mentions": ["Job.payload"],
+      "dependsOn": ["REQ-105"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-10", "quote": "a hard limit (default 1 MB) with a clear exception" }]
+    },
+
+    {
+      "id": "REQ-150", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "an application enqueues a job with a unique key while an active job with the same key exists", "if": "the duplicate policy is Ignore", "shall": "create no job and return the existing job's id with WasDuplicate set to true" },
+      "mentions": ["Job.uniqueKey", "Job.duplicatePolicy"],
+      "dependsOn": ["REQ-107"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5" }]
+    },
+    {
+      "id": "REQ-151", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "from": ["Scheduled"], "to": ["Scheduled"],
+      "ears": { "when": "an application schedules a job with a unique key while a scheduled job with the same key exists", "if": "the duplicate policy is ReplaceSchedule", "shall": "move the existing job's scheduledAt to the new time, create no job and return the existing job's id with WasDuplicate set to true" },
+      "mentions": ["Job.uniqueKey", "Job.duplicatePolicy", "Job.scheduledAt"],
+      "dependsOn": ["REQ-107"],
+      "notes": "Open question: under ReplaceSchedule, what happens when the existing job is Enqueued, Processing or Awaiting rather than Scheduled? Is the new payload also applied, or only the time?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5", "quote": "ReplaceSchedule (debounce: move the existing scheduled job to the new time)" }]
+    },
+    {
+      "id": "REQ-152", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "an application enqueues a job with a unique key while an active job with the same key exists", "if": "the duplicate policy is Error", "shall": "reject the call with an error and create no job" },
+      "mentions": ["Job.uniqueKey", "Job.duplicatePolicy"],
+      "dependsOn": ["REQ-107"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5" }]
+    },
+    {
+      "id": "INV-100", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "never hold two active jobs with the same unique key in the same namespace, even when the enqueues arrive concurrently on different nodes" },
+      "mentions": ["Job.uniqueKey", "Job.namespace", "Job.Scheduled", "Job.Enqueued", "Job.Processing", "Job.Awaiting"],
+      "dependsOn": ["REQ-107"],
+      "notes": "In the Redis ShardByQueue mode the scope is per queue instead (INV-500).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5", "quote": "Uniqueness MUST be enforced by the store (unique index), not by read-then-write." }]
+    },
+    {
+      "id": "INV-101", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "where": "the store supports transactional enqueue", "when": "an application enqueues a job inside its open database transaction", "shall": "make the job visible to workers only if that transaction commits" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-8" }]
+    },
+    {
+      "id": "REQ-153", "kind": "invariant", "status": "draft",
+      "entity": "Job",
+      "ears": { "if": "an application passes a database transaction to a store that does not support transactional enqueue", "shall": "TBD: reject the call with an error that names the capability" },
+      "notes": "Gap: the Redis store reports the capability as missing (REQ-512), but the source does not say what happens if a caller passes a transaction anyway. Rejecting is the safe reading; silently enqueueing outside the transaction would break INV-101. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-8; §4.9.1 RED-10, RED-12" }]
+    },
+    {
+      "id": "INV-102", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Job",
+      "ears": { "when": "an application enqueues several jobs in one bulk call", "shall": "store either all of them or none of them" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-9", "quote": "Bulk operations (EnqueueManyAsync) MUST be atomic" }]
+    },
+    {
+      "id": "REQ-154", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a handler enqueues or schedules a job", "shall": "set the new job's parentId to the running job and carry over the running job's trace context" },
+      "mentions": ["Job.parentId", "Job.traceContext"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-10" }]
+    },
+    {
+      "id": "REQ-155", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Job",
+      "ears": { "when": "an application waits for a job's completion with a timeout", "shall": "return as soon as the job is succeeded, dead-lettered or cancelled, or when the timeout passes, whichever comes first" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-7" }]
+    },
+
+    {
+      "id": "INV-103", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "never let more than one worker hold an unexpired claim on the same job" },
+      "mentions": ["Job.leaseOwner", "Job.leaseExpiresAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-2", "quote": "A job can be claimed by exactly one worker" }]
+    },
+    {
+      "id": "INV-104", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "while": "a processing job's leaseExpiresAt has not passed", "shall": "never recover, requeue or dead-letter the job for lease expiry, however long it has been running" },
+      "mentions": ["Job.leaseExpiresAt"],
+      "rationale": "Recovery keys off the lease deadline, never the original fetch time, so a healthy long-running job is never requeued.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-5; §4.5 EXE-4" }]
+    },
+    {
+      "id": "INV-105", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "decide claims, lease expiry and due times against the database clock, never a node's local clock" },
+      "mentions": ["Job.leaseExpiresAt", "Job.scheduledAt", "Job.retryAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-9", "quote": "Claims and due-checks MUST use the database clock" }]
+    },
+    {
+      "id": "INV-106", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "never run more jobs at once on a node than the node's concurrency limit" },
+      "mentions": ["hosting.Node.concurrencyLimit", "Job.Processing", "Job.leaseOwner"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-1; §4.7 CON-6" }]
+    },
+    {
+      "id": "INV-107", "kind": "invariant", "status": "approved",
+      "entity": "Queue",
+      "ears": { "where": "a queue has a concurrency limit", "shall": "never run more jobs from that queue at once than its limit" },
+      "mentions": ["Queue.concurrencyLimit", "Job.Processing", "Job.queue"],
+      "notes": "Open question: is the per-queue limit per node or across all nodes?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-1" }]
+    },
+    {
+      "id": "INV-108", "kind": "invariant", "status": "approved",
+      "entity": "Throttle",
+      "ears": { "shall": "never let more jobs with the same concurrency key be processing at once, across all nodes, than that key's Max" },
+      "mentions": ["Throttle.max", "Throttle.holders", "Job.concurrencyKey", "Job.Processing"],
+      "notes": "Max = 1 is a distributed mutex; Max = N a semaphore.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-3" }]
+    },
+    {
+      "id": "REQ-156", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "while": "a job's concurrency key is held by Max processing jobs", "shall": "keep the job enqueued and never fail it, retry it or count an attempt for waiting" },
+      "mentions": ["Job.concurrencyKey", "Job.attempt", "Throttle.holders", "Throttle.max"],
+      "notes": "Interaction with INV-110: if the highest-priority job is blocked by its key, ADR-1 implies lower jobs proceed (no head-of-line blocking), so strict priority order only holds among admissible jobs. Confirm with the owner.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-3", "quote": "Jobs blocked by a key wait in the queue; they are never failed for waiting." }]
+    },
+    {
+      "id": "REQ-157", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "Job",
+      "ears": { "where": "a concurrency key is a template such as tenant:{TenantId}", "shall": "fill the key from the job's payload properties at enqueue" },
+      "mentions": ["Job.concurrencyKey", "Job.payload"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-3" }]
+    },
+    {
+      "id": "INV-109", "kind": "invariant", "status": "approved",
+      "entity": "Throttle",
+      "ears": { "where": "a rate limit of N executions per fixed or sliding window is set for a key", "shall": "never start more than N jobs with that key in any window, across all nodes" },
+      "mentions": ["Throttle.rateLimit", "Throttle.window", "Throttle.windowKind", "Job.rateLimitKey"],
+      "notes": "Open questions: does a retry or a recovery restart count as an execution? Does a job blocked by the rate limit stay Enqueued like a concurrency-key wait (REQ-156)? Ask the owner.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-4" }]
+    },
+    {
+      "id": "REQ-158", "kind": "invariant", "status": "approved",
+      "entity": "Throttle",
+      "ears": { "when": "an operator changes a concurrency key's Max or a rate limit through the API or the Throttles page", "shall": "apply the new limit to every following claim on every node without a redeploy" },
+      "mentions": ["Throttle.max", "Throttle.rateLimit"],
+      "notes": "Open question: when Max is lowered below the current number of holders, do the extra holders keep running (the reading here) or are they cancelled?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-4; §4.15 BLT-7", "quote": "a limit can be changed at runtime from the API or the Throttles page without redeploying" }]
+    },
+    {
+      "id": "INV-110", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "where": "a worker uses strict queue priority, which is the default", "shall": "claim from the first queue in the worker's ordered list before any later queue, as long as the first has a claimable job" },
+      "mentions": ["Job.queue"],
+      "notes": "Strict priority can starve later queues indefinitely; LIV-100 is written to make the model report it.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-1", "quote": "order is the documented strict priority (first listed is drained first)" }]
+    },
+    {
+      "id": "REQ-159", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "Job",
+      "ears": { "where": "a worker is configured for weighted round-robin", "shall": "claim from its queues in proportion to their weights instead of strict order" },
+      "mentions": ["Job.queue"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-1" }]
+    },
+    {
+      "id": "INV-111", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "claim jobs within one queue by highest priority first and, for equal priority, in the order they were enqueued" },
+      "mentions": ["Job.priority", "Job.queue"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-2" }]
+    },
+    {
+      "id": "INV-112", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "where": "a separate LongRunning limit is configured", "shall": "never run more jobs tagged LongRunning at once on a node than that limit" },
+      "mentions": ["Job.longRunning", "Job.Processing"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-6" }]
+    },
+    {
+      "id": "REQ-160", "kind": "transition", "status": "approved",
+      "entity": "Queue", "actor": "Operator", "from": ["Active"], "to": ["Paused"],
+      "ears": { "when": "an operator pauses a queue through the API or the dashboard", "shall": "mark the queue paused" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5" }]
+    },
+    {
+      "id": "REQ-161", "kind": "transition", "status": "approved",
+      "entity": "Queue", "actor": "Operator", "from": ["Paused"], "to": ["Active"],
+      "ears": { "when": "an operator resumes a paused queue through the API or the dashboard", "shall": "mark the queue active" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5" }]
+    },
+    {
+      "id": "INV-113", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "while": "a queue is paused", "shall": "never claim a job from that queue" },
+      "mentions": ["Queue.Paused", "Job.queue"],
+      "notes": "Jobs already processing keep running; scheduled jobs are still promoted into the paused queue and wait there. Both are readings, not stated.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5" }]
+    },
+    {
+      "id": "REQ-162", "kind": "transition", "status": "approved",
+      "entity": "Maintenance", "actor": "Operator", "from": ["Off"], "to": ["On"],
+      "ears": { "when": "an operator turns on the global maintenance pause", "shall": "mark maintenance on" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5", "quote": "A global \"maintenance\" pause MUST exist." }]
+    },
+    {
+      "id": "REQ-163", "kind": "transition", "status": "approved",
+      "entity": "Maintenance", "actor": "Operator", "from": ["On"], "to": ["Off"],
+      "ears": { "when": "an operator turns off the global maintenance pause", "shall": "mark maintenance off" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5" }]
+    },
+    {
+      "id": "INV-114", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "while": "maintenance is on", "shall": "never claim any job on any node" },
+      "mentions": ["Maintenance.On"],
+      "notes": "Open question: does maintenance also stop recurring triggers, promotion of scheduled jobs, recovery and cleanup? Only claims are covered here. Ask the owner.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5" }]
+    },
+    {
+      "id": "INV-115", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "promote each due scheduled or failed job exactly once however many nodes run the scheduler, without relying on leader election for correctness" },
+      "mentions": ["Job.Scheduled", "Job.Failed"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-10" }]
+    },
+    {
+      "id": "REQ-164", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "Job",
+      "ears": { "when": "retention cleanup runs", "shall": "let at most one node clean up at a time by holding a short cleanup lease in the store" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-10", "quote": "Cleanup MAY use a short lease to avoid redundant work." }]
+    },
+    {
+      "id": "LIV-100", "kind": "liveness", "status": "approved", "strength": "should",
+      "entity": "Job",
+      "ears": { "while": "a job is enqueued in an active queue, maintenance is off and at least one running worker node serves its queue", "shall": "eventually claim the job" },
+      "mentions": ["Job.Enqueued", "Job.Processing", "Queue.Active", "Maintenance.Off", "hosting.Node.Running"],
+      "notes": "Not stated as such; follows from SCH-1 'runs as soon as a worker is free'. Expected to fail under strict queue priority (INV-110), under a permanently held concurrency key, or behind a stream of higher-priority jobs. That is the finding we want the model to report.",
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-1 (implied)" }]
+    },
+    {
+      "id": "LIV-101", "kind": "liveness", "status": "approved",
+      "entity": "Job",
+      "ears": { "while": "a job is processing and its lease has expired", "shall": "eventually return it to enqueued or dead-letter it, provided at least one node is running" },
+      "mentions": ["Job.Processing", "Job.Enqueued", "Job.DeadLettered", "hosting.Node.Running"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-4", "quote": "Recovery is performed by any live node; there is no single point of failure." }]
+    },
+
+    {
+      "id": "INV-116", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a job changes state", "shall": "record the transition with its timestamp, the node that made it and the reason" },
+      "mentions": ["Job.stateHistory"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-11" }]
+    },
+    {
+      "id": "INV-117", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "an attempt fails", "shall": "store the exception type, message and stack trace and the node that ran the attempt" },
+      "mentions": ["Job.attempts"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-4" }]
+    },
+    {
+      "id": "INV-118", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "never remove a dead-lettered job except when its retention expires or someone deletes it explicitly, and log every removal" },
+      "mentions": ["Job.DeadLettered"],
+      "dependsOn": ["REQ-104"],
+      "notes": "RET-3 says dead-lettered jobs 'MUST never be silently deleted' while STO-7 deletes them after 30 days. My reading is that logged retention removal is not 'silent'. Confirm with the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-3; §4.9 STO-7" }]
+    },
+    {
+      "id": "INV-119", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "keep a job's state history, captured logs and parameters for exactly as long as the job itself" },
+      "mentions": ["Job.stateHistory", "Job.capturedLogs", "Job.parameters"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-7; §4.15 BLT-1" }]
+    },
+    {
+      "id": "INV-120", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "never use type names found in stored data to deserialize a payload, and resolve a job's handler only from the registered job name table" },
+      "mentions": ["Job.name", "Job.payload"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-4; §4.14 SEC-2" }]
+    },
+    {
+      "id": "INV-121", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a stored payload is read", "shall": "ignore properties the job type no longer has and give missing properties their default values" },
+      "mentions": ["Job.payload"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-4" }]
+    },
+    {
+      "id": "INV-122", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a job executes", "shall": "resolve its handler and execution middleware in a dependency-injection scope created for that execution and dispose the scope, asynchronously where services support it, when the execution ends" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-1; §4.5 EXE-1; §4.15 BLT-3; §4.13 EXT-1" }]
+    },
+    {
+      "id": "INV-123", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "where": "the same job metadata is set both by an attribute on the job type and fluently in AddBellhop", "shall": "use the fluent value" },
+      "notes": "Proposed extension, not in the source: per-enqueue options override both (SCH-4, RET-1). Confirm with the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-7", "quote": "with fluent configuration winning" }]
+    },
+    {
+      "id": "INV-124", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Job",
+      "ears": { "where": "a payload property is marked [Sensitive]", "shall": "mask its value in the dashboard, captured logs and traces" },
+      "mentions": ["Job.payload", "Job.capturedLogs"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-9; §4.14 SEC-3" }]
+    },
+    {
+      "id": "INV-125", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Job",
+      "ears": { "where": "several applications share one store under different namespaces", "shall": "never let a worker see or claim a job from another namespace" },
+      "mentions": ["Job.namespace"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-9" }]
+    },
+    {
+      "id": "REQ-165", "kind": "invariant", "status": "proposed",
+      "entity": "Job",
+      "ears": { "while": "a job is processing", "when": "its handler writes a log line through the job-scoped logger at or above the capture level", "shall": "store the line with its timestamp, level, category and structured properties on the job, unless capture is disabled globally or for that job type" },
+      "mentions": ["Job.capturedLogs"],
+      "dependsOn": ["REQ-108"],
+      "notes": "Conflict: DSH-6 says captured logs are opt-in and MAY be stored; BLT-1 says every line at or above Information is captured (MUST) unless disabled. Proposed until the owner decides whether capture is on or off by default.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-1; §4.10 DSH-6", "quote": "Every line written to the job-scoped ILogger ... at or above a configurable level (default Information) is captured to the store" }]
+    },
+    {
+      "id": "INV-126", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "never store more than CapturedLogLimit of captured log lines per job, and mark the point where the log was truncated" },
+      "mentions": ["Job.capturedLogs"],
+      "dependsOn": ["REQ-108"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-1" }]
+    },
+    {
+      "id": "REQ-166", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Processing"],
+      "ears": { "while": "a job is processing", "when": "its handler reports progress with a fraction and an optional message", "shall": "store the latest progress on the job" },
+      "mentions": ["Job.progress"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-6; §4.15 BLT-1" }]
+    },
+    {
+      "id": "REQ-167", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a tag is set at enqueue, by an attribute on the job type, by enqueue middleware or by the running handler", "shall": "store the tag on the job and add it to the job's secondary index" },
+      "mentions": ["Job.tags"],
+      "notes": "Tags are 'key' or 'key:value' strings.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-9; §4.9 STO-11" }]
+    },
+    {
+      "id": "REQ-168", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a job is enqueued", "shall": "capture a correlation id from the current Activity, or from the configured accessor or header when one is set" },
+      "mentions": ["Job.correlationId"],
+      "notes": "Open question: which source wins when more than one is available?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-4" }]
+    },
+    {
+      "id": "INV-127", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "shall": "give every continuation and every job enqueued from a handler the correlation id of its parent" },
+      "mentions": ["Job.correlationId", "Job.parentId"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-4" }]
+    },
+    {
+      "id": "REQ-169", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "a job is enqueued, started, succeeds, fails, is dead-lettered or cancelled, or a recurring occurrence is missed", "shall": "call every IJobEvents handler registered in dependency injection with the matching event" },
+      "notes": "Open questions: is the event raised once cluster-wide, on the node that made the transition, after the store write commits? What happens when an event handler throws: is it logged and ignored, or does it affect the job? Ask the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.6 RET-6; §4.11 OBS-6" }]
+    },
+
+    {
+      "id": "REQ-170", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "Application", "to": ["Awaiting"],
+      "ears": { "when": "an application adds a continuation to a parent job with the condition OnSuccess, OnFailure or OnCompletion", "shall": "store the continuation as awaiting, with its parentId and condition" },
+      "mentions": ["Job.parentId", "Job.continuationCondition"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-3; §4.8 WF-1" }]
+    },
+    {
+      "id": "REQ-171", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Enqueued"],
+      "ears": { "while": "a continuation is awaiting", "when": "its parent succeeds", "if": "the condition is OnSuccess or OnCompletion", "shall": "enqueue the continuation" },
+      "mentions": ["Job.continuationCondition", "Job.Succeeded"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1" }]
+    },
+    {
+      "id": "REQ-172", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Enqueued"],
+      "ears": { "while": "a continuation is awaiting", "when": "its parent is dead-lettered", "if": "the condition is OnFailure or OnCompletion", "shall": "enqueue the continuation" },
+      "mentions": ["Job.continuationCondition", "Job.DeadLettered"],
+      "notes": "Failed (will retry) is not terminal, so OnFailure fires on dead-lettering, not on each failed attempt. That is my reading of WF-1.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1" }]
+    },
+    {
+      "id": "REQ-173", "kind": "transition", "status": "proposed",
+      "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Enqueued"],
+      "ears": { "while": "a continuation is awaiting", "when": "its parent is cancelled", "if": "the condition is OnCompletion", "shall": "enqueue the continuation" },
+      "mentions": ["Job.continuationCondition", "Job.Cancelled"],
+      "notes": "WF-1 says a continuation whose parent is cancelled resolves 'according to its condition' but does not say whether cancellation counts as failure, completion, or neither. My reading: completion yes, failure no. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1" }]
+    },
+    {
+      "id": "REQ-174", "kind": "transition", "status": "proposed",
+      "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Cancelled"],
+      "ears": { "while": "a continuation is awaiting", "when": "its parent succeeds, is dead-lettered or is cancelled", "if": "the parent's outcome does not match the continuation's condition", "shall": "cancel the continuation" },
+      "mentions": ["Job.continuationCondition"],
+      "notes": "WF-1 says the continuation must 'resolve' and never hang, but does not name the state it resolves to. Cancelled is my reading. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1" }]
+    },
+    {
+      "id": "REQ-175", "kind": "transition", "status": "proposed",
+      "entity": "Job", "actor": "Application", "to": ["Enqueued", "Cancelled"],
+      "ears": { "when": "an application adds a continuation to a parent that has already succeeded, been dead-lettered or been cancelled", "shall": "resolve the continuation at once by its condition instead of storing it as awaiting" },
+      "mentions": ["Job.continuationCondition", "Job.parentId"],
+      "notes": "Gap: without this, a continuation added after its parent finished would wait for an event that already happened and hang, violating LIV-102.",
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1 (implied)" }]
+    },
+    {
+      "id": "LIV-102", "kind": "liveness", "status": "approved",
+      "entity": "Job",
+      "ears": { "while": "a continuation is awaiting", "shall": "eventually enqueue or cancel it" },
+      "mentions": ["Job.Awaiting", "Job.Enqueued", "Job.Cancelled"],
+      "notes": "Expected to fail as written when the parent is deleted (REQ-144) or removed by retention (REQ-145) while the continuation waits, or when the parent stays Unroutable. Those are the findings we want the model to report.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1", "quote": "never hang in Awaiting forever" }]
+    },
+    {
+      "id": "REQ-176", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "when": "an application creates a chain of jobs", "shall": "store the first job as enqueued and each later job as a continuation of the one before it, all in one store transaction, so that either the whole chain exists or none of it does" },
+      "mentions": ["Job.parentId", "Job.continuationCondition"],
+      "notes": "Open question: the source does not give the chain's continuation condition. OnSuccess is the obvious reading, which means a dead-lettered step cancels the rest of the chain (REQ-174).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-2" }]
+    },
+    {
+      "id": "REQ-177", "kind": "transition", "status": "approved",
+      "entity": "Batch", "actor": "Application", "to": ["Open"],
+      "ears": { "when": "an application creates a named batch of jobs", "shall": "store the batch and all its member jobs in one store transaction" },
+      "mentions": ["Batch.members", "Job.batchId"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-3" }]
+    },
+    {
+      "id": "REQ-178", "kind": "transition", "status": "approved", "strength": "may",
+      "entity": "Batch", "actor": "Application", "from": ["Open"], "to": ["Open"],
+      "ears": { "while": "a batch is open", "when": "an application adds jobs to it", "shall": "add the jobs to the batch atomically" },
+      "mentions": ["Batch.members"],
+      "notes": "Open question: what ends 'open'? Nothing in the source closes a batch explicitly. This module reads 'open' as 'not every member is finished', so the last member finishing and a concurrent extension race. Is there an explicit Close/Seal call?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-3", "quote": "Batches MAY be extended while open." }]
+    },
+    {
+      "id": "REQ-179", "kind": "transition", "status": "proposed",
+      "entity": "Batch", "actor": "system", "from": ["Open"], "to": ["Succeeded"],
+      "ears": { "while": "a batch is open", "when": "every member job has succeeded", "shall": "mark the batch succeeded" },
+      "mentions": ["Batch.members", "Job.Succeeded"],
+      "notes": "Batch states are my reading of 'aggregate state'. The source does not define them.",
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-3" }]
+    },
+    {
+      "id": "REQ-180", "kind": "transition", "status": "proposed",
+      "entity": "Batch", "actor": "system", "from": ["Open"], "to": ["Completed"],
+      "ears": { "while": "a batch is open", "when": "every member job is succeeded, dead-lettered or cancelled and at least one did not succeed", "shall": "mark the batch completed" },
+      "mentions": ["Batch.members", "Job.DeadLettered", "Job.Cancelled"],
+      "notes": "Open question: if a dead-lettered member is later requeued (REQ-141) and succeeds, does the batch change state again and fire its continuations a second time?",
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-3" }]
+    },
+    {
+      "id": "REQ-181", "kind": "transition", "status": "approved",
+      "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Enqueued"],
+      "ears": { "while": "a batch-level continuation is awaiting", "when": "its batch succeeds, or, for OnBatchCompleted only, its batch completes", "shall": "enqueue the continuation" },
+      "mentions": ["Batch.Succeeded", "Batch.Completed", "Job.batchId", "Job.continuationCondition"],
+      "notes": "An OnBatchSucceeded continuation of a batch that ends Completed resolves like REQ-174 (cancelled), as a proposal.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-3", "quote": "batch-level continuations (OnBatchSucceeded, OnBatchCompleted)" }]
+    }
+  ],
+
+  "scenarios": [
+    {
+      "id": "SCN-100", "title": "Fire-and-forget happy path", "status": "approved",
+      "given": "One running node with a free worker; queue default is active; handler for send-welcome-email is registered.",
+      "steps": [
+        { "req": "REQ-120", "note": "app enqueues send-welcome-email" },
+        { "req": "REQ-123", "note": "worker claims it, attempt 1" },
+        { "req": "REQ-127", "note": "handler returns" }
+      ],
+      "then": "The job is Succeeded with attempt 1 and three recorded transitions."
+    },
+    {
+      "id": "SCN-101", "title": "Retries until dead-lettered", "status": "approved",
+      "given": "A job whose handler always throws; maxAttempts = 2.",
+      "steps": [
+        { "req": "REQ-120" },
+        { "req": "REQ-123", "note": "attempt 1" },
+        { "req": "REQ-129", "note": "throws; retry scheduled" },
+        { "req": "REQ-130", "note": "retryAt passes" },
+        { "req": "REQ-123", "note": "attempt 2" },
+        { "req": "REQ-131", "note": "throws; attempts exhausted" }
+      ],
+      "then": "The job is DeadLettered with two stored attempts, each with exception details and node."
+    },
+    {
+      "id": "SCN-102", "title": "Node crash is recovered by another node", "status": "approved",
+      "given": "Nodes A and B running; job j enqueued; maxAttempts = 5.",
+      "steps": [
+        { "req": "REQ-123", "note": "A claims j, attempt 1" },
+        { "req": "REQ-132", "note": "A crashes; lease expires; B recovers j as Interrupted" },
+        { "req": "REQ-123", "note": "B claims j, attempt 2" },
+        { "req": "REQ-127" }
+      ],
+      "then": "j is Succeeded, its history shows one Interrupted attempt by A and attempt 2 by B."
+    },
+    {
+      "id": "SCN-103", "title": "Healthy long-running job is never recovered", "status": "approved",
+      "given": "Job j is processing on node A for ten times LeaseDuration and A's heartbeats keep succeeding.",
+      "steps": [
+        { "req": "REQ-123" },
+        { "req": "REQ-126", "note": "heartbeat renews lease" },
+        { "req": "REQ-132", "note": "node B tries to recover j" }
+      ],
+      "impossibleAt": 3
+    },
+    {
+      "id": "SCN-104", "title": "Second worker cannot claim a claimed job", "status": "approved",
+      "given": "Job j is enqueued; nodes A and B both have free workers.",
+      "steps": [
+        { "req": "REQ-123", "note": "A claims j" },
+        { "req": "REQ-123", "note": "B tries to claim j" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-105", "title": "Duplicate unique key returns the existing job", "status": "approved",
+      "given": "No jobs exist; policy Ignore.",
+      "steps": [
+        { "req": "REQ-120", "note": "enqueue with UniqueKey = order-42" },
+        { "req": "REQ-150", "note": "enqueue again with UniqueKey = order-42 on another node" }
+      ],
+      "then": "Exactly one active job has key order-42 and the second call returned its id with WasDuplicate = true."
+    },
+    {
+      "id": "SCN-106", "title": "Concurrency key mutex blocks a second job", "status": "approved",
+      "given": "Jobs j1 and j2 are enqueued with concurrency key tenant:7 and Max = 1; two free workers.",
+      "steps": [
+        { "req": "REQ-123", "note": "j1 claimed" },
+        { "req": "REQ-123", "note": "j2 claim attempted while j1 processing" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-107", "title": "Cancelled scheduled job never runs", "status": "approved",
+      "given": "Job j is scheduled for tomorrow.",
+      "steps": [
+        { "req": "REQ-121" },
+        { "req": "REQ-134", "note": "app cancels j" },
+        { "req": "REQ-122", "note": "scheduledAt passes" }
+      ],
+      "impossibleAt": 3
+    },
+    {
+      "id": "SCN-108", "title": "OnFailure continuation runs after dead-letter", "status": "approved",
+      "given": "Parent p has maxAttempts = 1; continuation c is OnFailure of p.",
+      "steps": [
+        { "req": "REQ-120", "note": "p enqueued" },
+        { "req": "REQ-170", "note": "c added, awaiting" },
+        { "req": "REQ-123", "note": "p claimed" },
+        { "req": "REQ-131", "note": "p throws, dead-lettered" },
+        { "req": "REQ-172", "note": "c enqueued" }
+      ],
+      "then": "p is DeadLettered and c is Enqueued."
+    },
+    {
+      "id": "SCN-109", "title": "OnSuccess continuation does not run after dead-letter", "status": "approved",
+      "given": "Parent p has maxAttempts = 1; continuation c is OnSuccess of p.",
+      "steps": [
+        { "req": "REQ-120" },
+        { "req": "REQ-170" },
+        { "req": "REQ-123" },
+        { "req": "REQ-131", "note": "p dead-lettered" },
+        { "req": "REQ-171", "note": "c would be enqueued as if p succeeded" }
+      ],
+      "impossibleAt": 5
+    },
+    {
+      "id": "SCN-110", "title": "Paused queue is not drained", "status": "approved",
+      "given": "Job j is enqueued in queue reports; a free worker serves reports.",
+      "steps": [
+        { "req": "REQ-160", "note": "operator pauses reports" },
+        { "req": "REQ-123", "note": "worker tries to claim j" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-111", "title": "Unroutable job resumes when its handler appears", "status": "approved",
+      "given": "Job j named old-report is enqueued; no running node has a handler for it.",
+      "steps": [
+        { "req": "REQ-124", "note": "j becomes Unroutable" },
+        { "req": "REQ-125", "note": "a node starts that has a handler with alias old-report" },
+        { "req": "REQ-123" },
+        { "req": "REQ-127" }
+      ],
+      "then": "j is Succeeded and was never Failed or DeadLettered."
+    },
+    {
+      "id": "SCN-112", "title": "Requeued dead letter starts again from attempt one", "status": "approved",
+      "given": "Job j is DeadLettered after 5 attempts.",
+      "steps": [
+        { "req": "REQ-141", "note": "operator requeues j" },
+        { "req": "REQ-123", "note": "claimed" }
+      ],
+      "then": "j is Processing with attempt 1."
+    },
+    {
+      "id": "SCN-113", "title": "Rolled-back transactional enqueue never runs", "status": "approved",
+      "given": "PostgreSQL store sharing the application database; app enqueues j inside its transaction and then rolls the transaction back.",
+      "steps": [
+        { "req": "REQ-120", "note": "enqueue inside the transaction" },
+        { "req": "REQ-123", "note": "a worker tries to claim j after the rollback" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-114", "title": "Batch success releases its continuation", "status": "approved",
+      "given": "Batch b has members j1 and j2 and an OnBatchSucceeded continuation c.",
+      "steps": [
+        { "req": "REQ-177" },
+        { "req": "REQ-123", "note": "j1 claimed" },
+        { "req": "REQ-127", "note": "j1 succeeds" },
+        { "req": "REQ-123", "note": "j2 claimed" },
+        { "req": "REQ-127", "note": "j2 succeeds" },
+        { "req": "REQ-179", "note": "b succeeded" },
+        { "req": "REQ-181", "note": "c enqueued" }
+      ],
+      "then": "b is Succeeded and c is Enqueued exactly once."
+    },
+    {
+      "id": "SCN-115", "title": "Shutdown hands an unfinished job to another node", "status": "approved",
+      "given": "Node A is processing j, whose handler ignores cancellation; node B is running.",
+      "steps": [
+        { "req": "REQ-139", "note": "A is draining, ShutdownTimeout passes, token cancelled" },
+        { "req": "REQ-140", "note": "lease released" },
+        { "req": "REQ-123", "note": "B claims j" }
+      ],
+      "then": "j is Processing on B."
+    },
+    {
+      "id": "SCN-116", "title": "Oversized payload is rejected", "status": "approved",
+      "given": "PayloadHardLimit = 1 MB; the app enqueues a job with a 2 MB payload.",
+      "steps": [
+        { "req": "REQ-120", "note": "enqueue with the 2 MB payload" }
+      ],
+      "impossibleAt": 1
+    }
+  ],
+
+  "features": [
+    { "id": "FEAT-100", "name": "Enqueue and schedule", "members": ["REQ-105", "REQ-120", "REQ-121", "REQ-122", "REQ-146", "REQ-147", "REQ-148", "INV-101", "REQ-153", "INV-102", "REQ-154", "REQ-155", "INV-115", "SCN-107", "SCN-113", "SCN-116"] },
+    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115"] },
+    { "id": "FEAT-102", "name": "Retries and dead letters", "members": ["REQ-100", "REQ-129", "REQ-130", "REQ-131", "REQ-141", "REQ-142", "INV-117", "INV-118", "SCN-101", "SCN-112"] },
+    { "id": "FEAT-103", "name": "Uniqueness", "members": ["REQ-107", "REQ-150", "REQ-151", "REQ-152", "INV-100", "SCN-105"] },
+    { "id": "FEAT-104", "name": "Queues, priority, concurrency and throttling", "members": ["REQ-106", "REQ-108", "INV-107", "INV-108", "REQ-156", "REQ-157", "INV-109", "REQ-158", "INV-110", "REQ-159", "INV-111", "INV-112", "REQ-160", "REQ-161", "INV-113", "REQ-162", "REQ-163", "INV-114", "LIV-100", "SCN-106", "SCN-110"] },
+    { "id": "FEAT-105", "name": "Cancellation, requeue and deletion", "members": ["REQ-134", "REQ-135", "REQ-136", "REQ-143", "REQ-144"] },
+    { "id": "FEAT-106", "name": "Continuations, chains and batches", "members": ["REQ-170", "REQ-171", "REQ-172", "REQ-173", "REQ-174", "REQ-175", "LIV-102", "REQ-176", "REQ-177", "REQ-178", "REQ-179", "REQ-180", "REQ-181", "SCN-108", "SCN-109", "SCN-114"] },
+    { "id": "FEAT-107", "name": "Job identity, routing and payloads", "members": ["REQ-101", "REQ-124", "REQ-125", "INV-120", "INV-121", "INV-122", "INV-123", "INV-124", "INV-125", "SCN-111"] },
+    { "id": "FEAT-108", "name": "Retention and cleanup", "members": ["REQ-104", "REQ-109", "REQ-145", "INV-119", "REQ-164"] },
+    { "id": "FEAT-109", "name": "Captured logs, progress, tags, correlation and events", "members": ["REQ-165", "INV-126", "REQ-166", "REQ-167", "REQ-168", "INV-127", "REQ-169"] }
+  ],
+
+  "glossary": {
+    "MaxAttempts": "Total attempts before dead-lettering; 5 by default (REQ-100).",
+    "LeaseDuration": "How long a claim stays valid without a heartbeat; default not yet given (REQ-102).",
+    "HeartbeatInterval": "LeaseDuration / 3 (REQ-102).",
+    "PollInterval": "Idle polling interval; 1 s by default (REQ-103).",
+    "RetentionSucceeded": "24 h by default (REQ-104).",
+    "RetentionCancelled": "7 days by default (REQ-104).",
+    "RetentionDeadLettered": "30 days by default (REQ-104).",
+    "PayloadSoftLimit": "64 KB; above it enqueue logs a warning (REQ-105).",
+    "PayloadHardLimit": "1 MB (256 KB on Redis); above it enqueue is rejected (REQ-105, REQ-513).",
+    "NodeConcurrency": "Proposed default max(8, 2 × ProcessorCount) (REQ-106).",
+    "CapturedLogLimit": "256 KB of captured log lines per job (REQ-108).",
+    "CleanupBatchSize": "500 rows per cleanup batch (REQ-109).",
+    "TimeoutGracePeriod": "Time a handler gets after its timeout token is signalled before it is abandoned; no default yet (REQ-138).",
+    "ResultSizeLimit": "Cap on a stored job result; no default yet (REQ-128).",
+    "active": "For uniqueness: Scheduled, Enqueued, Processing or Awaiting (REQ-107)."
+  }
+}

@@ -1,0 +1,440 @@
+{
+  "schemaVersion": "1.0",
+  "id": "recurring",
+  "name": "Bellhop recurring jobs",
+  "description": "Recurring definitions (code-, runtime- and configuration-defined), startup reconciliation, the atomic trigger on NextRunAt, misfire and overlap policies, time zones and DST, and runtime management. Each occurrence that starts creates a job in the jobs module.",
+  "uses": ["jobs", "hosting"],
+
+  "actors": ["Developer", "Operator", "Host"],
+
+  "entities": [
+    {
+      "name": "RecurringJob",
+      "description": "A named recurring definition.",
+      "states": ["Active", "Paused", "Orphaned"],
+      "initial": ["Active"],
+      "attributes": ["name", "schedule", "timeZone", "nextRunAt", "misfirePolicy", "overlapPolicy", "origin", "allowRuntimeOverride", "activeFrom", "activeUntil", "payload", "lastOutcome"],
+      "bound": 2
+    },
+    {
+      "name": "Occurrence",
+      "description": "One due instant of a recurring job and what was done about it.",
+      "states": ["Waiting", "Started", "Skipped"],
+      "initial": ["Waiting", "Started", "Skipped"],
+      "final": ["Started", "Skipped"],
+      "attributes": ["scheduledFor", "job", "reason"]
+    }
+  ],
+
+  "requirements": [
+    {
+      "id": "REQ-200", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "give every recurring job an explicit IANA time zone, UTC when none is given" },
+      "mentions": ["RecurringJob.timeZone"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-4" }]
+    },
+    {
+      "id": "REQ-201", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "use RunOnce as the default misfire policy and Skip as the default overlap policy" },
+      "mentions": ["RecurringJob.misfirePolicy", "RecurringJob.overlapPolicy"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5, REC-6" }]
+    },
+    {
+      "id": "REQ-202", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "record each recurring job's origin as code (attribute or AddRecurring), runtime (IRecurringJobManager or dashboard) or configuration (Bellhop:RecurringJobs)" },
+      "mentions": ["RecurringJob.origin"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-1; §4.15 BLT-10" }]
+    },
+    {
+      "id": "REQ-203", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Host", "to": ["Active"],
+      "ears": { "when": "a node starts and a code-defined recurring job has no stored definition with its name", "shall": "create the definition with its schedule, time zone, policies and payload, and nextRunAt computed from now" },
+      "mentions": ["RecurringJob.name", "RecurringJob.nextRunAt", "RecurringJob.origin"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3", "quote": "On startup each node MUST upsert code-defined recurring jobs idempotently by name." }]
+    },
+    {
+      "id": "REQ-204", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Host", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
+      "ears": { "when": "a node starts and a code-defined recurring job's stored definition differs from the code", "shall": "update the stored definition to match the code, keeping its paused or active state" },
+      "mentions": ["RecurringJob.schedule", "RecurringJob.origin"],
+      "notes": "Keeping the paused state is my reading. Open questions: (1) during a rolling deploy, nodes on versions N and N+1 may hold different definitions of the same job and will overwrite each other at every start; which wins? (2) if the job has AllowRuntimeOverride and was edited at runtime, does a restart overwrite the edit?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3" }]
+    },
+    {
+      "id": "INV-200", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "shall": "never hold two recurring definitions with the same name, and never fail a node's startup because another node is reconciling the same definitions at the same moment" },
+      "mentions": ["RecurringJob.name"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3", "quote": "Multiple nodes starting simultaneously MUST NOT create duplicates or throw." }]
+    },
+    {
+      "id": "REQ-205", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Host", "from": ["Active", "Paused"], "to": ["Orphaned"],
+      "ears": { "when": "a node starts and a stored code-defined recurring job is no longer declared in code", "if": "the orphan policy is the default", "shall": "mark the job orphaned, which also pauses it, instead of deleting it" },
+      "mentions": ["RecurringJob.origin"],
+      "notes": "Open questions: (1) during a rolling deploy the old version re-creates or updates the job (REQ-203, REQ-204) while the new version orphans it, so the state can flip on every start; (2) what brings an orphaned job back when the code declares it again (REQ-206)?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3", "quote": "A code-defined job removed from code MUST be marked Orphaned and paused, not deleted (configurable)." }]
+    },
+    {
+      "id": "REQ-206", "kind": "transition", "status": "draft",
+      "entity": "RecurringJob", "actor": "Host", "from": ["Orphaned"], "to": ["Active"],
+      "ears": { "when": "a node starts and an orphaned recurring job is declared in code again", "shall": "make the job active again with nextRunAt computed from now" },
+      "notes": "Gap: not in the source; without it Orphaned is a dead end. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3 (implied)" }]
+    },
+    {
+      "id": "REQ-207", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Host", "from": ["Active", "Paused"],
+      "ears": { "when": "a node starts and a stored code-defined recurring job is no longer declared in code", "if": "the orphan policy is set to delete", "shall": "remove the definition" },
+      "mentions": ["RecurringJob.origin"],
+      "notes": "Same event as REQ-205 with the complementary guard. The source only says the orphan behaviour is 'configurable'.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3" }]
+    },
+    {
+      "id": "REQ-208", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Operator", "to": ["Active"],
+      "ears": { "when": "an operator adds a recurring job through IRecurringJobManager or the dashboard and no definition with its name exists", "shall": "create a runtime-defined recurring job with nextRunAt computed from now" },
+      "mentions": ["RecurringJob.origin", "RecurringJob.nextRunAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-1, REC-9" }]
+    },
+    {
+      "id": "REQ-209", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "if": "a schedule expression given through the API or the dashboard is invalid", "shall": "reject the call with an error that says what is wrong and store nothing" },
+      "mentions": ["RecurringJob.schedule"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-2", "quote": "Invalid expressions MUST fail ... at the API call (runtime-defined), never silently." }]
+    },
+    {
+      "id": "REQ-210", "kind": "transition", "status": "approved",
+      "entity": "hosting.Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "a code-defined recurring job has an invalid schedule expression", "shall": "stop the node from starting with a message that names the job and the expression" },
+      "mentions": ["RecurringJob.schedule", "RecurringJob.origin"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-2", "quote": "Invalid expressions MUST fail at startup (code-defined)" }]
+    },
+    {
+      "id": "REQ-211", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "if": "an operator edits a code-defined recurring job through the API or the dashboard and the job is not marked AllowRuntimeOverride", "shall": "reject the edit with a message saying the job is defined in code" },
+      "mentions": ["RecurringJob.origin", "RecurringJob.allowRuntimeOverride"],
+      "notes": "Open question: does 'edit' include pause, resume, trigger now and remove? Pausing a code-defined job from the dashboard seems intended (CON-5) but is an edit of its state.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3; §4.15 BLT-10" }]
+    },
+    {
+      "id": "REQ-212", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Operator", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
+      "ears": { "when": "an operator updates a runtime-defined recurring job, or a code-defined one marked AllowRuntimeOverride", "shall": "store the new definition" },
+      "mentions": ["RecurringJob.origin", "RecurringJob.allowRuntimeOverride"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9" }]
+    },
+    {
+      "id": "REQ-213", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Operator", "from": ["Active", "Paused", "Orphaned"],
+      "ears": { "when": "an operator removes a recurring job", "shall": "delete the definition" },
+      "notes": "Open question: removing a code-defined job at runtime would be undone at the next start (REQ-203). Is remove refused for code-defined jobs like edit (REQ-211)?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9" }]
+    },
+    {
+      "id": "REQ-214", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Operator", "from": ["Active"], "to": ["Paused"],
+      "ears": { "when": "an operator pauses a recurring job through the API or the dashboard", "shall": "mark the job paused" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9; §4.7 CON-5" }]
+    },
+    {
+      "id": "REQ-215", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Operator", "from": ["Paused"], "to": ["Active"],
+      "ears": { "when": "an operator resumes a paused recurring job", "shall": "mark the job active and compute nextRunAt from now" },
+      "mentions": ["RecurringJob.nextRunAt"],
+      "notes": "'From now' is my reading, by analogy with REC-10. Open question: are occurrences missed while paused subject to the misfire policy (a RunOnce catch-up on resume) or simply dropped?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9" }]
+    },
+    {
+      "id": "INV-201", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "while": "a recurring job is paused or orphaned", "shall": "never create an occurrence for it on schedule" },
+      "mentions": ["RecurringJob.Paused", "RecurringJob.Orphaned"],
+      "notes": "'Trigger now' (REQ-226) on a paused job is not covered by the source.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.7 CON-5; §4.4 REC-3" }]
+    },
+    {
+      "id": "INV-202", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "where": "a recurring job has a validity window", "shall": "never create an occurrence on schedule before ActiveFrom or after ActiveUntil" },
+      "mentions": ["RecurringJob.activeFrom", "RecurringJob.activeUntil"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-10" }]
+    },
+    {
+      "id": "REQ-216", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "system", "from": ["Active"], "to": ["Active"],
+      "ears": { "while": "a recurring job is active", "when": "its nextRunAt has passed according to the database clock", "shall": "in one compare-and-set on nextRunAt, advance nextRunAt to the next occurrence after now and create the occurrence or occurrences its misfire policy calls for" },
+      "mentions": ["RecurringJob.nextRunAt", "RecurringJob.misfirePolicy"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-7", "quote": "Triggering MUST be an atomic compare-and-set on the stored NextRunAt so that N nodes produce exactly one occurrence." }]
+    },
+    {
+      "id": "INV-203", "kind": "invariant", "status": "approved",
+      "entity": "Occurrence",
+      "ears": { "shall": "create at most one occurrence for each due instant of a recurring job, however many nodes run the scheduler" },
+      "mentions": ["Occurrence.scheduledFor", "RecurringJob.nextRunAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-7" }]
+    },
+    {
+      "id": "REQ-217", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job is triggered after one or more due instants were missed", "if": "the misfire policy is RunOnce", "shall": "create a single catch-up occurrence for all missed instants" },
+      "mentions": ["RecurringJob.misfirePolicy"],
+      "notes": "Open question: when is an instant 'missed' rather than just a little late? A node polling once per second is always slightly late; a threshold (misfire tolerance) is needed so that Skip does not drop on-time runs. Ask the owner.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5" }]
+    },
+    {
+      "id": "REQ-218", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job is triggered after one or more due instants were missed", "if": "the misfire policy is Skip", "shall": "create no occurrence for the missed instants and only advance nextRunAt to the next future occurrence" },
+      "mentions": ["RecurringJob.misfirePolicy", "RecurringJob.nextRunAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5" }]
+    },
+    {
+      "id": "REQ-219", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job is triggered after one or more due instants were missed", "if": "the misfire policy is RunAll with a maximum", "shall": "create one occurrence per missed instant, up to that maximum" },
+      "mentions": ["RecurringJob.misfirePolicy"],
+      "notes": "Open question: when more instants were missed than the maximum, are the oldest or the newest kept?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5" }]
+    },
+    {
+      "id": "REQ-220", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job is triggered after one or more due instants were missed", "shall": "log how the missed instants were handled and why, and raise the recurring-missed event" },
+      "notes": "The event is consumed by notifications (REQ-403) and IJobEvents (REQ-169).",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5; §4.6 RET-6" }]
+    },
+    {
+      "id": "REQ-221", "kind": "transition", "status": "approved",
+      "entity": "Occurrence", "actor": "system", "to": ["Started"],
+      "ears": { "when": "an occurrence is created and no earlier occurrence of the same recurring job is still running", "shall": "enqueue a job with the recurring job's payload and record the occurrence as started" },
+      "mentions": ["Occurrence.job", "RecurringJob.payload", "jobs.Job.Enqueued"],
+      "notes": "Recurring jobs may carry a payload, so one job type can have many recurring instances, for example one per tenant (REC-8). Open question: 'still running' is not defined. Does a previous occurrence that is Failed (waiting to retry) count?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6, REC-8" }]
+    },
+    {
+      "id": "REQ-222", "kind": "transition", "status": "approved",
+      "entity": "Occurrence", "actor": "system", "to": ["Skipped"],
+      "ears": { "when": "an occurrence is created while an earlier occurrence of the same recurring job is still running", "if": "the overlap policy is Skip", "shall": "start nothing and record the occurrence as skipped" },
+      "mentions": ["RecurringJob.overlapPolicy", "Occurrence.reason"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6", "quote": "Skip (default: do not start if the previous run is still active; record a Skipped occurrence)" }]
+    },
+    {
+      "id": "REQ-223", "kind": "transition", "status": "approved",
+      "entity": "Occurrence", "actor": "system", "to": ["Waiting"],
+      "ears": { "when": "an occurrence is created while an earlier occurrence of the same recurring job is still running", "if": "the overlap policy is Queue", "shall": "record the occurrence as waiting for the earlier one to finish" },
+      "mentions": ["RecurringJob.overlapPolicy"],
+      "notes": "Open question: if a run lasts several periods, do waiting occurrences pile up without limit, or is at most one kept?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6", "quote": "Queue (start after the previous finishes)" }]
+    },
+    {
+      "id": "REQ-224", "kind": "transition", "status": "approved",
+      "entity": "Occurrence", "actor": "system", "from": ["Waiting"], "to": ["Started"],
+      "ears": { "while": "an occurrence is waiting", "when": "the earlier occurrence's job succeeds, is dead-lettered or is cancelled", "shall": "enqueue a job for the waiting occurrence and record it as started" },
+      "mentions": ["Occurrence.job", "jobs.Job.Succeeded", "jobs.Job.DeadLettered", "jobs.Job.Cancelled"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6" }]
+    },
+    {
+      "id": "REQ-225", "kind": "transition", "status": "approved",
+      "entity": "Occurrence", "actor": "system", "to": ["Started"],
+      "ears": { "when": "an occurrence is created while an earlier occurrence of the same recurring job is still running", "if": "the overlap policy is Allow or CancelPrevious", "shall": "enqueue a job for the new occurrence and record it as started, and under CancelPrevious also request cancellation of the earlier occurrence's job" },
+      "mentions": ["RecurringJob.overlapPolicy", "Occurrence.job", "jobs.Job.cancelRequested"],
+      "notes": "Under CancelPrevious the two runs overlap until the earlier handler honours its token.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6" }]
+    },
+    {
+      "id": "INV-204", "kind": "invariant", "status": "approved",
+      "entity": "Occurrence",
+      "ears": { "where": "a recurring job's overlap policy is Skip or Queue", "shall": "never have two of its occurrences' jobs processing at the same time on any nodes" },
+      "mentions": ["RecurringJob.overlapPolicy", "jobs.Job.Processing"],
+      "notes": "Expected to fail when a lease expires and the job is recovered while the original node still runs it (the at-least-once window, REQ-10). The model should report that case.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6", "quote": "enforced by the store across nodes" }]
+    },
+    {
+      "id": "INV-205", "kind": "invariant", "status": "approved",
+      "entity": "Occurrence",
+      "ears": { "shall": "never fail a job, throw an exception or wait on a lock timeout because of an overlap decision" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-6", "quote": "No distributed lock timeouts, no exceptions." }]
+    },
+    {
+      "id": "REQ-226", "kind": "transition", "status": "approved",
+      "entity": "Occurrence", "actor": "Operator", "to": ["Started", "Waiting", "Skipped"],
+      "ears": { "when": "an operator triggers a recurring job now, optionally with an overridden payload", "shall": "create an occurrence immediately using the overridden payload if one was given" },
+      "mentions": ["RecurringJob.payload"],
+      "notes": "Open questions: does the overlap policy apply to a manual trigger (all three outcomes listed until answered)? Does it change nextRunAt? Is it allowed while the job is paused?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9; §4.15 BLT-10" }]
+    },
+    {
+      "id": "REQ-227", "kind": "transition", "status": "approved",
+      "entity": "RecurringJob", "actor": "Operator", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
+      "ears": { "when": "a recurring job's schedule changes", "shall": "compute nextRunAt from now, never from the last execution, and create no catch-up occurrence for the old schedule" },
+      "mentions": ["RecurringJob.schedule", "RecurringJob.nextRunAt"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-10" }]
+    },
+    {
+      "id": "REQ-228", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job's next occurrence falls on a local time skipped by a daylight-saving change", "shall": "run it once at the next valid instant" },
+      "mentions": ["RecurringJob.timeZone"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-4" }]
+    },
+    {
+      "id": "REQ-229", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job's next occurrence falls on a local time repeated by a daylight-saving change", "shall": "run it once" },
+      "mentions": ["RecurringJob.timeZone"],
+      "notes": "Open question: once at the first or the second instance of the repeated time? And does an interval schedule (Every) follow wall-clock or elapsed time across DST?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-4" }]
+    },
+    {
+      "id": "REQ-230", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "an operator asks for a recurring job's next N occurrences", "shall": "compute them from its schedule in its own time zone" },
+      "mentions": ["RecurringJob.schedule", "RecurringJob.timeZone"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9" }]
+    },
+    {
+      "id": "REQ-231", "kind": "invariant", "status": "approved",
+      "entity": "RecurringJob",
+      "ears": { "when": "an occurrence's job succeeds, is dead-lettered or is cancelled, or an occurrence is skipped", "shall": "record that outcome as the recurring job's last outcome" },
+      "mentions": ["RecurringJob.lastOutcome"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9" }]
+    },
+    {
+      "id": "REQ-232", "kind": "transition", "status": "approved", "strength": "may",
+      "entity": "RecurringJob", "actor": "system", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
+      "ears": { "where": "recurring jobs are defined in configuration under Bellhop:RecurringJobs", "when": "that configuration changes", "shall": "apply the added and changed definitions without a restart" },
+      "mentions": ["RecurringJob.origin"],
+      "notes": "Open questions: what happens to a definition removed from configuration (orphaned like code, or deleted)? Are configuration-defined jobs read-only in the UI like code-defined ones? With several nodes, which node's configuration wins?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-10", "quote": "Recurring jobs MAY also be defined in configuration (Bellhop:RecurringJobs) with IOptionsMonitor hot reload" }]
+    }
+  ],
+
+  "scenarios": [
+    {
+      "id": "SCN-200", "title": "Two nodes, one occurrence", "status": "approved",
+      "given": "nightly-cleanup is active with nextRunAt 03:00; nodes A and B both poll at 03:00:00.",
+      "steps": [
+        { "req": "REQ-216", "note": "A wins the compare-and-set" },
+        { "req": "REQ-221", "note": "A enqueues the occurrence" },
+        { "req": "REQ-216", "note": "B tries the same compare-and-set on the old nextRunAt" }
+      ],
+      "impossibleAt": 3
+    },
+    {
+      "id": "SCN-201", "title": "Overlap Skip records a skipped occurrence", "status": "approved",
+      "given": "A job runs every minute with overlap Skip; the 10:00 run is still processing at 10:01.",
+      "steps": [
+        { "req": "REQ-216", "note": "10:01 trigger" },
+        { "req": "REQ-222" }
+      ],
+      "then": "The 10:01 occurrence is Skipped, no second job was enqueued and the 10:00 job is still the only one processing."
+    },
+    {
+      "id": "SCN-202", "title": "Paused job does not fire", "status": "approved",
+      "given": "nightly-cleanup is active with nextRunAt 03:00.",
+      "steps": [
+        { "req": "REQ-214", "note": "operator pauses at 02:00" },
+        { "req": "REQ-216", "note": "03:00 passes" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-203", "title": "Schedule change creates no catch-up", "status": "approved",
+      "given": "A job runs hourly; last run 09:00; at 09:30 the schedule changes to daily at 08:00.",
+      "steps": [
+        { "req": "REQ-227" }
+      ],
+      "then": "nextRunAt is 08:00 tomorrow and no occurrence was created for 08:00 today or for 10:00."
+    },
+    {
+      "id": "SCN-204", "title": "Removed from code becomes orphaned, not deleted", "status": "approved",
+      "given": "weekly-report is stored as code-defined and active; a new release no longer declares it; orphan policy is the default.",
+      "steps": [
+        { "req": "REQ-205" }
+      ],
+      "then": "weekly-report is Orphaned, still stored, and creates no occurrences."
+    },
+    {
+      "id": "SCN-205", "title": "Dashboard cannot edit a code-defined job", "status": "approved",
+      "given": "nightly-cleanup is code-defined without AllowRuntimeOverride.",
+      "steps": [
+        { "req": "REQ-212", "note": "operator changes the schedule from the dashboard" }
+      ],
+      "impossibleAt": 1
+    },
+    {
+      "id": "SCN-206", "title": "RunOnce catches up once after downtime", "status": "approved",
+      "given": "An hourly job with misfire RunOnce; all nodes were down from 01:30 to 05:10.",
+      "steps": [
+        { "req": "REQ-216", "note": "first poll at 05:10" },
+        { "req": "REQ-217" },
+        { "req": "REQ-221" }
+      ],
+      "then": "Exactly one catch-up occurrence was started, the miss was logged with its reason, and nextRunAt is 06:00."
+    },
+    {
+      "id": "SCN-207", "title": "Simultaneous startup creates one definition", "status": "approved",
+      "given": "An empty store; nodes A and B start at the same moment, both declaring nightly-cleanup in code.",
+      "steps": [
+        { "req": "REQ-203", "note": "A creates it" },
+        { "req": "REQ-203", "note": "B tries to create it too" }
+      ],
+      "impossibleAt": 2
+    }
+  ],
+
+  "features": [
+    { "id": "FEAT-200", "name": "Definitions and reconciliation", "members": ["REQ-202", "REQ-203", "REQ-204", "INV-200", "REQ-205", "REQ-206", "REQ-207", "REQ-208", "REQ-209", "REQ-210", "REQ-211", "REQ-212", "REQ-213", "REQ-232", "SCN-204", "SCN-205", "SCN-207"] },
+    { "id": "FEAT-201", "name": "Triggering and misfire", "members": ["REQ-201", "REQ-214", "REQ-215", "INV-201", "INV-202", "REQ-216", "INV-203", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-226", "REQ-227", "REQ-230", "REQ-231", "SCN-200", "SCN-202", "SCN-203", "SCN-206"] },
+    { "id": "FEAT-202", "name": "Overlap", "members": ["REQ-221", "REQ-222", "REQ-223", "REQ-224", "REQ-225", "INV-204", "INV-205", "SCN-201"] },
+    { "id": "FEAT-203", "name": "Time zones and DST", "members": ["REQ-200", "REQ-228", "REQ-229"] }
+  ],
+
+  "glossary": {
+    "misfirePolicy": "RunOnce (default: one catch-up), Skip (jump to the next future occurrence) or RunAll(max) (REQ-217 to REQ-219).",
+    "overlapPolicy": "Skip (default), Queue, Allow or CancelPrevious (REQ-221 to REQ-225).",
+    "origin": "code, runtime or configuration (REQ-202).",
+    "Orphaned": "A code-defined job no longer declared in code; kept and paused (REQ-205)."
+  }
+}
