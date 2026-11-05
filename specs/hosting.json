@@ -1,0 +1,359 @@
+{
+  "schemaVersion": "1.0",
+  "id": "hosting",
+  "name": "Bellhop hosting, configuration, startup, health and shutdown",
+  "description": "What a node does from registration to shutdown: option handling, store selection, schema migration, node modes, the startup summary, the health check and graceful shutdown. Also holds product-level context (scope, principles, non-goals, phasing, design decisions) as info items. Job-level effects of shutdown live in the jobs module.",
+
+  "uses": ["jobs"],
+
+  "actors": ["Developer", "Host"],
+
+  "entities": [
+    {
+      "name": "Node",
+      "description": "One running process hosting Bellhop.",
+      "states": ["Starting", "Running", "Draining", "Stopped", "StartupFailed"],
+      "initial": ["Starting"],
+      "final": ["Stopped", "StartupFailed"],
+      "attributes": ["mode", "environment", "concurrencyLimit", "clockSkew", "inFlightJobs"],
+      "bound": 2
+    },
+    {
+      "name": "Store",
+      "description": "The configured job store as seen by a node.",
+      "attributes": ["kind", "schemaVersion", "expectedSchemaVersion", "autoMigrate", "capabilities", "reachable"]
+    },
+    {
+      "name": "Options",
+      "description": "Bellhop options after binding configuration and code.",
+      "attributes": ["configurationValue", "codeValue", "effectiveValue", "valid"]
+    },
+    {
+      "name": "Health",
+      "description": "The result reported by the Bellhop health check on a node.",
+      "states": ["Healthy", "Degraded", "Unhealthy"],
+      "initial": ["Healthy"],
+      "attributes": ["schedulingLag", "deadLetterGrowth", "failuresInWindow", "nodesAlive"]
+    }
+  ],
+
+  "requirements": [
+    {
+      "id": "REQ-1", "kind": "info", "status": "approved",
+      "ears": { "shall": "be a durable background-job library for .NET applications covering fire-and-forget, delayed and recurring jobs, continuations, chains and batches, retries, dead-lettering, cancellation and timeouts, multi-node execution over a shared store, a dashboard, observability and testing support" },
+      "sources": [{ "document": "requirements.md", "section": "§1" }]
+    },
+    {
+      "id": "REQ-2", "kind": "info", "status": "approved",
+      "ears": { "shall": "follow the product principles P1 to P9: three lines to a working system; one obvious way to define a job; correct under concurrency by construction; boring storage; secure and explicit by default; nothing is silent; testable without statics; trustworthy versioning and licensing; build in what everyone installs" },
+      "notes": "Every consequence listed in the principles table is restated by a concrete requirement elsewhere (P1: NFR-1; P2: TECH-14, TECH-15; P3: INV-103, INV-115, INV-203, TECH-51; P4: TECH-31, TECH-36, TECH-9, TECH-105; P5: REQ-301, INV-120, REQ-9; P6: NFR-51; P7: NFR-53, TECH-12, TECH-102; P8: NFR-20, NFR-37, NFR-18; P9: REQ-6). Kept here as context only.",
+      "sources": [{ "document": "requirements.md", "section": "§2" }]
+    },
+    {
+      "id": "REQ-3", "kind": "info", "status": "approved",
+      "ears": { "shall": "define a job as data (a name plus a JSON document) with behaviour in a separate DI-constructed handler, so that renames, refactors and rolling deploys cannot break stored jobs" },
+      "rationale": "Answers the grievances in research.md §1.4 and §1.5; it is the pattern .NET developers know from MediatR, Wolverine, Brighter and MassTransit.",
+      "sources": [{ "document": "requirements.md", "section": "§3", "quote": "the stored record is a name plus a JSON document, so renames, refactors and rolling deploys cannot break it" }]
+    },
+    {
+      "id": "REQ-4", "kind": "info", "status": "approved",
+      "ears": { "shall": "not be a message bus, pub/sub system or cross-language job executor" },
+      "sources": [{ "document": "requirements.md", "section": "§1, §7" }]
+    },
+    {
+      "id": "REQ-5", "kind": "info", "status": "approved",
+      "ears": { "shall": "not provide sagas, compensation, human-in-the-loop tasks or long-lived workflow state" },
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-5, §7" }]
+    },
+    {
+      "id": "REQ-6", "kind": "info", "status": "approved",
+      "ears": { "shall": "offer no plugin API for third-party dashboard pages, job states or claim semantics; extension is through DI hooks and the JSON API only" },
+      "rationale": "ADR-3, decided by the project owner on 2026-11-03: the most-installed Hangfire plugin functionality is built in instead.",
+      "sources": [{ "document": "requirements.md", "section": "§2 P9, §4.13, §7, Appendix A ADR-3" }]
+    },
+    {
+      "id": "REQ-7", "kind": "info", "status": "approved",
+      "ears": { "shall": "not offer exactly-once execution; delivery is at-least-once with idempotency tooling" },
+      "dependsOn": ["REQ-10"],
+      "sources": [{ "document": "requirements.md", "section": "§7" }]
+    },
+    {
+      "id": "REQ-8", "kind": "info", "status": "approved",
+      "ears": { "shall": "not ship in v1: first-party MongoDB or MySQL stores, a hosted SaaS control plane, vendor-specific notification SDKs, remote execution agents, arbitrary script execution from the dashboard, Windows-specific features, or Hangfire's expression-based Enqueue(() => ...) API" },
+      "notes": "A Hangfire migration guide is promised (NFR-30). Whether a legacy adapter package ships is open (TECH-125).",
+      "sources": [{ "document": "requirements.md", "section": "§7; §4.15 'Not carried over'" }]
+    },
+    {
+      "id": "REQ-9", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "an option fails validation", "shall": "stop the node from starting and report a message that names the option and the fix" },
+      "mentions": ["Options.valid"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-3", "quote": "Options MUST be validated at startup (ValidateOnStart) with messages that name the option and the fix." }]
+    },
+    {
+      "id": "REQ-10", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "treat job delivery as at-least-once: a job may start more than once within the duplicate window, which equals the lease length (LeaseDuration)" },
+      "notes": "Defined here because several modules rely on it; LeaseDuration itself is REQ-102 in the jobs module.",
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-5" }]
+    },
+    {
+      "id": "REQ-11", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "allow a node mode of Both, ClientOnly (enqueue only, no workers) or WorkerOnly, with Both as the default (NodeMode)" },
+      "mentions": ["Node.mode"],
+      "notes": "Open question: what WorkerOnly forbids is not stated. Handlers enqueue jobs (continuations, SCH-10), so WorkerOnly cannot mean 'no client'. Does it mean 'no dashboard'? Does a ClientOnly node run the distributed scheduler (promotion, recurring triggers, recovery)? Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
+    },
+    {
+      "id": "REQ-12", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "to": ["Starting"],
+      "ears": { "when": "the host starts", "shall": "start the Bellhop node and only then connect to the store, check the schema and reconcile code-defined recurring jobs" },
+      "mentions": ["Store.reachable", "Store.schemaVersion"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5", "quote": "Database connectivity, schema checks and job reconciliation happen in the hosted service, after the host starts." }]
+    },
+    {
+      "id": "REQ-13", "kind": "invariant", "status": "approved",
+      "entity": "Store",
+      "ears": { "while": "services are being registered and the host has not started", "shall": "perform no I/O: no store connection, no schema check and no job reconciliation" },
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5", "quote": "Registration MUST NOT perform I/O." }]
+    },
+    {
+      "id": "REQ-14", "kind": "invariant", "status": "approved",
+      "entity": "Node",
+      "ears": { "where": "the process runs build-time tooling such as OpenAPI generation or EF Core design-time services", "shall": "not start the scheduler or any worker" },
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5" }]
+    },
+    {
+      "id": "REQ-15", "kind": "invariant", "status": "approved",
+      "entity": "Store",
+      "ears": { "if": "no store is configured", "shall": "use the in-memory store" },
+      "mentions": ["Store.kind"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-2" }]
+    },
+    {
+      "id": "REQ-16", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "no store is configured and the environment is not Development", "shall": "log a warning that the in-memory store is in use" },
+      "mentions": ["Store.kind", "Node.environment"],
+      "dependsOn": ["REQ-15"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-2" }]
+    },
+    {
+      "id": "REQ-17", "kind": "invariant", "status": "approved",
+      "entity": "Options",
+      "ears": { "where": "an option is set both in configuration (the Bellhop section) and in code", "shall": "use the value set in code" },
+      "mentions": ["Options.configurationValue", "Options.codeValue", "Options.effectiveValue"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-3", "quote": "All options MUST be bindable from IConfiguration (\"Bellhop\": { ... }) and overridable in code." }]
+    },
+    {
+      "id": "REQ-18", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the schema version matches and all startup checks have passed", "shall": "mark the node running and start the scheduler and the workers its mode allows" },
+      "mentions": ["Node.mode", "Store.reachable", "Store.schemaVersion"],
+      "dependsOn": ["REQ-11"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5, SET-7; §4.5 EXE-10" }]
+    },
+    {
+      "id": "REQ-19", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the schema version matches and all startup checks have passed", "shall": "log a one-screen summary with the store and schema version, the node mode, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
+      "mentions": ["Store.schemaVersion", "Node.mode", "Node.concurrencyLimit"],
+      "notes": "Same event as REQ-18 with a second consequence; the agent should model one action. The Redis store adds the server family to the summary (REQ-500). Secrets never appear in it (NFR-41).",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-8" }]
+    },
+    {
+      "id": "REQ-20", "kind": "invariant", "status": "approved",
+      "entity": "Node",
+      "ears": { "while": "a node's mode is ClientOnly", "shall": "never claim or execute a job on that node" },
+      "mentions": ["Node.mode", "jobs.Job.Processing"],
+      "dependsOn": ["REQ-11"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7", "quote": "ClientOnly (enqueue only, no workers)" }]
+    },
+    {
+      "id": "REQ-21", "kind": "assumption", "status": "proposed",
+      "ears": { "shall": "default AutoMigrate to true in every environment (AutoMigrate)" },
+      "mentions": ["Store.autoMigrate"],
+      "notes": "STO-3 says the default is true, but §9 question 4 still asks whether it should be true only in Development. Kept proposed until the owner answers.",
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3; §9 Q4" }]
+    },
+    {
+      "id": "REQ-22", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "AutoMigrate is on and the stored schema version is older than the expected version", "shall": "apply the embedded migrations up to the expected version and log what it did" },
+      "mentions": ["Store.autoMigrate", "Store.schemaVersion", "Store.expectedSchemaVersion"],
+      "dependsOn": ["REQ-21"],
+      "notes": "Open question: several nodes starting at once may all try to migrate. Migrations are idempotent (REQ-24) but concurrent application is not addressed. Ask the owner whether a migration lock or 'first writer wins' is intended.",
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3" }]
+    },
+    {
+      "id": "REQ-23", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "AutoMigrate is off and the stored schema version differs from the expected version", "shall": "stop the node from starting with a message that includes the path of the migration script" },
+      "mentions": ["Store.autoMigrate", "Store.schemaVersion", "Store.expectedSchemaVersion"],
+      "notes": "Interacts with rolling deploys (NFR-18): version N+1 must accept schema N. Open question: is 'differs' meant literally, or does a node accept a schema one version ahead or behind during a rolling deploy?",
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3", "quote": "a version mismatch MUST fail fast at startup with the script path in the message" }]
+    },
+    {
+      "id": "REQ-24", "kind": "invariant", "status": "approved",
+      "entity": "Store",
+      "ears": { "when": "a migration that is already applied is applied again", "shall": "leave the schema unchanged" },
+      "mentions": ["Store.schemaVersion"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3", "quote": "Migrations are embedded, versioned and idempotent." }]
+    },
+    {
+      "id": "REQ-25", "kind": "transition", "status": "draft",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting", "StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "the store is unreachable", "shall": "TBD: keep retrying with backoff while reporting Unhealthy, or stop the node from starting" },
+      "mentions": ["Store.reachable", "Health.Unhealthy"],
+      "notes": "Gap: the source does not say what happens when the store is down at startup. Both outcomes are listed so the gap is visible. Ask the owner.",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5; §4.11 OBS-5 (implied)" }]
+    },
+    {
+      "id": "REQ-26", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "system", "from": ["Running"], "to": ["Running"],
+      "ears": { "while": "a node is running", "if": "the node's clock differs from the database clock by more than ClockSkewThreshold", "shall": "log a warning that names the measured skew" },
+      "mentions": ["Node.clockSkew"],
+      "notes": "ClockSkewThreshold has no value in the source. Ask the owner for a default.",
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-9", "quote": "Bellhop MUST warn when node clock skew exceeds a threshold." }]
+    },
+    {
+      "id": "REQ-27", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Running"], "to": ["Draining"],
+      "ears": { "while": "a node is running", "when": "the host stops", "shall": "stop claiming new jobs on that node" },
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6" }]
+    },
+    {
+      "id": "REQ-28", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "give in-flight jobs ShutdownTimeout to finish after the host stops, 30 seconds by default (ShutdownTimeout)" },
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6" }]
+    },
+    {
+      "id": "REQ-29", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Draining"], "to": ["Stopped"],
+      "ears": { "while": "a node is draining", "when": "every in-flight job has finished, or ShutdownTimeout has passed and the remaining jobs' tokens were cancelled and their leases released", "shall": "stop the node" },
+      "mentions": ["Node.inFlightJobs", "jobs.Job.Processing"],
+      "dependsOn": ["REQ-28"],
+      "notes": "The job side (cancel token, release lease, job returns to Enqueued) is REQ-140 in the jobs module.",
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6" }]
+    },
+    {
+      "id": "REQ-30", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
+      "ears": { "if": "an internal error stalls processing (store error, scheduler error, serialization error or recovery error)", "shall": "report the node Unhealthy" },
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-3", "quote": "An error that would stall processing MUST also flip the health check." }]
+    },
+    {
+      "id": "REQ-31", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
+      "ears": { "when": "the health check runs", "if": "the store is unreachable", "shall": "report the node Unhealthy" },
+      "mentions": ["Store.reachable"],
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5; §4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-32", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
+      "ears": { "when": "the health check runs", "if": "the stored schema version does not match the expected version", "shall": "report the node Unhealthy" },
+      "mentions": ["Store.schemaVersion", "Store.expectedSchemaVersion"],
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5" }]
+    },
+    {
+      "id": "REQ-33", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
+      "ears": { "when": "the health check runs", "if": "the node's worker loop is not alive", "shall": "report the node Unhealthy" },
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5" }]
+    },
+    {
+      "id": "REQ-34", "kind": "transition", "status": "proposed",
+      "entity": "Health", "actor": "system", "from": ["Healthy"], "to": ["Degraded"],
+      "ears": { "when": "the health check runs", "if": "scheduling lag exceeds SchedulingLagThreshold, dead-letter growth exceeds DeadLetterGrowthThreshold, failures in the window exceed FailureThreshold, or fewer than MinNodesAlive nodes are alive", "shall": "report the node Degraded" },
+      "mentions": ["Health.schedulingLag", "Health.deadLetterGrowth", "Health.failuresInWindow", "Health.nodesAlive"],
+      "notes": "The source lists these checks with 'configurable thresholds' but gives no defaults and does not say whether breaching one is Degraded or Unhealthy. Degraded is my reading. Ask the owner for the defaults and the level.",
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5; §4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-35", "kind": "transition", "status": "proposed",
+      "entity": "Health", "actor": "system", "from": ["Degraded", "Unhealthy"], "to": ["Healthy"],
+      "ears": { "when": "the health check runs", "if": "every check passes", "shall": "report the node Healthy" },
+      "notes": "Gap: the source never says how health recovers. Inferred so Degraded and Unhealthy are not dead ends.",
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5 (implied)" }]
+    },
+    {
+      "id": "REQ-36", "kind": "info", "status": "approved",
+      "ears": { "shall": "be delivered in three milestones: M1 core preview (job model, IJobClient, in-memory and PostgreSQL stores, fire-and-forget, delayed and recurring jobs, retries and dead letters, leases and recovery, OpenTelemetry, health check, Bellhop.Testing, read-only dashboard); M2 1.0 (SQL Server, SQLite and Redis stores, continuations, chains and batches, unique and concurrency keys, the full dashboard, BLT-1 to BLT-12, EF Core enqueue, analyzers, conformance suite, docs, benchmark); M3 1.x (BLT-13 to BLT-19, Tier 2 Redis-compatible servers, Garnet fixture, CLI, Native AOT verification, community stores)" },
+      "notes": "Items in every module carry an M1/M2/M3 tag where the phasing table places them.",
+      "sources": [{ "document": "requirements.md", "section": "§8" }]
+    },
+    {
+      "id": "REQ-37", "kind": "info", "status": "approved",
+      "ears": { "shall": "record ownership in the store with an expiry rather than as mutual exclusion held by a live connection, and therefore not build on a distributed-lock library" },
+      "rationale": "ADR-1: claims, leases, recurring triggers, overlap and concurrency keys are all store-side atomic operations; a lock would add a round-trip, hide ownership from the dashboard and recovery, and reproduce Hangfire's lock-timeout failures. The technology constraint is TECH-51.",
+      "sources": [{ "document": "requirements.md", "section": "Appendix A ADR-1" }]
+    },
+    {
+      "id": "REQ-38", "kind": "info", "status": "approved",
+      "ears": { "shall": "build the Redis store on sorted sets, lists, hashes and Lua scripts rather than Redis Streams" },
+      "rationale": "ADR-2: portability across Garnet, Dragonfly, Kvrocks and Upstash; Streams do not model delay, priority or uniqueness; deleting before ack needs Redis 8.2; a lease sorted set gives the same crash recovery. Constraints are TECH-54 and TECH-55.",
+      "sources": [{ "document": "requirements.md", "section": "Appendix A ADR-2" }]
+    },
+    {
+      "id": "REQ-39", "kind": "info", "status": "approved",
+      "ears": { "shall": "cover several popular Hangfire add-ons through existing features rather than separate ones: multi-app shared store (namespaces), skip missed runs (misfire Skip), idempotency (unique keys) and options from configuration; jobs addressed by type-name strings are deliberately unsupported" },
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-18" }]
+    }
+  ],
+
+  "scenarios": [
+    {
+      "id": "SCN-1", "title": "No store in Production falls back to memory, loudly", "status": "approved",
+      "given": "A node starts in the Production environment with no store configured and valid options.",
+      "steps": [
+        { "req": "REQ-12", "note": "host starts" },
+        { "req": "REQ-16", "note": "warning logged" },
+        { "req": "REQ-18" }
+      ],
+      "then": "The node is Running on the in-memory store and exactly one warning about it was logged."
+    },
+    {
+      "id": "SCN-2", "title": "Invalid option stops startup", "status": "approved",
+      "given": "A node starts with PollInterval set to a negative value in configuration.",
+      "steps": [
+        { "req": "REQ-12" },
+        { "req": "REQ-9", "note": "validation fails" }
+      ],
+      "then": "The node is StartupFailed, the message names PollInterval and the fix, and no job was claimed."
+    },
+    {
+      "id": "SCN-3", "title": "Schema mismatch stops startup", "status": "approved",
+      "given": "A node starts with AutoMigrate off and a store whose schema is one version behind.",
+      "steps": [
+        { "req": "REQ-12" },
+        { "req": "REQ-23", "note": "schema mismatch" },
+        { "req": "REQ-18", "note": "node tries to start workers anyway" }
+      ],
+      "impossibleAt": 3
+    },
+    {
+      "id": "SCN-4", "title": "Graceful shutdown", "status": "approved",
+      "given": "A running node has two in-flight jobs; one finishes within ShutdownTimeout and one ignores cancellation.",
+      "steps": [
+        { "req": "REQ-27", "note": "host stops" },
+        { "req": "REQ-29", "note": "timeout passes, the remaining job's token is cancelled and its lease released" }
+      ],
+      "then": "The node is Stopped, it claimed nothing after the host stopped, and the second job is available to other nodes."
+    }
+  ],
+
+  "features": [
+    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "SCN-1", "SCN-2", "SCN-3"] },
+    { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35"] },
+    { "id": "FEAT-3", "name": "Graceful shutdown", "members": ["REQ-27", "REQ-28", "REQ-29", "SCN-4"] },
+    { "id": "FEAT-4", "name": "Product context", "members": ["REQ-1", "REQ-2", "REQ-3", "REQ-4", "REQ-5", "REQ-6", "REQ-7", "REQ-8", "REQ-10", "REQ-36", "REQ-37", "REQ-38", "REQ-39"] }
+  ],
+
+  "glossary": {
+    "NodeMode": "Both (default), ClientOnly or WorkerOnly (REQ-11).",
+    "ShutdownTimeout": "Time in-flight jobs get to finish after the host stops; 30 s by default (REQ-28).",
+    "AutoMigrate": "Whether a node applies embedded schema migrations at startup; proposed default true (REQ-21).",
+    "ClockSkewThreshold": "Node-versus-database clock difference above which a warning is logged; no default yet (REQ-26).",
+    "LeaseDuration": "How long a claim stays valid without a heartbeat; defined in the jobs module (REQ-102)."
+  }
+}

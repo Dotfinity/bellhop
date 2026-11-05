@@ -1,0 +1,243 @@
+{
+  "schemaVersion": "1.0",
+  "id": "redis",
+  "name": "Bellhop Redis store behaviour",
+  "description": "The behaviour specific to the Redis store and Redis-compatible servers: server detection, durability and eviction warnings, recovery from a flush or reset, capability reporting, ShardByQueue scope and hybrid notifications. The command set, data model, Lua rules, topologies and server versions are technical specifications (TECH-52 to TECH-87).",
+  "uses": ["hosting", "jobs", "recurring"],
+
+  "actors": ["Host"],
+
+  "entities": [
+    {
+      "name": "RedisStore",
+      "description": "The Redis store as seen by one node.",
+      "states": ["Connecting", "Ready", "Reconciling"],
+      "initial": ["Connecting"],
+      "attributes": ["serverFamily", "serverVersion", "evalAvailable", "aofEnabled", "replication", "maxmemoryPolicy", "usedMemory", "maxMemory", "generationMarker", "topology", "shardMode", "reachable"]
+    }
+  ],
+
+  "requirements": [
+    {
+      "id": "REQ-500", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Connecting"], "to": ["Ready"],
+      "ears": { "while": "the store is connecting", "when": "the connection is established and a trivial EVAL script succeeds", "shall": "identify the server family and version from HELLO and INFO, apply that family's adjustments, mark the store ready and show the family and version in the startup summary" },
+      "mentions": ["RedisStore.serverFamily", "RedisStore.serverVersion", "RedisStore.evalAvailable"],
+      "notes": "Valkey reports redis_version 7.2.4 in INFO, so detection must use HELLO (RDV-1). Families: Redis, Valkey, Garnet, Dragonfly, Kvrocks, KeyDB, Redict, unknown.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-18, RED-7; §4.9.2 RDV-1" }]
+    },
+    {
+      "id": "REQ-501", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Connecting"], "to": ["Ready"],
+      "ears": { "while": "the store is connecting", "when": "the connection is established and a trivial EVAL script succeeds", "if": "the server family is not recognised", "shall": "log a warning that names what was detected and continue" },
+      "mentions": ["RedisStore.serverFamily"],
+      "notes": "Same event as REQ-500 with an extra consequence.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-18", "quote": "An unknown family is allowed with a warning" }]
+    },
+    {
+      "id": "REQ-502", "kind": "transition", "status": "approved",
+      "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node using the Redis store is starting", "if": "the server does not support EVAL", "shall": "stop the node from starting with a message that names the server flag that enables scripting, such as --lua on Garnet" },
+      "mentions": ["RedisStore.evalAvailable", "RedisStore.serverFamily"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-18; §4.9.2 RDV-3", "quote": "a missing EVAL is a startup failure with a message naming the server flag to enable it" }]
+    },
+    {
+      "id": "REQ-503", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Ready"],
+      "ears": { "when": "the store becomes ready", "if": "INFO persistence shows that AOF is off, or the server persists by snapshot only", "shall": "log a warning that acknowledged jobs can be lost in a crash, naming the server's durability flag where one exists, such as --aof-commit-wait on Garnet" },
+      "mentions": ["RedisStore.aofEnabled", "RedisStore.serverFamily"],
+      "notes": "If INFO persistence is not available on the server, the source says 'where available'; what to log then is open.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-7; §4.9.2 RDV-3, RDV-4" }]
+    },
+    {
+      "id": "REQ-504", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Ready"],
+      "ears": { "when": "the store becomes ready", "if": "INFO replication shows replicas", "shall": "log a notice that replication is asynchronous and a failover can drop acknowledged writes" },
+      "mentions": ["RedisStore.replication"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-7" }]
+    },
+    {
+      "id": "REQ-505", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Ready"],
+      "ears": { "when": "the store becomes ready", "if": "maxmemory-policy is anything other than noeviction", "shall": "log a warning that the server may evict job data" },
+      "mentions": ["RedisStore.maxmemoryPolicy"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-506", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "shall": "include the persistence mode in the health check and report used_memory against maxmemory" },
+      "mentions": ["RedisStore.aofEnabled", "RedisStore.usedMemory", "RedisStore.maxMemory"],
+      "notes": "used_memory reporting is SHOULD (RED-13); the persistence mode is MUST (RED-7). Open question: at what share of maxmemory does the check turn Degraded?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-7, RED-13" }]
+    },
+    {
+      "id": "REQ-507", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Reconciling"],
+      "ears": { "while": "the store is ready", "when": "the generation marker key is found missing", "shall": "log the ERROR event StoreWasReset and start re-seeding the code-defined recurring jobs and the queue registry" },
+      "mentions": ["RedisStore.generationMarker", "recurring.RecurringJob.origin"],
+      "notes": "Causes: FLUSHALL, eviction, restore from an old snapshot. Open questions: (1) jobs that were in flight are gone, so their handlers may still complete against records that no longer exist; what does a heartbeat or completion do then? (2) runtime-defined recurring jobs cannot be re-seeded; is that loss reported?",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-508", "kind": "transition", "status": "approved",
+      "entity": "hosting.Health", "actor": "system", "from": ["Healthy"], "to": ["Degraded"],
+      "ears": { "while": "the Redis store is reconciling after a reset", "shall": "report the node Degraded" },
+      "mentions": ["RedisStore.Reconciling"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8", "quote": "the health check turns degraded until reconciliation completes" }]
+    },
+    {
+      "id": "REQ-509", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Reconciling"], "to": ["Ready"],
+      "ears": { "while": "the store is reconciling", "when": "the code-defined recurring jobs and the queue registry have been re-seeded", "shall": "write a new generation marker and mark the store ready" },
+      "mentions": ["RedisStore.generationMarker"],
+      "notes": "Writing a new marker is implied; without it the reset would be detected again on the next check.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-510", "kind": "transition", "status": "approved",
+      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Ready"],
+      "ears": { "while": "the store is ready", "when": "RecurringReconcileInterval, 5 minutes by default, has passed since the last reconciliation", "shall": "reconcile the code-defined recurring jobs again so that a flush never silently stops them" },
+      "mentions": ["recurring.RecurringJob.origin"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "LIV-500", "kind": "liveness", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "while": "the generation marker is missing and a node is running", "shall": "eventually re-seed every code-defined recurring job" },
+      "mentions": ["RedisStore.generationMarker", "hosting.Node.Running"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8", "quote": "a flush never silently stops them" }]
+    },
+    {
+      "id": "REQ-511", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "where": "the server runs standalone, as primary and replica with Sentinel, or as a Cluster", "shall": "start and run without refusing the topology" },
+      "mentions": ["RedisStore.topology"],
+      "rationale": "Correctness comes from one atomic script per transition (TECH-57), not from refusing to start.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-9", "quote": "The store MUST NOT fail closed on a topology it recognises" }]
+    },
+    {
+      "id": "INV-500", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "where": "ShardByQueue mode is on", "shall": "enforce unique keys per queue rather than per namespace" },
+      "mentions": ["RedisStore.shardMode", "jobs.Job.uniqueKey", "jobs.Job.queue"],
+      "notes": "This weakens INV-100: two active jobs with the same unique key can exist in different queues.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-9", "quote": "in that mode uniqueness scope is per queue" }]
+    },
+    {
+      "id": "REQ-512", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "report in the Redis store's capability set no free-text payload search and no transactional enqueue, while offering push notifications and result storage" },
+      "notes": "The source names the four capabilities and the two the Redis store lacks; that it has the other two is my reading of RED-6 and RED-13.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-10, RED-12" }]
+    },
+    {
+      "id": "REQ-513", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "lower the default payload hard limit to 256 KB on the Redis store" },
+      "mentions": ["jobs.Job.payload"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-13" }]
+    },
+    {
+      "id": "REQ-514", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "RedisStore",
+      "ears": { "shall": "cap the size of captured logs and job results and give them a TTL" },
+      "mentions": ["jobs.Job.capturedLogs", "jobs.Job.result"],
+      "notes": "The TTL value is not given. It must not be shorter than the job's own retention, or INV-119 breaks.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-13" }]
+    },
+    {
+      "id": "REQ-515", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "when": "a node has not sent a heartbeat for longer than the stale-node age", "shall": "remove its node registration" },
+      "mentions": ["hosting.Node"],
+      "notes": "The stale-node age is not given.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-11" }]
+    },
+    {
+      "id": "REQ-516", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "RedisStore",
+      "ears": { "where": "UseRedisNotifications() pairs a SQL store with Redis", "when": "a job is enqueued", "shall": "publish a wake-up signal on Redis so other nodes pick up work without waiting for the next poll" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-16" }]
+    },
+    {
+      "id": "REQ-517", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "RedisStore",
+      "ears": { "where": "UseRedisNotifications() pairs a SQL store with Redis", "if": "Redis is unavailable", "shall": "keep processing by polling the SQL store at PollInterval" },
+      "mentions": ["RedisStore.reachable"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-16", "quote": "if it is unavailable the SQL store falls back to polling" }]
+    },
+    {
+      "id": "INV-501", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "RedisStore",
+      "ears": { "where": "UseRedisNotifications() pairs a SQL store with Redis", "shall": "never read job state from Redis; the SQL store is the only source of truth" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-16", "quote": "Redis is then a signal, never a source of truth" }]
+    },
+    {
+      "id": "REQ-518", "kind": "info", "status": "approved",
+      "ears": { "shall": "not test or document Tendis, Pika/PikiwiDB or other region-specific forks, but accept reports about them" },
+      "sources": [{ "document": "requirements.md", "section": "§4.9.2 RDV-9" }]
+    }
+  ],
+
+  "scenarios": [
+    {
+      "id": "SCN-500", "title": "FLUSHALL is detected and recurring jobs come back", "status": "approved",
+      "given": "The Redis store is ready with code-defined recurring job nightly-cleanup; someone runs FLUSHALL.",
+      "steps": [
+        { "req": "REQ-507", "note": "marker missing; StoreWasReset logged" },
+        { "req": "REQ-508", "note": "health Degraded" },
+        { "req": "REQ-509", "note": "re-seeded" }
+      ],
+      "then": "nightly-cleanup exists again, a new generation marker is written, the store is Ready and one ERROR StoreWasReset event was logged."
+    },
+    {
+      "id": "SCN-501", "title": "Server without scripting fails startup", "status": "approved",
+      "given": "Garnet started without --lua.",
+      "steps": [
+        { "req": "REQ-502" },
+        { "req": "REQ-500", "note": "store tries to become ready" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-502", "title": "Hybrid notifications survive a Redis outage", "status": "approved",
+      "given": "SQL Server store with UseRedisNotifications(); Redis goes down; a job is enqueued on node A.",
+      "steps": [
+        { "req": "REQ-517" }
+      ],
+      "then": "Node B picks up the job within PollInterval by polling SQL Server, and no job state was read from Redis."
+    }
+  ],
+
+  "features": [
+    { "id": "FEAT-500", "name": "Server detection and durability disclosure", "members": ["REQ-500", "REQ-501", "REQ-502", "REQ-503", "REQ-504", "REQ-505", "REQ-506", "REQ-511", "REQ-512", "REQ-513", "REQ-514", "REQ-515", "REQ-518", "SCN-501"] },
+    { "id": "FEAT-501", "name": "Flush and eviction resilience", "members": ["REQ-507", "REQ-508", "REQ-509", "REQ-510", "LIV-500", "SCN-500"] },
+    { "id": "FEAT-502", "name": "ShardByQueue and hybrid notifications", "members": ["INV-500", "REQ-516", "REQ-517", "INV-501", "SCN-502"] }
+  ],
+
+  "glossary": {
+    "generationMarker": "A key the store writes so it can tell when its data has been flushed, evicted or restored (REQ-507).",
+    "RecurringReconcileInterval": "5 minutes by default (REQ-510).",
+    "ShardByQueue": "Opt-in Cluster mode with one hash tag per queue instead of per namespace (INV-500)."
+  }
+}

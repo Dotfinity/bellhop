@@ -1,0 +1,421 @@
+{
+  "schemaVersion": "1.0",
+  "id": "dashboard",
+  "name": "Bellhop dashboard and JSON API",
+  "description": "Access control for the dashboard and its JSON API, what each page shows, the launch page, tags, throttles and recurring management in the UI, node metrics and insights. Job and recurring behaviour triggered from the UI is defined in the jobs and recurring modules; this module states who may trigger it and what is shown.",
+  "uses": ["hosting", "jobs", "recurring"],
+
+  "actors": ["Viewer", "Operator", "Anonymous", "ApiClient"],
+
+  "entities": [
+    {
+      "name": "DashboardEndpoint",
+      "description": "The mounted dashboard and JSON API.",
+      "attributes": ["path", "environment", "authRequirement", "allowAnonymous", "readOnly", "viewPolicy", "operatePolicy", "storeCapabilities"]
+    },
+    {
+      "name": "DashboardRequest",
+      "description": "One request to a dashboard page or JSON API endpoint.",
+      "attributes": ["principal", "authenticated", "hasView", "hasOperate", "isOperate", "response"]
+    },
+    {
+      "name": "LoginAttempt",
+      "description": "A basic-auth or API-key credential check.",
+      "attributes": ["user", "failedCount", "lockedUntil"]
+    },
+    {
+      "name": "NodeSample",
+      "description": "A node metrics sample kept in the store.",
+      "attributes": ["node", "cpu", "workingSet", "gcHeap", "threadPoolQueue", "workerUtilisation", "inFlight", "takenAt"]
+    },
+    {
+      "name": "Rollup",
+      "description": "An insights rollup bucket.",
+      "attributes": ["granularity", "jobName", "queue", "counts", "durationPercentiles"]
+    }
+  ],
+
+  "requirements": [
+    {
+      "id": "REQ-300", "kind": "transition", "status": "approved",
+      "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without an authorization requirement and the environment is Development", "shall": "allow anonymous access and log a notice saying so" },
+      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2; §4.14 SEC-1" }]
+    },
+    {
+      "id": "REQ-301", "kind": "transition", "status": "approved",
+      "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without an authorization requirement, AllowAnonymous() was not called and the environment is not Development", "shall": "stop the node from starting with a message that says how to add authorization or opt in to anonymous access" },
+      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardEndpoint.allowAnonymous"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2; §4.14 SEC-1", "quote": "In every other environment startup MUST fail with an actionable message unless the endpoint has an authorization requirement or .AllowAnonymous() was called explicitly." }]
+    },
+    {
+      "id": "INV-300", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "if": "an authenticated request lacks the permission the page or action needs", "shall": "respond 403 Forbidden, not 401" },
+      "mentions": ["DashboardRequest.authenticated", "DashboardRequest.response"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2" }]
+    },
+    {
+      "id": "INV-301", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "shall": "serve a dashboard page, JSON API read or MCP read only to a request with view permission, and perform an operate action (retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change a limit) only for a request with operate permission" },
+      "mentions": ["DashboardRequest.hasView", "DashboardRequest.hasOperate", "DashboardRequest.isOperate"],
+      "notes": "Applies equally to every built-in page (DSH-13), the JSON API (DSH-9) and the MCP server (BLT-19). Open question: does operate imply view?",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-3, DSH-9, DSH-13; §4.15 BLT-19; §4.14 SEC-1" }]
+    },
+    {
+      "id": "INV-302", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "where": "the dashboard is configured ReadOnly()", "shall": "refuse every operate action whatever the caller's permissions" },
+      "mentions": ["DashboardEndpoint.readOnly", "DashboardRequest.isOperate"],
+      "notes": "M1 ships a read-only dashboard (§8).",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-3" }]
+    },
+    {
+      "id": "REQ-302", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "where": "separate policies are configured for view and operate", "shall": "grant each permission level by its own policy" },
+      "mentions": ["DashboardEndpoint.viewPolicy", "DashboardEndpoint.operatePolicy"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-3" }]
+    },
+    {
+      "id": "REQ-303", "kind": "invariant", "status": "approved",
+      "entity": "LoginAttempt",
+      "ears": { "where": "basic authentication is enabled with RequireBasicAuth()", "shall": "accept only users from configuration whose passwords are stored as salted PBKDF2 or Argon2 hashes" },
+      "mentions": ["LoginAttempt.user"],
+      "notes": "Open question: what happens at startup if the configuration contains a plain-text password? Failing startup is the safe reading. The hashing technology is TECH-94; constant-time comparison is NFR-43.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2", "quote": "users from configuration as salted PBKDF2 or Argon2 hashes (never plain text" }]
+    },
+    {
+      "id": "REQ-304", "kind": "invariant", "status": "approved",
+      "entity": "LoginAttempt",
+      "ears": { "where": "basic authentication is enabled", "if": "a user has failed MaxFailedLogins times within the rate-limit window", "shall": "reject further attempts for that user until the window has passed, even with the right password" },
+      "mentions": ["LoginAttempt.failedCount", "LoginAttempt.lockedUntil"],
+      "notes": "The source asks for 'failed-attempt rate limiting' without numbers. MaxFailedLogins, the window and whether the limit is per user or per client address are open. Ask the owner.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-305", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "where": "RequireApiKey() is enabled", "when": "a script or the CLI calls the JSON API with a valid API key", "shall": "authenticate it with the permission level assigned to that key" },
+      "mentions": ["DashboardRequest.principal"],
+      "notes": "Open question: how keys are issued, stored, scoped to view or operate, and rotated is not stated.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-306", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "where": "RequireRole(...) or RequireClaim(...) is used", "shall": "grant view or operate to principals with that role or claim as configured" },
+      "mentions": ["DashboardEndpoint.viewPolicy", "DashboardEndpoint.operatePolicy"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-307", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show an overview page with live job counts by state, throughput, failures and nodes" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5" }]
+    },
+    {
+      "id": "REQ-308", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a jobs list filterable by state (including Unroutable), name, queue, tag, correlation id and time range, and by free text over payloads only where the store supports it" },
+      "mentions": ["DashboardEndpoint.storeCapabilities", "jobs.Job.Unroutable", "jobs.Job.correlationId", "jobs.Job.tags"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5; §4.2 JOB-3; §4.15 BLT-4, BLT-9" }]
+    },
+    {
+      "id": "INV-303", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "if": "the store's capability set lacks a feature a filter needs", "shall": "hide that filter instead of offering it and failing" },
+      "mentions": ["DashboardEndpoint.storeCapabilities"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-10", "quote": "the dashboard hides filters a store cannot serve instead of failing" }]
+    },
+    {
+      "id": "REQ-309", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a job detail page with the payload, state timeline, attempts with exceptions, interrupted attempts marked as such, captured logs, progress, parameters, parent and children, and the trace id" },
+      "mentions": ["jobs.Job.payload", "jobs.Job.stateHistory", "jobs.Job.attempts", "jobs.Job.capturedLogs", "jobs.Job.progress", "jobs.Job.parameters", "jobs.Job.traceContext"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5; §4.5 EXE-4; §4.13 EXT-6" }]
+    },
+    {
+      "id": "REQ-310", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a recurring jobs page with each job's next runs and their time zone, last outcome, and the trigger, pause and edit actions" },
+      "mentions": ["recurring.RecurringJob.nextRunAt", "recurring.RecurringJob.timeZone", "recurring.RecurringJob.lastOutcome"],
+      "notes": "The time zone is shown next to every schedule (REC-4).",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5; §4.4 REC-4" }]
+    },
+    {
+      "id": "REQ-311", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a dead letters page with bulk requeue" },
+      "mentions": ["jobs.Job.DeadLettered"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5" }]
+    },
+    {
+      "id": "REQ-312", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a queues page with each queue's depth and pause and resume actions" },
+      "mentions": ["jobs.Queue.Paused"],
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5" }]
+    },
+    {
+      "id": "REQ-313", "kind": "invariant", "status": "approved",
+      "entity": "NodeSample",
+      "ears": { "shall": "show a nodes page with each node's heartbeat, concurrency and in-flight jobs, plus process CPU, working set, GC heap, thread-pool queue length and worker utilisation with a 24-hour history chart" },
+      "mentions": ["NodeSample.cpu", "NodeSample.workingSet", "NodeSample.gcHeap", "NodeSample.threadPoolQueue", "NodeSample.workerUtilisation", "NodeSample.inFlight"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5; §4.15 BLT-6" }]
+    },
+    {
+      "id": "REQ-314", "kind": "invariant", "status": "approved",
+      "entity": "NodeSample",
+      "ears": { "while": "a node is running", "shall": "take a metrics sample every NodeSampleInterval, 15 s by default, write it in one batched store write per interval and keep samples for NodeSampleRetention, 7 days by default" },
+      "mentions": ["NodeSample.takenAt", "hosting.Node.Running"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-6" }]
+    },
+    {
+      "id": "REQ-315", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "update open pages live through Server-Sent Events and fall back to polling when Server-Sent Events are unavailable" },
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-7" }]
+    },
+    {
+      "id": "REQ-316", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "while": "a job page is open", "shall": "stream the job's captured log lines live, let the viewer search them, and show the job's progress bar, which lists also show" },
+      "mentions": ["jobs.Job.capturedLogs", "jobs.Job.progress"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-1; §4.10 DSH-6" }]
+    },
+    {
+      "id": "REQ-317", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show parent, child and batch relationships as a graph with each job's state" },
+      "mentions": ["jobs.Job.parentId", "jobs.Job.batchId"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.8 WF-4" }]
+    },
+    {
+      "id": "REQ-318", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "DashboardEndpoint",
+      "ears": { "where": "a job link is registered for a job type with AddJobLink", "shall": "show a link from that type's jobs to the URL the application computes from the job" },
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-11" }]
+    },
+    {
+      "id": "INV-304", "kind": "invariant", "status": "proposed",
+      "entity": "DashboardRequest",
+      "ears": { "shall": "offer to launch only job types marked [Launchable], or every registered job type when the global 'all jobs launchable' switch is on" },
+      "notes": "Conflict: DSH-12 says 'any registered job can be enqueued or scheduled from the dashboard'; BLT-8 says jobs opt in with [Launchable] or a global switch; §9 question 9 proposes opt-in. Written as opt-in, proposed until the owner confirms.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-12; §4.15 BLT-8; §9 Q9" }]
+    },
+    {
+      "id": "REQ-319", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "if": "a launch form is submitted with values that fail the payload's validation rules", "shall": "show the validation errors and enqueue, schedule or create nothing" },
+      "notes": "Fields, labels and rules come from the payload record and its DataAnnotations (TECH-95).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-12; §4.15 BLT-8" }]
+    },
+    {
+      "id": "REQ-320", "kind": "transition", "status": "approved",
+      "entity": "jobs.Job", "actor": "Operator", "to": ["Enqueued"],
+      "ears": { "when": "an operator submits a valid launch form with Run now", "shall": "enqueue the job with the form's payload and store the operator's principal name on it" },
+      "mentions": ["DashboardRequest.principal", "jobs.Job.parameters"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-12; §4.15 BLT-8" }]
+    },
+    {
+      "id": "REQ-321", "kind": "transition", "status": "approved",
+      "entity": "jobs.Job", "actor": "Operator", "to": ["Scheduled"],
+      "ears": { "when": "an operator submits a valid launch form with Schedule for and a date, time and time zone", "shall": "schedule the job for that instant with the form's payload and store the operator's principal name on it" },
+      "mentions": ["DashboardRequest.principal", "jobs.Job.scheduledAt"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-8" }]
+    },
+    {
+      "id": "REQ-322", "kind": "transition", "status": "approved",
+      "entity": "recurring.RecurringJob", "actor": "Operator", "to": ["Active"],
+      "ears": { "when": "an operator submits a valid launch form with Make recurring and a schedule", "shall": "create a runtime-defined recurring job with the form's payload" },
+      "mentions": ["DashboardRequest.principal"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-8" }]
+    },
+    {
+      "id": "REQ-323", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "list recent launches with who launched which job and when" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-8" }]
+    },
+    {
+      "id": "REQ-324", "kind": "invariant", "status": "approved", "strength": "may",
+      "entity": "DashboardEndpoint",
+      "ears": { "where": "a custom editor is registered for a payload type in dashboard options", "shall": "use it instead of the generated form for that type" },
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-12" }]
+    },
+    {
+      "id": "REQ-325", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a tags page with the number of jobs per tag, per-tag success and failure counts, and click-through to the matching jobs" },
+      "mentions": ["jobs.Job.tags"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-9" }]
+    },
+    {
+      "id": "REQ-326", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "when": "an operator runs a bulk requeue, cancel or delete by tag", "shall": "apply the action to every job with that tag for which the action is allowed in its current state" },
+      "mentions": ["jobs.Job.tags"],
+      "notes": "Which states allow requeue and delete is open in the jobs module (REQ-143, REQ-144).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-9" }]
+    },
+    {
+      "id": "REQ-327", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show a throttles page with each key's limit, current holders, waiting count and recent waits, and let an operator change a limit" },
+      "mentions": ["jobs.Throttle.max", "jobs.Throttle.holders", "jobs.Throttle.rateLimit"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-7" }]
+    },
+    {
+      "id": "REQ-328", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "when": "an operator builds or edits a recurring schedule in the dashboard", "shall": "preview the next five occurrences in the chosen time zone" },
+      "mentions": ["recurring.RecurringJob.schedule", "recurring.RecurringJob.timeZone"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-10" }]
+    },
+    {
+      "id": "REQ-329", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show each recurring job's last 50 occurrences with outcome and duration, and its misfire, overlap and validity-window settings" },
+      "mentions": ["recurring.Occurrence.scheduledFor", "recurring.RecurringJob.misfirePolicy", "recurring.RecurringJob.overlapPolicy", "recurring.RecurringJob.activeFrom", "recurring.RecurringJob.activeUntil"],
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-10" }]
+    },
+    {
+      "id": "REQ-330", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "DashboardEndpoint",
+      "ears": { "when": "a job page shows a failed attempt", "shall": "show the exception chain with inner exceptions and AggregateException flattened, async state-machine frames collapsed, the job's own frames highlighted and a copy button, with the raw stack trace still available" },
+      "mentions": ["jobs.Job.attempts"],
+      "tags": ["M3"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-14" }]
+    },
+    {
+      "id": "REQ-331", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "show title, logo, favicon and accent colour from options, each job type's display name from [JobName(Display = ...)], and dates in the browser's time zone with the server zone on hover" },
+      "tags": ["M3"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-15" }]
+    },
+    {
+      "id": "REQ-332", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Rollup",
+      "ears": { "shall": "keep insights rollups of enqueued, succeeded, failed and dead-lettered counts and duration percentiles per job name and per queue, per minute for 24 hours and per hour for 30 days" },
+      "mentions": ["Rollup.granularity", "Rollup.counts", "Rollup.durationPercentiles"],
+      "tags": ["M3"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-13" }]
+    },
+    {
+      "id": "INV-305", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Rollup",
+      "ears": { "shall": "compute each rollup interval on exactly one node, which holds a lease in the store, and write it in one batched write" },
+      "tags": ["M3"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-13", "quote": "Rollups are computed by one node under a lease (CON-7) in one batched write per interval." }]
+    },
+    {
+      "id": "REQ-333", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "Rollup",
+      "ears": { "shall": "show an insights page with a throughput chart, a 7-day heatmap by hour, per-job-name tables of p50 and p95 duration, failure rate and trend, and lists of the slowest and most-failing jobs" },
+      "tags": ["M3"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-13" }]
+    },
+    {
+      "id": "INV-306", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "where": "the Redis store runs in ShardByQueue mode", "shall": "build global views by aggregating across queues" },
+      "notes": "Uniqueness scope in that mode is INV-500 in the redis module.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-9" }]
+    }
+  ],
+
+  "scenarios": [
+    {
+      "id": "SCN-300", "title": "Production dashboard without auth refuses to start", "status": "approved",
+      "given": "Environment Production; app.MapBellhopDashboard(\"/jobs\") with no RequireAuthorization and no AllowAnonymous.",
+      "steps": [ { "req": "REQ-301" } ],
+      "then": "The node is StartupFailed and the message explains how to add authorization or call AllowAnonymous()."
+    },
+    {
+      "id": "SCN-301", "title": "Development dashboard is open, with a notice", "status": "approved",
+      "given": "Environment Development; dashboard mapped with no authorization.",
+      "steps": [ { "req": "REQ-300" } ],
+      "then": "Anonymous requests are served and one notice was logged."
+    },
+    {
+      "id": "SCN-302", "title": "Operator launches a launchable job", "status": "approved",
+      "given": "SendReport is marked [Launchable]; Olga has operate permission; she fills the form with valid values.",
+      "steps": [ { "req": "REQ-320", "note": "Run now" } ],
+      "then": "One SendReport job is Enqueued with Olga's principal name stored on it and it appears in recent launches."
+    },
+    {
+      "id": "SCN-303", "title": "Viewer cannot launch", "status": "approved",
+      "given": "SendReport is [Launchable]; Vic has view permission only.",
+      "steps": [ { "req": "REQ-320", "note": "Vic submits Run now" } ],
+      "impossibleAt": 1
+    },
+    {
+      "id": "SCN-304", "title": "Read-only dashboard blocks operators", "status": "approved",
+      "given": "Dashboard is ReadOnly(); Olga has operate permission.",
+      "steps": [ { "req": "REQ-320", "note": "Olga submits Run now" } ],
+      "impossibleAt": 1
+    },
+    {
+      "id": "SCN-305", "title": "Invalid launch form enqueues nothing", "status": "approved",
+      "given": "SendReport has [Required] Email; Olga leaves it empty.",
+      "steps": [ { "req": "REQ-319" } ],
+      "then": "Validation errors are shown and no job was created."
+    }
+  ],
+
+  "features": [
+    { "id": "FEAT-300", "name": "Access control", "members": ["REQ-300", "REQ-301", "INV-300", "INV-301", "INV-302", "REQ-302", "REQ-303", "REQ-304", "REQ-305", "REQ-306", "SCN-300", "SCN-301", "SCN-303", "SCN-304"] },
+    { "id": "FEAT-301", "name": "Pages", "members": ["REQ-307", "REQ-308", "INV-303", "REQ-309", "REQ-310", "REQ-311", "REQ-312", "REQ-313", "REQ-315", "REQ-316", "REQ-317", "REQ-318", "REQ-325", "REQ-326", "REQ-327", "REQ-330", "REQ-331", "INV-306"] },
+    { "id": "FEAT-302", "name": "Launch page", "members": ["INV-304", "REQ-319", "REQ-320", "REQ-321", "REQ-322", "REQ-323", "REQ-324", "SCN-302", "SCN-305"] },
+    { "id": "FEAT-303", "name": "Node metrics and insights", "members": ["REQ-314", "REQ-332", "INV-305", "REQ-333"] },
+    { "id": "FEAT-304", "name": "Recurring management in the UI", "members": ["REQ-328", "REQ-329"] }
+  ],
+
+  "glossary": {
+    "view": "Permission to read dashboard pages and the JSON API (INV-301).",
+    "operate": "Permission to retry, requeue, cancel, delete, trigger, pause, resume, edit, launch and change limits (INV-301).",
+    "NodeSampleInterval": "15 s by default (REQ-314).",
+    "NodeSampleRetention": "7 days by default (REQ-314).",
+    "MaxFailedLogins": "Basic-auth failures before attempts are rejected; no default yet (REQ-304)."
+  }
+}
