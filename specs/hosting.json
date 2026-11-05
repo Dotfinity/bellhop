@@ -33,7 +33,7 @@
       "description": "The result reported by the Bellhop health check on a node.",
       "states": ["Healthy", "Degraded", "Unhealthy"],
       "initial": ["Healthy"],
-      "attributes": ["schedulingLag", "deadLetterGrowth", "failuresInWindow", "nodesAlive"]
+      "attributes": ["schedulingLag", "deadLetterGrowth", "failuresInWindow", "nodesAlive", "consecutivePasses"]
     }
   ],
 
@@ -98,9 +98,9 @@
     },
     {
       "id": "REQ-11", "kind": "assumption", "status": "approved",
-      "ears": { "shall": "allow a node mode of Both, ClientOnly (enqueue only, no workers) or WorkerOnly, with Both as the default (NodeMode)" },
+      "ears": { "shall": "allow a node mode of Both, ClientOnly or WorkerOnly, with Both as the default (NodeMode)" },
       "mentions": ["Node.mode"],
-      "notes": "Open question: what WorkerOnly forbids is not stated. Handlers enqueue jobs (continuations, SCH-10), so WorkerOnly cannot mean 'no client'. Does it mean 'no dashboard'? Does a ClientOnly node run the distributed scheduler (promotion, recurring triggers, recovery)? Ask the owner.",
+      "notes": "Decided by the owner on 2026-11-06: WorkerOnly runs workers and the scheduler but does not serve the dashboard (REQ-41). ClientOnly runs neither workers (REQ-20) nor the scheduler (REQ-40) and may serve the dashboard. Both does everything.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
@@ -147,7 +147,7 @@
     {
       "id": "REQ-18", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
-      "ears": { "while": "a node is starting", "when": "the store is reachable, the schema version matches and all startup checks have passed", "shall": "mark the node running and start the scheduler and the workers its mode allows" },
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "mark the node running and start the scheduler and the workers its mode allows" },
       "mentions": ["Node.mode", "Store.reachable", "Store.schemaVersion"],
       "dependsOn": ["REQ-11"],
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5, SET-7; §4.5 EXE-10" }]
@@ -155,7 +155,7 @@
     {
       "id": "REQ-19", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
-      "ears": { "while": "a node is starting", "when": "the store is reachable, the schema version matches and all startup checks have passed", "shall": "log a one-screen summary with the store and schema version, the node mode, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "log a one-screen summary with the store and schema version, the node mode, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
       "mentions": ["Store.schemaVersion", "Node.mode", "Node.concurrencyLimit"],
       "notes": "Same event as REQ-18 with a second consequence; the agent should model one action. The Redis store adds the server family to the summary (REQ-500). Secrets never appear in it (NFR-41).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-8" }]
@@ -169,10 +169,10 @@
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7", "quote": "ClientOnly (enqueue only, no workers)" }]
     },
     {
-      "id": "REQ-21", "kind": "assumption", "status": "proposed",
+      "id": "REQ-21", "kind": "assumption", "status": "approved",
       "ears": { "shall": "default AutoMigrate to true in every environment (AutoMigrate)" },
       "mentions": ["Store.autoMigrate"],
-      "notes": "STO-3 says the default is true, but §9 question 4 still asks whether it should be true only in Development. Kept proposed until the owner answers.",
+      "notes": "Decided by the owner on 2026-11-06 (§9 Q4): true everywhere, as STO-3 says; the docs show the script export (TECH-47) on the first page.",
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3; §9 Q4" }]
     },
     {
@@ -181,15 +181,15 @@
       "ears": { "while": "a node is starting", "if": "AutoMigrate is on and the stored schema version is older than the expected version", "shall": "apply the embedded migrations up to the expected version and log what it did" },
       "mentions": ["Store.autoMigrate", "Store.schemaVersion", "Store.expectedSchemaVersion"],
       "dependsOn": ["REQ-21"],
-      "notes": "Open question: several nodes starting at once may all try to migrate. Migrations are idempotent (REQ-24) but concurrent application is not addressed. Ask the owner whether a migration lock or 'first writer wins' is intended.",
+      "notes": "Decided by the owner on 2026-11-06: concurrent starts are serialised by a store-side migration lock (REQ-42, TECH-126).",
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3" }]
     },
     {
       "id": "REQ-23", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "AutoMigrate is off and the stored schema version differs from the expected version", "shall": "stop the node from starting with a message that includes the path of the migration script" },
+      "ears": { "while": "a node is starting", "if": "AutoMigrate is off and the stored schema version is more than one version older than the expected version", "shall": "stop the node from starting with a message that includes the path of the migration script" },
       "mentions": ["Store.autoMigrate", "Store.schemaVersion", "Store.expectedSchemaVersion"],
-      "notes": "Interacts with rolling deploys (NFR-18): version N+1 must accept schema N. Open question: is 'differs' meant literally, or does a node accept a schema one version ahead or behind during a rolling deploy?",
+      "notes": "Decided by the owner on 2026-11-06: a node accepts the schema version it expects or one version older, so library N+1 runs on schema N as STO-5 and NFR-18 require. A newer schema is REQ-43. Migrations therefore stay additive within a major version (TECH-127).",
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3", "quote": "a version mismatch MUST fail fast at startup with the script path in the message" }]
     },
     {
@@ -200,11 +200,12 @@
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3", "quote": "Migrations are embedded, versioned and idempotent." }]
     },
     {
-      "id": "REQ-25", "kind": "transition", "status": "draft",
-      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting", "StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "the store is unreachable", "shall": "TBD: keep retrying with backoff while reporting Unhealthy, or stop the node from starting" },
+      "id": "REQ-25", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "the store is unreachable", "shall": "keep retrying the connection with backoff without stopping the host, and claim no job until the store is reachable" },
       "mentions": ["Store.reachable", "Health.Unhealthy"],
-      "notes": "Gap: the source does not say what happens when the store is down at startup. Both outcomes are listed so the gap is visible. Ask the owner.",
+      "dependsOn": ["REQ-31"],
+      "notes": "Decided by the owner on 2026-11-06: Bellhop runs inside the application's host, so a database outage must not take the web application down. The health check reports Unhealthy meanwhile (REQ-31). The docs should advise mapping Bellhop health to readiness, not liveness, or the orchestrator restarts the pod in a loop.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5; §4.11 OBS-5 (implied)" }]
     },
     {
@@ -212,7 +213,7 @@
       "entity": "Node", "actor": "system", "from": ["Running"], "to": ["Running"],
       "ears": { "while": "a node is running", "if": "the node's clock differs from the database clock by more than ClockSkewThreshold", "shall": "log a warning that names the measured skew" },
       "mentions": ["Node.clockSkew"],
-      "notes": "ClockSkewThreshold has no value in the source. Ask the owner for a default.",
+      "dependsOn": ["REQ-45"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-9", "quote": "Bellhop MUST warn when node clock skew exceeds a threshold." }]
     },
     {
@@ -251,8 +252,9 @@
     {
       "id": "REQ-32", "kind": "transition", "status": "approved",
       "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
-      "ears": { "when": "the health check runs", "if": "the stored schema version does not match the expected version", "shall": "report the node Unhealthy" },
+      "ears": { "when": "the health check runs", "if": "the stored schema version is neither the expected version nor one version older", "shall": "report the node Unhealthy" },
       "mentions": ["Store.schemaVersion", "Store.expectedSchemaVersion"],
+      "notes": "Follows from the accepted range (REQ-23): once the first N+1 node migrates during a rolling deploy, nodes still on N see a newer schema and report Unhealthy until they are replaced. They keep working meanwhile because migrations are additive (TECH-127).",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5" }]
     },
     {
@@ -262,18 +264,21 @@
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5" }]
     },
     {
-      "id": "REQ-34", "kind": "transition", "status": "proposed",
-      "entity": "Health", "actor": "system", "from": ["Healthy"], "to": ["Degraded"],
-      "ears": { "when": "the health check runs", "if": "scheduling lag exceeds SchedulingLagThreshold, dead-letter growth exceeds DeadLetterGrowthThreshold, failures in the window exceed FailureThreshold, or fewer than MinNodesAlive nodes are alive", "shall": "report the node Degraded" },
-      "mentions": ["Health.schedulingLag", "Health.deadLetterGrowth", "Health.failuresInWindow", "Health.nodesAlive"],
-      "notes": "The source lists these checks with 'configurable thresholds' but gives no defaults and does not say whether breaching one is Degraded or Unhealthy. Degraded is my reading. Ask the owner for the defaults and the level.",
+      "id": "REQ-34", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Healthy", "Unhealthy"], "to": ["Degraded"],
+      "ears": { "when": "the health check runs", "if": "no check that reports Unhealthy fails, and scheduling lag exceeds SchedulingLagThreshold, dead-letter growth exceeds DeadLetterGrowthThreshold or failures in the window exceed FailureThreshold", "shall": "report the node Degraded" },
+      "mentions": ["Health.schedulingLag", "Health.deadLetterGrowth", "Health.failuresInWindow"],
+      "dependsOn": ["REQ-46", "REQ-47", "REQ-48"],
+      "notes": "Decided by the owner on 2026-11-06: backlog and failure checks give Degraded; MinNodesAlive gives Unhealthy (REQ-44). From Unhealthy as well, so a node whose store comes back but still has a backlog drops to Degraded instead of staying Unhealthy until the backlog clears.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5; §4.15 BLT-5" }]
     },
     {
-      "id": "REQ-35", "kind": "transition", "status": "proposed",
+      "id": "REQ-35", "kind": "transition", "status": "approved",
       "entity": "Health", "actor": "system", "from": ["Degraded", "Unhealthy"], "to": ["Healthy"],
-      "ears": { "when": "the health check runs", "if": "every check passes", "shall": "report the node Healthy" },
-      "notes": "Gap: the source never says how health recovers. Inferred so Degraded and Unhealthy are not dead ends.",
+      "ears": { "when": "the health check runs", "if": "every check has passed on the last HealthyAfterPasses runs in a row", "shall": "report the node Healthy" },
+      "mentions": ["Health.consecutivePasses"],
+      "dependsOn": ["REQ-50"],
+      "notes": "Decided by the owner on 2026-11-06: recovery needs consecutive passes so the status does not flap near a threshold. The source only implies recovery.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5 (implied)" }]
     },
     {
@@ -298,6 +303,86 @@
       "id": "REQ-39", "kind": "info", "status": "approved",
       "ears": { "shall": "cover several popular Hangfire add-ons through existing features rather than separate ones: multi-app shared store (namespaces), skip missed runs (misfire Skip), idempotency (unique keys) and options from configuration; jobs addressed by type-name strings are deliberately unsupported" },
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-18" }]
+    },
+    {
+      "id": "REQ-40", "kind": "invariant", "status": "approved",
+      "entity": "Node",
+      "ears": { "while": "a node's mode is ClientOnly", "shall": "not promote scheduled jobs, trigger recurring jobs or recover expired leases on that node" },
+      "mentions": ["Node.mode"],
+      "dependsOn": ["REQ-11"],
+      "notes": "Decided by the owner on 2026-11-06 (meaning of the node modes).",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
+    },
+    {
+      "id": "REQ-41", "kind": "invariant", "status": "approved",
+      "entity": "Node",
+      "ears": { "while": "a node's mode is WorkerOnly", "shall": "not serve the dashboard on that node" },
+      "mentions": ["Node.mode"],
+      "dependsOn": ["REQ-11"],
+      "notes": "Decided by the owner on 2026-11-06 (meaning of the node modes). Still open: whether mapping the dashboard on a WorkerOnly node fails startup or is ignored with a warning.",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
+    },
+    {
+      "id": "REQ-42", "kind": "invariant", "status": "approved",
+      "entity": "Store",
+      "ears": { "where": "AutoMigrate is on", "when": "several nodes start at the same time against a store whose schema is older than expected", "shall": "let only the node holding the store's migration lock apply migrations, and have the others wait for the lock and then re-read the schema version" },
+      "mentions": ["Store.autoMigrate", "Store.schemaVersion"],
+      "dependsOn": ["REQ-22", "REQ-24"],
+      "notes": "Decided by the owner on 2026-11-06. The lock lives in the store (TECH-126), consistent with ADR-1 and TECH-51.",
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3" }]
+    },
+    {
+      "id": "REQ-43", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "the stored schema version is newer than the expected version", "shall": "stop the node from starting with a message that names both versions and says the library is older than the schema" },
+      "mentions": ["Store.schemaVersion", "Store.expectedSchemaVersion"],
+      "notes": "Decided by the owner on 2026-11-06: a node accepts its expected schema or one version older, never a newer one, whether AutoMigrate is on or off. During a rolling deploy a node on N that restarts after an N+1 node migrated fails here; that is acceptable because it is being replaced.",
+      "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3, STO-5" }]
+    },
+    {
+      "id": "REQ-44", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
+      "ears": { "when": "the health check runs", "if": "fewer than MinNodesAlive nodes are alive", "shall": "report the node Unhealthy" },
+      "mentions": ["Health.nodesAlive"],
+      "dependsOn": ["REQ-49"],
+      "notes": "Decided by the owner on 2026-11-06. Every node reports this at the same moment, so an orchestrator that restarts on Unhealthy restarts the whole cluster together; the docs should say so.",
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5; §4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-45", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default ClockSkewThreshold to 5 seconds (ClockSkewThreshold)" },
+      "notes": "Decided by the owner on 2026-11-06; the source asks for a threshold but gives no value.",
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-9" }]
+    },
+    {
+      "id": "REQ-46", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default SchedulingLagThreshold to 60 seconds (SchedulingLagThreshold)" },
+      "notes": "Decided by the owner on 2026-11-06; the source says the thresholds are configurable but gives no defaults.",
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-47", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default DeadLetterGrowthThreshold to 100 dead-lettered jobs in 15 minutes (DeadLetterGrowthThreshold)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-48", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default FailureThreshold to 50 failed attempts in 5 minutes (FailureThreshold)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-49", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default MinNodesAlive to 1 (MinNodesAlive)" },
+      "notes": "Decided by the owner on 2026-11-06. The reporting node is itself alive, so the default never fires; applications opt in by raising it.",
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-50", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default HealthyAfterPasses to 3 (HealthyAfterPasses)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5 (implied)" }]
     }
   ],
 
@@ -323,7 +408,7 @@
     },
     {
       "id": "SCN-3", "title": "Schema mismatch stops startup", "status": "approved",
-      "given": "A node starts with AutoMigrate off and a store whose schema is one version behind.",
+      "given": "A node starts with AutoMigrate off and a store whose schema is two versions behind.",
       "steps": [
         { "req": "REQ-12" },
         { "req": "REQ-23", "note": "schema mismatch" },
@@ -339,12 +424,31 @@
         { "req": "REQ-29", "note": "timeout passes, the remaining job's token is cancelled and its lease released" }
       ],
       "then": "The node is Stopped, it claimed nothing after the host stopped, and the second job is available to other nodes."
+    },
+    {
+      "id": "SCN-5", "title": "Rolling deploy: new node runs on the previous schema", "status": "approved",
+      "given": "Library version N+1 starts with AutoMigrate off against a store on schema version N; the store is reachable and options are valid.",
+      "steps": [
+        { "req": "REQ-12" },
+        { "req": "REQ-18", "note": "schema N is accepted" }
+      ],
+      "then": "The node is Running on schema N and no migration was applied."
+    },
+    {
+      "id": "SCN-6", "title": "Store down at startup keeps the host up", "status": "approved",
+      "given": "A node starts while the database is unreachable.",
+      "steps": [
+        { "req": "REQ-12" },
+        { "req": "REQ-25", "note": "retry with backoff" },
+        { "req": "REQ-31", "note": "health check runs" }
+      ],
+      "then": "The host is still running, the node is Starting and reports Unhealthy, and no job was claimed."
     }
   ],
 
   "features": [
-    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "SCN-1", "SCN-2", "SCN-3"] },
-    { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35"] },
+    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-43", "REQ-45", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
+    { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35", "REQ-44", "REQ-46", "REQ-47", "REQ-48", "REQ-49", "REQ-50"] },
     { "id": "FEAT-3", "name": "Graceful shutdown", "members": ["REQ-27", "REQ-28", "REQ-29", "SCN-4"] },
     { "id": "FEAT-4", "name": "Product context", "members": ["REQ-1", "REQ-2", "REQ-3", "REQ-4", "REQ-5", "REQ-6", "REQ-7", "REQ-8", "REQ-10", "REQ-36", "REQ-37", "REQ-38", "REQ-39"] }
   ],
@@ -352,8 +456,13 @@
   "glossary": {
     "NodeMode": "Both (default), ClientOnly or WorkerOnly (REQ-11).",
     "ShutdownTimeout": "Time in-flight jobs get to finish after the host stops; 30 s by default (REQ-28).",
-    "AutoMigrate": "Whether a node applies embedded schema migrations at startup; proposed default true (REQ-21).",
-    "ClockSkewThreshold": "Node-versus-database clock difference above which a warning is logged; no default yet (REQ-26).",
+    "AutoMigrate": "Whether a node applies embedded schema migrations at startup; true by default (REQ-21).",
+    "ClockSkewThreshold": "Node-versus-database clock difference above which a warning is logged; 5 s by default (REQ-45).",
+    "SchedulingLagThreshold": "Scheduling lag above which the node reports Degraded; 60 s by default (REQ-46).",
+    "DeadLetterGrowthThreshold": "Dead-letter growth above which the node reports Degraded; 100 in 15 min by default (REQ-47).",
+    "FailureThreshold": "Failed attempts in the window above which the node reports Degraded; 50 in 5 min by default (REQ-48).",
+    "MinNodesAlive": "Live nodes below which every node reports Unhealthy; 1 by default (REQ-49).",
+    "HealthyAfterPasses": "Consecutive passing health runs needed to return to Healthy; 3 by default (REQ-50).",
     "LeaseDuration": "How long a claim stays valid without a heartbeat; defined in the jobs module (REQ-102)."
   }
 }

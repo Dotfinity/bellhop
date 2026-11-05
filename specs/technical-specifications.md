@@ -1164,6 +1164,26 @@ Format: refiner-tech/1
 - **Status:** draft
 - **Source:** requirements.md §9 Q6; §7 — "Supporting Hangfire's expression-based Enqueue(() => ...) API" is a non-goal
 
+## TECH-126 — Store-native migration lock
+
+- **Area:** datastore
+- **Statement:** Each store shall serialise schema migrations with a lock native to that store: a PostgreSQL advisory lock, SQL Server sp_getapplock, a SQLite write transaction, or a Redis key set with NX and an expiry.
+- **Applies to:** REQ-42
+- **Strength:** must
+- **Status:** approved
+- **Source:** requirements.md §4.9 STO-3
+- **Notes:** Decided by the owner on 2026-11-06. Uses no lock library, so TECH-51 still holds.
+
+## TECH-127 — Additive migrations within a major version
+
+- **Area:** datastore
+- **Statement:** Migrations within one major version shall only add schema objects or widen existing ones, so that library version N keeps working on schema N+1 until its nodes are replaced; removals wait for the next major version.
+- **Applies to:** REQ-23, REQ-32, REQ-43, NFR-18
+- **Strength:** must
+- **Status:** approved
+- **Source:** requirements.md §4.9 STO-5
+- **Notes:** Decided by the owner on 2026-11-06 as part of the accepted schema range (expected version or one older).
+
 ## Open questions
 
 - TECH-59: Scripts get "now" from ARGV, i.e. from the calling node's clock, but INV-105 (EXE-9) says claims and due checks use the database clock. On Redis these conflict. Should the Redis store read TIME once per call outside the script, accept node clocks with the skew warning (REQ-26), or something else? Ask the owner.
