@@ -1,51 +1,79 @@
-"""Writes the Redis*.cfg files of run 2. Each cfg = BASE constants + overrides + checks.
-Run from specs/model/redis:  python gen_cfgs.py"""
+"""Writes the Redis*.cfg files of run 3. Each cfg = BASE constants + overrides + checks.
+Run from specs/model/redis:  python gen_cfgs.py   (removes Redis*.cfg files it no longer writes)"""
+import pathlib
+
 BASE = dict(Nodes="{n1, n2}", WorkerNodes="{n1, n2}", Jobs="{j1, j2}", QueueA="{j1}", KeyMax="1",
             UniqueKeys="FALSE", Recurring="FALSE", ShardByQueue="FALSE", FreshStore="FALSE",
-            LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE", OptGlobalValues="FALSE", OptResumeFlag="FALSE",
-            TimelyHeartbeats="TRUE", MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
-            CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", NULL="NULL")
+            LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE",
+            Prio507="FALSE", RestartWaitOnDetect="FALSE", OptLeaseCheck="FALSE",
+            MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
+            CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", MaxDrops="0", NULL="NULL")
+SAFETY = ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost",
+          "Inv_UnackedUntilOperator", "Inv_ConcurrencyKeyMax", "Inv_SingleClaim"]
 CFGS = {
-  "Redis": ("Main run: two workers, one concurrency key (Max 1), FLUSHALL up to twice, no late joiner, no outage (redis F-1, F-8, F-9).",
-            dict(MaxLosses="2"),
-            ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_UnackedUntilOperator",
-             "Inv_ConcurrencyKeyMax", "Inv_SingleClaim"], []),
-  "Redis_Outage": ("As main with one flush and one server outage (A-18: the interval passes during the outage).",
-            dict(MaxOutages="1"), ["Inv_ConcurrencyKeyMax", "Inv_NoLostOutcome", "Inv_SingleClaim", "Scn_NoClaimWhileFlagged"], []),
-  "Redis_LateJoin": ("As main with one flush, and a node may read the marker for the first time after the flush (REQ-528).",
-            dict(LateJoin="TRUE"), ["Inv_ConcurrencyKeyMax", "Inv_NoLostOutcome", "Inv_NoFalseReset"], []),
-  "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit.",
+  "Redis": ("Main run: two workers, one concurrency key (Max 1), one FLUSHALL, every worker read the marker first.",
+            dict(), SAFETY + ["Scn_NoClaimWhileFlagged"], []),
+  "Redis_Flush2": ("Two FLUSHALLs, no advance; the second lands while a node is reconciling (ACTION_CONSTRAINT; REQ-509 wait).",
+            dict(MaxLosses="2", MaxAdvances="0", MaxTok="2"), SAFETY, []),
+  "Redis_Flush2Restart": ("READING CHECK: Flush2 with a detection on a reconciling node restarting the REQ-509 wait.",
+            dict(MaxLosses="2", MaxAdvances="0", MaxTok="2", RestartWaitOnDetect="TRUE"),
+            ["Inv_ConcurrencyKeyMax", "Inv_SingleClaim", "Inv_NoLostOutcome"], []),
+  "Redis_Outage": ("As main with one server outage for every node (REQ-529).",
+            dict(MaxOutages="1"), ["Inv_ConcurrencyKeyMax", "Inv_SingleClaim", "Inv_NoLostOutcome",
+                                   "Inv_NoLostOutcomeLeaseLost", "Scn_NoClaimWhileFlagged"], []),
+  "Redis_Drop": ("As main with one node losing its connection once (REQ-529, REQ-530 resume).",
+            dict(MaxDrops="1"), ["Inv_ConcurrencyKeyMax", "Inv_SingleClaim", "Inv_NoLostOutcome",
+                                 "Inv_NoLostOutcomeLeaseLost", "Scn_NoClaimWhileFlagged"], []),
+  "Redis_LateJoin": ("One flush; a node may read the marker for the first time after it (REQ-528); REQ-507 wins the overlap.",
+            dict(LateJoin="TRUE", Prio507="TRUE"), SAFETY, []),
+  "Redis_LateJoinLiteral": ("As LateJoin with REQ-507 / REQ-530 both possible on a flagged older marker (literal).",
+            dict(LateJoin="TRUE"), ["Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax"], []),
+  "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit (REQ-522, REQ-534).",
             dict(UniqueKeys="TRUE", KeyMax="2"), ["Inv_UniqueKey"], []),
+  "Redis_Unique2": ("Unique keys across two flushes, the second after the first reconciliation ended (ACTION_CONSTRAINT); no concurrency limit.",
+            dict(UniqueKeys="TRUE", KeyMax="2", MaxLosses="2", MaxAdvances="0", MaxTok="2"), ["Inv_UniqueKey"], []),
+  "Redis_Unique2Opt": ("OPTION CHECK: Unique2 with REQ-522 re-creating only an unexpired lease.",
+            dict(UniqueKeys="TRUE", KeyMax="2", MaxLosses="2", MaxAdvances="0", MaxTok="2", OptLeaseCheck="TRUE"), ["Inv_UniqueKey"], []),
+  "Redis_Recurring2Opt": ("OPTION CHECK: Recurring2 with REQ-522 re-creating only an unexpired lease.",
+            dict(Recurring="TRUE", KeyMax="2", MaxLosses="2", MaxAdvances="0", MaxTok="2", OptLeaseCheck="TRUE"), ["Inv_RecurringOverlap"], []),
   "Redis_Shard": ("ShardByQueue on, no data loss: jobs INV-100 as amended (per queue) vs INV-500 (redis F-10).",
             dict(UniqueKeys="TRUE", ShardByQueue="TRUE", KeyMax="2", LossKinds="{}", MaxLosses="0"), ["Inv_UniqueKey"], []),
   "Redis_Recurring": ("Jobs are occurrences of one recurring job (overlap Skip), one flush; no concurrency limit.",
             dict(Recurring="TRUE", KeyMax="2"), ["Inv_RecurringOverlap"], []),
+  "Redis_Recurring2": ("Occurrences of one recurring job (overlap Skip), two flushes, the second after the first reconciliation ended (ACTION_CONSTRAINT).",
+            dict(Recurring="TRUE", KeyMax="2", MaxLosses="2", MaxAdvances="0", MaxTok="2"), ["Inv_RecurringOverlap"], []),
   "Redis_Restore": ("Restore / failover rollback to an older image, marker included; one advance possible.",
-            dict(LossKinds='{"restore"}'),
-            ["Inv_NoFalseReset", "Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
+            dict(LossKinds='{"restore"}', MaxTok="2"),
+            ["Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
+  "Redis_RestoreFR": ("False-reset check under rollbacks: one job, one claim (Redis_Restore times out on this check).",
+            dict(LossKinds='{"restore"}', Jobs="{j1}", MaxTok="1"), ["Inv_NoFalseReset", "Inv_OneEventPerReset"], []),
   "Redis_RestoreOlder": ("Rollback to an image with an OLDER marker only (the detectable kind; ACTION_CONSTRAINT).",
-            dict(LossKinds='{"restore"}', MaxAdvances="2"),
-            ["Inv_NoFalseReset", "Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
-  "Redis_OptGlobal": ("OPTION CHECK for finding 'false reset': main run with globally later marker values.",
-            dict(MaxLosses="2", OptGlobalValues="TRUE"), ["Inv_NoFalseReset", "Inv_OneEventPerReset"], []),
-  "Redis_OptResume": ("OPTION CHECK for finding 'flag stuck after reconnect': LivOutage with REQ-530 resuming the flag.",
-            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", MaxOutages="1", OptResumeFlag="TRUE"), [], ["Liv_Reseeded"]),
+            dict(LossKinds='{"restore"}', MaxAdvances="2", MaxTok="2"),
+            ["Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
   "Redis_Evict": ("The policy becomes evicting at runtime (REQ-531); evictions of job records (accepted: not detected).",
             dict(LossKinds='{"evict"}', PolicyChange="TRUE"), ["Inv_ConcurrencyKeyMax", "Inv_NoLostOutcome"], []),
-  "Redis_Fresh": ("First start against an empty server; no data loss (redis F-3).",
-            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", FreshStore="TRUE", LossKinds="{}", MaxLosses="0"),
-            ["Inv_NoFalseReset"], []),
+  "Redis_Fresh": ("First start of two workers against an empty server; no data loss (REQ-528, SCN-503).",
+            dict(Jobs="{j1}", FreshStore="TRUE", LossKinds="{}", MaxLosses="0"),
+            ["Inv_NoFalseReset", "Inv_ConcurrencyKeyMax"], []),
   "Redis_Health": ("Health: one node, one flush, one outage, memory threshold on (redis F-5, F-6).",
             dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", CheckHealth="TRUE", MemToggle="TRUE", MaxOutages="1"),
             ["Inv_UnreachableIsUnhealthy", "Inv_UnhealthyOnlyWithCause"], []),
   "Redis_Liveness": ("Liveness: two workers, one job, one flush.",
             dict(Jobs="{j1}"), [], ["Liv_Reseeded", "Liv_MarkerWritten", "Liv_LossReported", "Liv_UnackedRestored"]),
   "Redis_LivFlush2": ("Liveness: two workers, one job, two flushes (a flush during reconciliation; redis F-8).",
-            dict(Jobs="{j1}", MaxLosses="2"), [], ["Liv_LossReported", "Liv_UnackedRestored", "Liv_Reseeded"]),
+            dict(Jobs="{j1}", MaxLosses="2", MaxAdvances="0"), [], ["Liv_LossReported", "Liv_UnackedRestored", "Liv_Reseeded"]),
   "Redis_LivRestore": ("Liveness: two workers, one job, one rollback.",
             dict(Jobs="{j1}", LossKinds='{"restore"}'), [], ["Liv_LossReported", "Liv_Reseeded"]),
-  "Redis_LivOutage": ("Liveness: one worker, one job, one flush and one outage (REQ-529 reconnect during reconciliation).",
+  "Redis_LivOutage": ("Liveness: one worker, one job, one flush and one outage (REQ-529 reconnect during reconciliation; run-2 F-4).",
             dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", MaxOutages="1"), [], ["Liv_Reseeded"]),
+  "Redis_LivDrop": ("Liveness: two workers, one job, one flush, one node drops its connection once.",
+            dict(Jobs="{j1}", MaxDrops="1"), [], ["Liv_Reseeded", "Liv_LossReported"]),
+  "Redis_LivLateJoin": ("Liveness: one flush, a node may first look after it, no advance; literal REQ-507 / REQ-530 overlap.",
+            dict(Jobs="{j1}", LateJoin="TRUE", MaxAdvances="0"), [], ["Liv_LossReported", "Liv_Reseeded"]),
+  "Redis_LivLateJoin507": ("Liveness: as LivLateJoin with REQ-507 winning the overlap.",
+            dict(Jobs="{j1}", LateJoin="TRUE", MaxAdvances="0", Prio507="TRUE"), [], ["Liv_LossReported", "Liv_Reseeded"]),
+  "Redis_LivLateJoinAdv": ("Liveness: as LivLateJoin507 with one REQ-527 advance possible.",
+            dict(Jobs="{j1}", LateJoin="TRUE", Prio507="TRUE"), [], ["Liv_LossReported"]),
   "Redis_ClientOnly": ("LIV-500 with one worker (n1) and one client-only node (n2); hosts may stop nodes (redis F-4, SCN-506).",
             dict(WorkerNodes="{n1}", Jobs="{j1}", AllowStop="TRUE"), ["Scn_ClientNoDetect"], ["Liv_Reseeded"]),
   "Redis_SCN500": ("Scenario SCN-500 (positive), --no-deadlock. Expected: trap VIOLATED (the trace is the example run).",
@@ -58,7 +86,18 @@ CFGS = {
             dict(MaxAdvances="0"), ["Scn_HoldKept_NotReached"], []),
   "Redis_SCN505": ("Scenario SCN-505 (positive): trap VIOLATED expected.",
             dict(Jobs="{j1}", LossKinds='{"restore"}'), ["Scn_RestoreDetected_NotReached"], []),
+  "Redis_SCN507": ("Scenario SCN-507 (positive): trap VIOLATED expected.",
+            dict(LateJoin="TRUE", MaxAdvances="0"), ["Scn_LateLookPaused_NotReached"], []),
+  "Redis_SCN508": ("Scenario SCN-508 (positive): trap VIOLATED expected.",
+            dict(UniqueKeys="TRUE", KeyMax="2", MaxAdvances="0"), ["Scn_DuplicateCancelled_NotReached"], []),
 }
+ACTC = {"Redis_RestoreOlder": "ActC_OlderRollbackOnly",
+        "Redis_Flush2": "ActC_SecondLossDuringReconcile", "Redis_Flush2Restart": "ActC_SecondLossDuringReconcile",
+        "Redis_Unique2": "ActC_SecondLossAfterReconcile", "Redis_Recurring2": "ActC_SecondLossAfterReconcile",
+        "Redis_Unique2Opt": "ActC_SecondLossAfterReconcile", "Redis_Recurring2Opt": "ActC_SecondLossAfterReconcile"}
+HERE = pathlib.Path(__file__).resolve().parent
+for old in HERE.glob("Redis*.cfg"):
+    if old.stem not in CFGS: old.unlink()
 for name, (comment, over, invs, props) in CFGS.items():
     c = dict(BASE, **over)
     scen = "_SCN" in name
@@ -66,5 +105,5 @@ for name, (comment, over, invs, props) in CFGS.items():
              "SPECIFICATION Spec", "CONSTANTS"] + [f"  {k} = {v}" for k, v in c.items()]
     lines += ["INVARIANTS"] + [f"  {i}" for i in ([] if scen else ["TypeInv"]) + invs]
     if props: lines += ["PROPERTIES"] + [f"  {p}" for p in props]
-    if name == "Redis_RestoreOlder": lines += ["ACTION_CONSTRAINT", "  ActC_OlderRollbackOnly"]
-    open(f"{name}.cfg", "w", newline="\n").write("\n".join(lines) + "\n")
+    if name in ACTC: lines += ["ACTION_CONSTRAINT", "  " + ACTC[name]]
+    (HERE / f"{name}.cfg").write_text("\n".join(lines) + "\n", newline="\n")
