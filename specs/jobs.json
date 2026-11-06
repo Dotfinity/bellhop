@@ -1016,7 +1016,7 @@
       "entity": "Job",
       "ears": { "where": "the execution mode is Inline", "shall": "apply unique keys and concurrency keys as in the normal execution mode" },
       "mentions": ["Job.uniqueKey", "Job.concurrencyKey"],
-      "notes": "Decided by the owner on 2026-11-06. Still open: whether an inline job whose concurrency key is held waits or fails at once.",
+      "notes": "Decided by the owner on 2026-11-06. A job whose concurrency key is held is deferred, not failed or blocked (INV-137).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.12 TST-4" }]
     },
@@ -1038,6 +1038,16 @@
       "notes": "Decided by the owner on 2026-11-06: observers are never part of the state machine.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.6 RET-6; §4.11 OBS-6" }]
+    },
+    {
+      "id": "INV-137", "kind": "invariant", "status": "approved",
+      "entity": "Job",
+      "ears": { "where": "the execution mode is Inline", "if": "a job is created while its concurrency key is held by Max running jobs", "shall": "store the job as enqueued and run it inline on the thread of a job holding the key as soon as that job finishes, before the call that started the holding job returns" },
+      "mentions": ["Job.concurrencyKey", "Job.Enqueued", "Throttle.holders", "Throttle.max"],
+      "dependsOn": ["INV-134"],
+      "notes": "Decided by the owner on 2026-11-06. Applies to every call that creates a job (EnqueueAsync, EnqueueManyAsync, ContinueWithAsync, ChainAsync, batch creation, recurring trigger-now). Failing would make code that works in production fail under test, and blocking deadlocks when a handler enqueues a job with its own key. Example: handler A (key tenant:7, Max 1) enqueues B with the same key; B is stored and runs right after A, before the outer EnqueueAsync(A) returns. When two test threads collide, the second thread's call returns before its job has run, and that job runs on the first thread.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.12 TST-4; §4.7 CON-3" }]
     }
   ],
 
@@ -1260,7 +1270,7 @@
   ],
 
   "features": [
-    { "id": "FEAT-100", "name": "Enqueue and schedule", "members": ["REQ-105", "REQ-120", "REQ-121", "REQ-122", "REQ-146", "REQ-147", "REQ-148", "INV-101", "REQ-153", "INV-102", "REQ-154", "REQ-155", "INV-115", "REQ-182", "INV-131", "INV-132", "INV-133", "INV-134", "SCN-107", "SCN-113", "SCN-116"] },
+    { "id": "FEAT-100", "name": "Enqueue and schedule", "members": ["REQ-105", "REQ-120", "REQ-121", "REQ-122", "REQ-146", "REQ-147", "REQ-148", "INV-101", "REQ-153", "INV-102", "REQ-154", "REQ-155", "INV-115", "REQ-182", "INV-131", "INV-132", "INV-133", "INV-134", "INV-137", "SCN-107", "SCN-113", "SCN-116"] },
     { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117"] },
     { "id": "FEAT-102", "name": "Retries and dead letters", "members": ["REQ-100", "REQ-129", "REQ-130", "REQ-131", "REQ-141", "REQ-142", "INV-117", "INV-118", "SCN-101", "SCN-112"] },
     { "id": "FEAT-103", "name": "Uniqueness", "members": ["REQ-107", "REQ-150", "REQ-151", "REQ-152", "INV-100", "INV-135", "SCN-105"] },

@@ -175,7 +175,7 @@ Format: refiner-tech/1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.3 intro — "All scheduling goes through IJobClient (injectable, mockable). There is no static entry point."; §4.3 SCH-1 to SCH-3, SCH-6, SCH-7, SCH-9; §4.8 WF-2; §4.12 TST-2
-- **Notes:** Batch creation and extension (WF-3) need methods too; the source does not name them.
+- **Notes:** Batch creation (WF-3) and bulk requeue of dead letters by name, queue, tag or time range (RET-5, jobs REQ-142) need methods too; the source names neither. Batches can no longer be extended (jobs REQ-178 retired). See Open questions.
 
 ## TECH-20 — EnqueueOptions
 
@@ -1188,6 +1188,7 @@ Format: refiner-tech/1
 
 ## Open questions
 
+- TECH-19: Name and shape the batch creation method (for example CreateBatchAsync(name, jobs, continuations)) and the bulk requeue method (for example RequeueDeadLetteredAsync(filter)), and say whether they live on IJobClient or a separate interface. Ask the owner.
 - TECH-37: Which PostgreSQL versions are supported? No version is given. Ask the owner.
 - TECH-40: Which SQL Server versions (and Azure SQL) are supported? Ask the owner.
 - TECH-42: SQLite is "single node". What happens if two nodes are pointed at one SQLite file: refuse to start, or undefined? Ask the owner.
