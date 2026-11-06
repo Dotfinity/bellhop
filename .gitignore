@@ -347,3 +347,11 @@ healthchecksdb
 
 # Backup folder for Package Reference Convert tool in Visual Studio 2017
 MigrationBackup/
+
+# TLC model-checker working directories (refiner-model runs)
+specs/model/**/states/
+# TLC run output (*.json/*.md next to each cfg): regenerable with run_tlc.py, and with
+# -continue it holds every counter-example trace (100 MB to 1+ GB per module).
+# Only .tla and .cfg files are kept under specs/model.
+specs/model/**/*.json
+specs/model/**/*.md
