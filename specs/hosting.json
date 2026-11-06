@@ -168,7 +168,7 @@
       "mentions": ["Node.hasWorker", "jobs.Job.Processing"],
       "dependsOn": ["REQ-52"],
       "notes": "Decided by the owner on 2026-11-06: node modes are replaced by registrations (REQ-52); a process without AddWorker never runs jobs.",
-      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7", "quote": "ClientOnly (enqueue only, no workers)" }]
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7", "quote": "A process without a worker never claims a job or runs a background duty." }]
     },
     {
       "id": "REQ-21", "kind": "assumption", "status": "approved",

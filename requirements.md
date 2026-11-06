@@ -55,11 +55,33 @@ builder.Services.AddBellhop(bellhop =>
 {
     bellhop.UsePostgres(builder.Configuration.GetConnectionString("Default")!);
     bellhop.AddJobsFromAssemblyContaining<Program>();
+    bellhop.AddWorker();                    // run jobs in this process; also provides IJobClient
 });
 
 var app = builder.Build();
 app.MapBellhopDashboard("/jobs").RequireAuthorization("Admins");
 app.Run();
+```
+
+The same pieces split across processes when the web tier should never run jobs. Each process registers only what it does, and they meet only in the store:
+
+```csharp
+// Web API: enqueue jobs and serve the dashboard, never run jobs
+builder.Services.AddBellhop(bellhop =>
+{
+    bellhop.UsePostgres(connectionString);
+    bellhop.AddJobsFromAssemblyContaining<Program>();
+    bellhop.AddClient();
+});
+app.MapBellhopDashboard("/jobs").RequireAuthorization("Admins");
+
+// Worker service: run jobs, no dashboard
+builder.Services.AddBellhop(bellhop =>
+{
+    bellhop.UsePostgres(connectionString);
+    bellhop.AddJobsFromAssemblyContaining<SendWelcomeEmail>();
+    bellhop.AddWorker(worker => worker.Queues("default", "reports"));
+});
 ```
 
 ```csharp
@@ -89,7 +111,7 @@ public sealed class RegisterUser(IJobClient jobs)
 ```csharp
 // A recurring job, declared where it lives
 [JobName("nightly-cleanup")]
-[Recurring("0 3 * * *", TimeZone = "Europe/Sofia", Overlap = OverlapPolicy.Skip)]
+[Recurring("0 3 * * *", TimeMode = TimeMode.Local, TimeZone = "Europe/Sofia", Overlap = OverlapPolicy.Skip)]
 public sealed record NightlyCleanup : IJob;
 ```
 
@@ -112,13 +134,13 @@ The grievances these choices answer are listed in research.md §1.4 and §1.5.
 
 | ID | Requirement | Level |
 |---|---|---|
-| SET-1 | A working single-node setup MUST require only `AddBellhop(...)` with a store and job registration. The dashboard MUST be optional. | MUST |
+| SET-1 | A working single-node setup MUST require only `AddBellhop(...)` with a store, job registration and `AddWorker()`. The dashboard MUST be optional. | MUST |
 | SET-2 | If no store is configured, Bellhop MUST use the in-memory store and MUST log a warning at startup in non-Development environments. | MUST |
 | SET-3 | All options MUST be bindable from `IConfiguration` (`"Bellhop": { ... }`) and overridable in code. Options MUST be validated at startup (`ValidateOnStart`) with messages that name the option and the fix. | MUST |
 | SET-4 | Every option MUST have a documented default that is safe for production on a small deployment without tuning. | MUST |
 | SET-5 | Registration MUST NOT perform I/O. Database connectivity, schema checks and job reconciliation happen in the hosted service, after the host starts. Build-time tooling (OpenAPI generation, EF design-time) MUST NOT start the scheduler. | MUST |
 | SET-6 | The core package MUST NOT depend on ASP.NET Core or EF Core. Worker services and console hosts are first-class. | MUST |
-| SET-7 | A node MUST be configurable as `Both` (default), `ClientOnly` (enqueue only, no workers) or `WorkerOnly`. | MUST |
+| SET-7 | There are no node modes. A process opts into each piece separately: `AddClient()` gives application code `IJobClient` and `IRecurringJobManager`; `AddWorker(...)` runs jobs and every background duty (promotion, recurring triggers, recovery, cleanup, outbox relay, sweeps, notification checks) and also provides the client; `MapBellhopDashboard(...)` serves the dashboard. The pieces never talk to each other directly, only through the store. A process without a worker never claims a job or runs a background duty. | MUST |
 | SET-8 | On start, Bellhop MUST log a one-screen summary: store and schema version, mode, queues and concurrency, registered job count, recurring jobs with their next run, dashboard path and auth mode. | MUST |
 | SET-9 | All first-party packages MUST ship with the same version number and MUST declare exact-version dependencies on each other so that mismatches are impossible rather than diagnosed later. | MUST |
 | SET-10 | Job registration MUST support assembly scanning (`AddJobsFromAssemblyContaining<T>()`) and explicit `AddJob<TJob, THandler>()`. Scanning across multiple assemblies MUST work (plugin architectures). | MUST |
@@ -306,7 +328,7 @@ Support tiers. **Tier 1**: run in CI on every commit, officially supported. **Ti
 | OBS-2 | Built-in `Meter` (`Bellhop`): counters for enqueued, started, succeeded, failed, retried, dead-lettered, interrupted; histograms for execution duration and scheduling lag (actual start minus scheduled time); observable gauges for queue depth per queue and active workers. | MUST |
 | OBS-3 | **No swallowed exceptions.** Every internal failure (store errors, scheduler errors, serialization errors, recovery) logs through `ILogger` with a stable `EventId` and the job id where applicable. An error that would stall processing MUST also flip the health check. | MUST |
 | OBS-4 | Job-scoped logging: every log line written during a handler carries `{JobId, JobName, Attempt, Queue}` via a logger scope. | MUST |
-| OBS-5 | `AddBellhopHealthCheck()`: store reachable, schema version matches, worker loop alive, scheduling lag under a threshold, dead-letter growth under a threshold. | MUST |
+| OBS-5 | `AddBellhopHealthCheck()`: store reachable, schema version matches, worker loop alive (where a worker is registered), scheduling lag under a threshold, dead-letter growth under a threshold. | MUST |
 | OBS-6 | Events via `IJobEvents` (RET-6) for custom alerting. | SHOULD |
 
 ### 4.12 Testing support (TST)
