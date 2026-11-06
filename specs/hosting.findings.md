@@ -4,15 +4,17 @@
 
 **Run:** 2026-11-06 · **Requirements file:** `specs/hosting.json` (specHash `40f284cf2fba`) · **Model:** `specs/model/hosting/Hosting.tla`
 **TLC:**
-- `Hosting.cfg` (1 node, all configurations): safety; 8 checks violated (below), no deadlock; 56,395 distinct states in 35 s with `-continue`. Each check run on its own explores 106,368 distinct states.
-- `Hosting_2N.cfg` (2 nodes, shared store): safety; 3 checks violated; 97,605 distinct states.
+- `Hosting.cfg` (1 node, all configurations): safety; 8 checks violated (below), no deadlock. The `-continue` run hit a TLC 2.19 internal exception at 56,395 of 106,368 distinct states, so it is used only for its violations. Each violated check also has its own `--stop-at-first` trace under `traces/`.
+- `traces/Holds.cfg` (1 node, every requirement invariant and property reported as holding, `--stop-at-first`): **passed** over the full 106,368 distinct states.
+- `Hosting_2N.cfg` (2 nodes, shared store): safety; 3 checks violated. This `-continue` run also stopped early on the TLC exception, at 97,605 distinct states. The full two-node space is larger than 9.7 M distinct states and does not finish in 120 s (`traces/Holds_2N.cfg`).
+- `traces/Holds_2N_small.cfg` (2 nodes, valid options only, expected version 3): **passed** over 651,696 distinct states. Two-node runs with invalid options or an expected version of 2 are therefore checked only for the violations listed below, not for "holds".
 - `Hosting_Health.cfg`: safety; 1 check violated; 10,056 distinct states.
 - liveness `traces/Live.cfg`: violated, stuttering.
 - Scenarios SCN-1, SCN-2, SCN-4, SCN-5, SCN-6: reachable (pass). SCN-3 holds.
 
 **Result:** 11 findings — 3 contradictions · 2 gaps · 0 unprovable · 6 ambiguities · 0 modeling notes
 
-Most checks below are named `Chk_…`. These are not requirements: each is the obvious intent of a requirement or scenario, written as a property so that TLC can show where the sentences allow something else. Each one is listed in the assumptions table. The exception is `Inv_NoWorkerInBuildTooling` (REQ-14), which is a requirement. All requirement invariants other than REQ-14 hold: REQ-13, REQ-15, REQ-20, REQ-24, REQ-40, REQ-42 (lock discipline), SCN-2 and SCN-3.
+Most checks below are named `Chk_…`. These are not requirements: each is the obvious intent of a requirement or scenario, written as a property so that TLC can show where the sentences allow something else. Each one is listed in the assumptions table. The exception is `Inv_NoWorkerInBuildTooling` (REQ-14), which is a requirement. All requirement invariants other than REQ-14 hold: REQ-13, REQ-15, REQ-20, REQ-24, REQ-40, REQ-42 (lock discipline), SCN-2 and SCN-3. They hold over the full one-node space, and for two nodes under the reduced bounds of `traces/Holds_2N_small.cfg`.
 
 ## Summary
 | # | Kind | Severity | Requirements | One line |
