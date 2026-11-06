@@ -518,8 +518,8 @@ Format: refiner-tech/1
 ## TECH-56 — Redis data model
 
 - **Area:** datastore
-- **Statement:** The Redis store shall keep each job as a hash, per-queue ready and working lists, scheduled, retry and lease sorted sets scored by time, index sorted sets per state, queue and name, tag index sets, recurring definitions as hashes with a sorted set scored by NextRunAt, a node registry sorted set scored by heartbeat, unique keys as SET NX PX and concurrency counters as integers maintained inside scripts, in a documented and versioned key layout.
-- **Applies to:** TECH-70
+- **Statement:** The Redis store shall keep each job as a hash, per-queue ready and working lists, scheduled, retry and lease sorted sets scored by time, index sorted sets per state, queue and name, tag index sets, recurring definitions as hashes with a sorted set scored by NextRunAt, a node registry sorted set scored by heartbeat, unique keys as SET NX PX and concurrency counters as integers maintained inside scripts, in a documented and versioned key layout, plus a generation marker with a forward-only value and a reconciling flag in every hash tag the claim scripts use, and an unacknowledged-reset record.
+- **Applies to:** TECH-70, REQ-507, REQ-526, REQ-527, REQ-532
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-3
@@ -622,8 +622,8 @@ Format: refiner-tech/1
 ## TECH-67 — Redis retention mechanism
 
 - **Area:** datastore
-- **Statement:** The Redis store shall give terminal jobs a whole-hash EXPIRE and trim time-scored index sets with a janitor using ZRANGEBYSCORE and ZREM, 500 entries per pass by default, never using hash-field TTL.
-- **Applies to:** REQ-145, REQ-109
+- **Statement:** The Redis store shall give terminal jobs a whole-hash EXPIRE and trim time-scored index sets with a janitor using ZRANGEBYSCORE and ZREM, 500 entries per pass by default, never using hash-field TTL, and shall give captured logs and results the same EXPIRE as their job hash, re-applied on every state change.
+- **Applies to:** REQ-145, REQ-109, REQ-514
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-11
@@ -640,8 +640,8 @@ Format: refiner-tech/1
 ## TECH-69 — Redis server detection
 
 - **Area:** protocol
-- **Statement:** The Redis store shall identify the server family with HELLO and INFO and probe EVAL with a trivial script on connect.
-- **Applies to:** REQ-500, REQ-502
+- **Statement:** The Redis store shall identify the server family with HELLO and INFO and probe EVAL with a trivial script on connect, repeating detection and the maxmemory-policy check on every reconnection, including a Sentinel role change.
+- **Applies to:** REQ-500, REQ-502, REQ-505, REQ-529, REQ-531
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-18; §4.9.2 RDV-1
@@ -1212,6 +1212,16 @@ Format: refiner-tech/1
 - **Status:** approved
 - **Notes:** Decided by the owner on 2026-11-06 (integrations findings F-6): alerting must keep working when the last worker is down. The owner suggested the name app.UseBellhopAlerts(); the builder style of TECH-128 would give AddAlerts(). See open questions.
 
+## TECH-130 — Redis reset safety in the claim and heartbeat scripts
+
+- **Area:** datastore
+- **Statement:** The Redis claim script shall refuse to claim while the generation marker is missing or flagged as reconciling, and the heartbeat script shall re-create a missing job record as Processing with its lease and concurrency-key hold when the store was reset since the claim.
+- **Applies to:** redis REQ-522, redis REQ-526, TECH-56, TECH-62
+- **Strength:** must
+- **Status:** approved
+- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy; see open questions.
+
 ## Open questions
 
 - TECH-129: exact API for the alerts registration: app.UseBellhopAlerts() as the owner suggested, or AddAlerts() on the AddBellhop builder like AddClient()/AddWorker() (TECH-128)? A hosted background duty is normally registered on the service collection. Owner to decide.
+- TECH-130: under ShardByQueue (Redis Cluster), is one generation marker per hash tag with detection per tag acceptable, given that compare-and-set and advancing are then not atomic across the whole namespace? Owner to decide.

@@ -341,10 +341,10 @@ Format: refiner-nfr/1
 ## NFR-31 — Redis durability documentation
 
 - **Category:** reliability
-- **Statement:** The Redis store's first documentation page shall state the data-loss windows plainly and name AWS MemoryDB, ElastiCache for Valkey 9 with synchronous durability, and Kvrocks as the options for durability-critical workloads.
+- **Statement:** The Redis store's first documentation page shall state the data-loss windows plainly and name AWS MemoryDB, ElastiCache for Valkey 9 with synchronous durability, and Kvrocks as the options for durability-critical workloads, and shall state that the store refuses to start unless maxmemory-policy is noeviction, that a reset pauses claims for about one HeartbeatInterval, and that a rollback to a state less than one RecurringReconcileInterval old is not detected.
 - **Measure:** present on the first page of the Redis store docs
 - **Verification:** inspection
-- **Applies to:** TECH-70, REQ-503, REQ-504
+- **Applies to:** TECH-70, REQ-503, REQ-504, REQ-505, REQ-526, REQ-527
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-7
