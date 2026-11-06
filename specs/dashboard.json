@@ -20,7 +20,7 @@
     },
     {
       "name": "LoginAttempt",
-      "description": "A basic-auth or API-key credential check.",
+      "description": "A basic-auth credential check; API-key checks are not counted (REQ-304, INV-308).",
       "attributes": ["user", "failedCount", "lockedUntil"]
     },
     {
@@ -47,16 +47,18 @@
     {
       "id": "REQ-300", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["Starting"],
-      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without an authorization requirement and the environment is Development", "shall": "allow anonymous access and log a notice saying so" },
-      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement"],
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth and the environment is Development", "shall": "treat anonymous requests as having operate permission and log a notice saying so" },
+      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardRequest.hasOperate"],
+      "notes": "refiner-model 2026-11-06 F-1 (option 1, owner decision): anonymous access is a permission grant, operate in Development, so INV-301 holds. F-10 (option 1): the authorization requirements are listed by name; RequireApiKey() is not one, because it authenticates scripts, not browsers.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2; §4.14 SEC-1" }]
     },
     {
       "id": "REQ-301", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without an authorization requirement, AllowAnonymous() was not called and the environment is not Development", "shall": "stop the node from starting with a message that says how to add authorization or opt in to anonymous access" },
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth, AllowAnonymous() was not called and the environment is not Development", "shall": "stop the node from starting with a message that says how to add authorization or opt in to anonymous access" },
       "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardEndpoint.allowAnonymous"],
+      "notes": "refiner-model 2026-11-06 F-10 (option 1): the authorization requirements are listed by name; a dashboard protected only by RequireApiKey() still needs one of them or AllowAnonymous() outside Development. F-5: hosting REQ-18/REQ-19 name this check as a startup check, so it always runs before the node is marked running.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2; §4.14 SEC-1", "quote": "In every other environment startup MUST fail with an actionable message unless the endpoint has an authorization requirement or .AllowAnonymous() was called explicitly." }]
     },
@@ -106,19 +108,19 @@
     {
       "id": "REQ-304", "kind": "invariant", "status": "approved",
       "entity": "LoginAttempt",
-      "ears": { "where": "basic authentication is enabled", "if": "a user, or a client address, has failed MaxFailedLogins times within LoginLockoutWindow", "shall": "reject further attempts for that user or from that address until the window has passed, even with the right password" },
+      "ears": { "where": "basic authentication is enabled with RequireBasicAuth()", "if": "a user, or a client address, has failed basic authentication MaxFailedLogins times within LoginLockoutWindow", "shall": "reject further basic-authentication attempts for that user or from that address until the window has passed, even with the right password" },
       "mentions": ["LoginAttempt.failedCount", "LoginAttempt.lockedUntil", "LoginAttempt.user"],
       "dependsOn": ["REQ-335", "REQ-336"],
-      "notes": "Decided by the owner on 2026-11-06: 5 failures in 15 minutes, counted both per user and per client address, so one address cannot try many users and many addresses cannot hammer one user.",
+      "notes": "Decided by the owner on 2026-11-06: 5 failures in 15 minutes, counted both per user and per client address, so one address cannot try many users and many addresses cannot hammer one user. refiner-model 2026-11-06 F-2/F-3 (option 2, owner decision): the lockout covers basic authentication only. API keys are never locked out and failed key attempts are not counted (INV-308), so a noisy neighbour cannot block a CI script; brute-force resistance for keys rests on key entropy (NFR).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
     {
       "id": "REQ-305", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "where": "RequireApiKey() is enabled", "when": "a script or the CLI calls the JSON API with an active API key", "shall": "authenticate it with the scope assigned to that key" },
-      "mentions": ["DashboardRequest.principal", "ApiKey.Active", "ApiKey.scope"],
-      "notes": "Decided by the owner on 2026-11-06: keys are issued and revoked from the dashboard (REQ-337, REQ-338), stored hashed, scoped to view or operate, and expire after 90 days by default (REQ-340). Several keys can be active at once, which is how rotation works.",
+      "ears": { "where": "RequireApiKey() is enabled", "when": "a script or the CLI calls the JSON API with an active API key whose expiresAt has not passed", "shall": "authenticate it with the scope assigned to that key and the principal name \"apikey:\" followed by the key's name" },
+      "mentions": ["DashboardRequest.principal", "ApiKey.Active", "ApiKey.scope", "ApiKey.expiresAt", "ApiKey.name"],
+      "notes": "Decided by the owner on 2026-11-06: keys are issued and revoked from the dashboard (REQ-337, REQ-338), stored hashed, scoped to view or operate, and expire after 90 days by default (REQ-340). Several keys can be active at once, which is how rotation works. refiner-model 2026-11-06 F-4 (option 1): expiry is decided at request time from expiresAt, so a key stops working at the instant it expires whatever REQ-339 has done. F-9 (option 1): the principal name makes key launches attributable (REQ-320, REQ-323). F-2 (owner decision): a key is never refused because of a basic-auth lockout (REQ-304).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
@@ -199,8 +201,9 @@
     {
       "id": "REQ-314", "kind": "invariant", "status": "approved",
       "entity": "NodeSample",
-      "ears": { "while": "a node is running", "shall": "take a metrics sample every NodeSampleInterval, 15 s by default, write it in one batched store write per interval and keep samples for NodeSampleRetention, 7 days by default" },
-      "mentions": ["NodeSample.takenAt", "hosting.Node.Running"],
+      "ears": { "while": "a node is running, whether or not the worker is registered", "shall": "take a metrics sample of that node every NodeSampleInterval, 15 s by default, and write it in one batched store write per interval" },
+      "mentions": ["NodeSample.takenAt", "NodeSample.node", "hosting.Node.Running", "hosting.Node.hasWorker"],
+      "notes": "refiner-model 2026-11-06 F-8 (option 1): every running node samples itself, client-only and dashboard-only nodes included; sampling is not a background duty under hosting REQ-40. Pruning old samples moved to REQ-343, a worker duty.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-6" }]
     },
@@ -268,8 +271,9 @@
     {
       "id": "REQ-322", "kind": "transition", "status": "approved",
       "entity": "recurring.RecurringJob", "actor": "Operator", "to": ["Active"],
-      "ears": { "when": "an operator submits a valid launch form with Make recurring and a schedule", "shall": "create a runtime-defined recurring job with the form's payload" },
+      "ears": { "when": "an operator submits a valid launch form with Make recurring and a schedule", "shall": "create a runtime-defined recurring job with the form's payload and store the operator's principal name on it" },
       "mentions": ["DashboardRequest.principal"],
+      "notes": "refiner-model 2026-11-06 F-9 (option 1): recurring launches are attributed like Run now and Schedule, so REQ-323 can list who launched them.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-8" }]
     },
@@ -298,9 +302,9 @@
     {
       "id": "REQ-326", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "when": "an operator runs a bulk requeue, cancel or delete by tag", "shall": "apply the action to every job with that tag for which the action is allowed in its current state" },
+      "ears": { "when": "an operator runs a bulk requeue, cancel or delete by tag", "shall": "apply the action to each job that has the tag when the action starts, in its own atomic step, where the action is allowed in the job's state at that step, and return how many jobs were changed and how many were skipped" },
       "mentions": ["jobs.Job.tags"],
-      "notes": "Which states allow requeue and delete is open in the jobs module (REQ-143, REQ-144).",
+      "notes": "Allowed states: jobs REQ-134, REQ-135, REQ-141, REQ-143, REQ-144. refiner-model 2026-11-06 F-11 (option 1): mirrors jobs REQ-142, so jobs tagged after the action starts are not included and a job whose state changed meanwhile is skipped and counted.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-9" }]
     },
@@ -348,13 +352,16 @@
       "entity": "Rollup",
       "ears": { "shall": "keep insights rollups of enqueued, succeeded, failed and dead-lettered counts and duration percentiles per job name and per queue, per minute for 24 hours and per hour for 30 days" },
       "mentions": ["Rollup.granularity", "Rollup.counts", "Rollup.durationPercentiles"],
+      "notes": "refiner-model 2026-11-06 F-8 (option 1): computing and pruning rollups are worker background duties (INV-305, hosting REQ-40). While no worker is alive no rollups are computed, and the insights pages show that gap; this is accepted.",
       "tags": ["M3"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-13" }]
     },
     {
       "id": "INV-305", "kind": "invariant", "status": "approved", "strength": "should",
       "entity": "Rollup",
-      "ears": { "shall": "compute each rollup interval on exactly one node, which holds a lease in the store, and write it in one batched write" },
+      "ears": { "where": "the worker is registered on a node", "shall": "compute each rollup interval, as one of that node's background duties, only while the node holds the interval's lease in the store, and write the interval in one batched write that succeeds only if the node still holds the lease" },
+      "mentions": ["Rollup", "hosting.Node.hasWorker"],
+      "notes": "refiner-model 2026-11-06 F-7 (option 1): the write is fenced by the lease, so at most one result is written per interval even when a lease expires mid-computation; duplicate computation stays possible and harmless. F-8 (option 1): rollups are a worker duty (hosting REQ-40).",
       "tags": ["M3"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-13", "quote": "Rollups are computed by one node under a lease (CON-7) in one batched write per interval." }]
     },
@@ -377,7 +384,7 @@
       "id": "REQ-334", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
       "ears": { "while": "a node is starting", "if": "basic authentication is enabled and a configured password is not a supported salted hash", "shall": "stop the node from starting with a message that names the user and shows how to produce the hash" },
-      "notes": "Decided by the owner on 2026-11-06.",
+      "notes": "Decided by the owner on 2026-11-06. refiner-model 2026-11-06 F-5: hosting REQ-18/REQ-19 name this check as a startup check, so it always runs before the node is marked running.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2; §4.14 SEC-1" }]
     },
@@ -418,7 +425,7 @@
       "entity": "ApiKey", "actor": "system", "from": ["Active"], "to": ["Expired"],
       "ears": { "while": "an API key is active", "when": "its expiresAt has passed", "shall": "mark the key expired" },
       "mentions": ["ApiKey.expiresAt"],
-      "notes": "Decided by the owner on 2026-11-06.",
+      "notes": "Decided by the owner on 2026-11-06. refiner-model 2026-11-06 F-4 (option 1): this is bookkeeping for the key list; whether a key authenticates is decided from expiresAt at request time (REQ-305, INV-308), so the delay before this transition runs does not matter.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
@@ -441,21 +448,48 @@
     {
       "id": "INV-308", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "if": "a request presents an API key that is revoked, expired or unknown", "shall": "respond 401 Unauthorized and count it as a failed login for the client address" },
-      "mentions": ["ApiKey.Revoked", "ApiKey.Expired", "DashboardRequest.response", "LoginAttempt.failedCount"],
-      "dependsOn": ["REQ-304"],
-      "notes": "Decided by the owner on 2026-11-06 (key lifecycle); counting it towards the address lockout follows from REQ-304.",
+      "ears": { "if": "a request presents an API key that is revoked, expired, past its expiresAt or unknown", "shall": "respond 401 Unauthorized" },
+      "mentions": ["ApiKey.Revoked", "ApiKey.Expired", "ApiKey.expiresAt", "DashboardRequest.response"],
+      "notes": "Decided by the owner on 2026-11-06 (key lifecycle). refiner-model 2026-11-06 F-2/F-3 (option 2, owner decision): failed key attempts are no longer counted as failed logins; API keys are never locked out (REQ-304) and brute-force resistance rests on key entropy (NFR). F-4 (option 1): a key past its expiresAt is refused even before REQ-339 marks it expired.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
     {
       "id": "REQ-341", "kind": "invariant", "status": "approved",
       "entity": "DashboardEndpoint",
-      "ears": { "while": "no node with the worker registered has sent a heartbeat within NodeLostAfter", "shall": "show a banner on every dashboard page saying that no worker is running, so enqueued and scheduled jobs will not run, with the time the last worker was seen" },
+      "ears": { "while": "no node with the worker registered has sent a heartbeat within NodeLostAfter", "shall": "show a banner on every dashboard page saying that no worker is running, so enqueued and scheduled jobs will not run, with the time the last worker was seen or, if none was ever seen, that no worker has connected to this store" },
       "mentions": ["hosting.Node.hasWorker", "hosting.Node.Running"],
-      "notes": "Decided by the owner on 2026-11-06. A cluster made only of client or dashboard processes otherwise accepts jobs that never run, silently (P6). NodeLostAfter (5 min, integrations REQ-411) keeps a rolling deploy from flashing the banner. The JSON API reports the same condition.",
+      "notes": "Decided by the owner on 2026-11-06. A cluster made only of client or dashboard processes otherwise accepts jobs that never run, silently (P6). NodeLostAfter (5 min, hosting REQ-60) keeps a rolling deploy from flashing the banner. The JSON API reports the same condition. refiner-model 2026-11-06 F-6 (option 1): a deployment where no worker ever connected gets the banner too, with that wording instead of a time.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7; §2 P6" }]
+    },
+    {
+      "id": "REQ-342", "kind": "transition", "status": "approved", "strength": "must",
+      "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth, AllowAnonymous() was called and the environment is not Development", "shall": "treat anonymous requests as having view permission only and log a warning that the dashboard is open to anonymous viewers" },
+      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardEndpoint.allowAnonymous", "DashboardRequest.hasView"],
+      "dependsOn": ["INV-301"],
+      "notes": "refiner-model 2026-11-06 F-1 (option 1, owner decision): AllowAnonymous() outside Development grants view, never operate, so operate actions still need an authenticated principal. Before this, AllowAnonymous() had no defined effect.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2; §4.14 SEC-1" }]
+    },
+    {
+      "id": "REQ-343", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "NodeSample",
+      "ears": { "where": "the worker is registered on a node", "shall": "delete node samples older than NodeSampleRetention, 7 days by default, as one of that node's background duties" },
+      "mentions": ["NodeSample.takenAt", "hosting.Node.hasWorker"],
+      "notes": "refiner-model 2026-11-06 F-8 (option 1): split from REQ-314. Pruning is retention cleanup, a worker duty under hosting REQ-40; samples are not pruned while no worker is alive.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-6" }]
+    },
+    {
+      "id": "INV-309", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "DashboardEndpoint",
+      "ears": { "shall": "offer and perform launches and other operate actions on a node that maps the dashboard whether or not the client or the worker is registered on that node" },
+      "mentions": ["hosting.Node.hasClient", "hosting.Node.hasWorker"],
+      "notes": "refiner-model 2026-11-06 F-12 (option 1): the dashboard writes through the store, so an ops portal that maps only the dashboard can launch, requeue, cancel and trigger. Permission and ReadOnly() rules still apply (INV-301, INV-302).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-12; §4.1 SET-7" }]
     }
   ],
 
@@ -470,7 +504,7 @@
       "id": "SCN-301", "title": "Development dashboard is open, with a notice", "status": "approved",
       "given": "Environment Development; dashboard mapped with no authorization.",
       "steps": [ { "req": "REQ-300" } ],
-      "then": "Anonymous requests are served and one notice was logged."
+      "then": "Anonymous requests are served with operate permission and one notice was logged."
     },
     {
       "id": "SCN-302", "title": "Operator launches a job", "status": "approved",
@@ -519,14 +553,32 @@
         { "req": "REQ-341" }
       ],
       "then": "Every page shows the no-worker banner with the time the worker was last seen, and the three jobs are still Enqueued."
+    },
+    {
+      "id": "SCN-309", "title": "Anonymous viewer outside Development cannot launch", "status": "approved",
+      "given": "Environment Production; app.MapBellhopDashboard(\"/jobs\").AllowAnonymous() with no other authorization; an anonymous browser has the launch page open.",
+      "steps": [
+        { "req": "REQ-342", "note": "the node starts and grants anonymous requests view permission" },
+        { "req": "REQ-320", "note": "the anonymous browser submits Run now" }
+      ],
+      "impossibleAt": 2
+    },
+    {
+      "id": "SCN-310", "title": "A basic-auth lockout does not block API keys", "status": "approved",
+      "given": "RequireBasicAuth() and RequireApiKey() are enabled; the office address has failed basic authentication MaxFailedLogins times within LoginLockoutWindow; the CI script behind the same address holds an active operate-scope key k1 whose expiresAt has not passed.",
+      "steps": [
+        { "req": "REQ-304", "note": "a correct basic-auth password from the office address is rejected" },
+        { "req": "REQ-305", "note": "the CI script calls the JSON API with k1" }
+      ],
+      "then": "The basic-auth attempt was rejected, and the CI request is authenticated with operate scope and principal name apikey:k1."
     }
   ],
 
   "features": [
-    { "id": "FEAT-300", "name": "Access control", "members": ["REQ-300", "REQ-301", "INV-300", "INV-301", "INV-302", "REQ-302", "REQ-303", "REQ-304", "REQ-305", "REQ-306", "REQ-334", "REQ-335", "REQ-336", "REQ-337", "REQ-338", "REQ-339", "REQ-340", "INV-307", "INV-308", "SCN-300", "SCN-301", "SCN-303", "SCN-304", "SCN-306", "SCN-307"] },
+    { "id": "FEAT-300", "name": "Access control", "members": ["REQ-300", "REQ-301", "INV-300", "INV-301", "INV-302", "REQ-302", "REQ-303", "REQ-304", "REQ-305", "REQ-306", "REQ-334", "REQ-335", "REQ-336", "REQ-337", "REQ-338", "REQ-339", "REQ-340", "INV-307", "INV-308", "REQ-342", "SCN-300", "SCN-301", "SCN-303", "SCN-304", "SCN-306", "SCN-307", "SCN-309", "SCN-310"] },
     { "id": "FEAT-301", "name": "Pages", "members": ["REQ-307", "REQ-308", "REQ-341", "INV-303", "REQ-309", "REQ-310", "REQ-311", "REQ-312", "REQ-313", "REQ-315", "REQ-316", "REQ-317", "REQ-318", "REQ-325", "REQ-326", "REQ-327", "REQ-330", "REQ-331", "INV-306", "SCN-308"] },
-    { "id": "FEAT-302", "name": "Launch page", "members": ["INV-304", "REQ-319", "REQ-320", "REQ-321", "REQ-322", "REQ-323", "REQ-324", "SCN-302", "SCN-305"] },
-    { "id": "FEAT-303", "name": "Node metrics and insights", "members": ["REQ-314", "REQ-332", "INV-305", "REQ-333"] },
+    { "id": "FEAT-302", "name": "Launch page", "members": ["INV-304", "REQ-319", "REQ-320", "REQ-321", "REQ-322", "REQ-323", "REQ-324", "INV-309", "SCN-302", "SCN-305"] },
+    { "id": "FEAT-303", "name": "Node metrics and insights", "members": ["REQ-314", "REQ-343", "REQ-332", "INV-305", "REQ-333"] },
     { "id": "FEAT-304", "name": "Recurring management in the UI", "members": ["REQ-328", "REQ-329"] }
   ],
 
@@ -534,8 +586,10 @@
     "view": "Permission to read dashboard pages and the JSON API (INV-301).",
     "operate": "Permission to retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change limits and manage API keys; includes view (INV-301).",
     "NodeSampleInterval": "15 s by default (REQ-314).",
-    "NodeSampleRetention": "7 days by default (REQ-314).",
-    "MaxFailedLogins": "Failed logins per user or client address before attempts are rejected; 5 by default (REQ-335).",
+    "NodeSampleRetention": "7 days by default (REQ-343).",
+    "MaxFailedLogins": "Failed basic-auth logins per user or client address before further basic-auth attempts are rejected; 5 by default (REQ-335). API-key attempts are not counted (REQ-304, INV-308).",
+    "authorizationRequirement": "RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth on the dashboard endpoint (REQ-300, REQ-301, REQ-342). RequireApiKey() is not one: it authenticates scripts, not browsers.",
+    "anonymousPermission": "Operate in Development without an authorization requirement (REQ-300); view only with AllowAnonymous() elsewhere (REQ-342).",
     "LoginLockoutWindow": "Window for counting failed logins; 15 min by default (REQ-336).",
     "ApiKeyDefaultExpiry": "Expiry of a new API key when none is given; 90 days (REQ-340)."
   }

@@ -685,3 +685,18 @@ Format: refiner-nfr/1
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-9
 - **Notes:** Split out of NFR-57. Decided by the owner on 2026-11-06: soak and load testing move to a later phase (M3).
+
+## NFR-62 — API key entropy
+
+- **Category:** security
+- **Statement:** The system shall generate every dashboard API key from a cryptographically secure random source with enough entropy that guessing a key without a lockout is infeasible.
+- **Measure:** TBD
+- **Verification:** inspection
+- **Applies to:** dashboard REQ-304, dashboard REQ-305, dashboard REQ-337, dashboard INV-308
+- **Strength:** must
+- **Status:** approved
+- **Notes:** refiner-model 2026-11-06 dashboard F-2/F-3, owner's decision: API keys are never locked out and failed key attempts are not counted, so brute-force resistance rests on key entropy alone.
+
+## Open questions
+
+- NFR-62: minimum key entropy. 256 bits from a CSPRNG is proposed; the source gives no number. Owner to decide.
