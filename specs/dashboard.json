@@ -11,7 +11,7 @@
     {
       "name": "DashboardEndpoint",
       "description": "The mounted dashboard and JSON API.",
-      "attributes": ["path", "environment", "authRequirement", "allowAnonymous", "readOnly", "viewPolicy", "operatePolicy", "storeCapabilities"]
+      "attributes": ["path", "environment", "authRequirement", "allowAnonymous", "readOnly", "viewPolicy", "operatePolicy"]
     },
     {
       "name": "DashboardRequest",
@@ -71,7 +71,7 @@
     {
       "id": "INV-301", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "shall": "serve a dashboard page, JSON API read or MCP read only to a request with view or operate permission, and perform an operate action (retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change a limit, create or revoke an API key) only for a request with operate permission" },
+      "ears": { "shall": "serve a dashboard page, JSON API read or MCP read only to a request with view or operate permission, and perform an operate action (retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change a limit, create or revoke an API key, acknowledge a store reset) only for a request with operate permission" },
       "mentions": ["DashboardRequest.hasView", "DashboardRequest.hasOperate", "DashboardRequest.isOperate"],
       "notes": "Applies equally to every built-in page (DSH-13), the JSON API (DSH-9) and the MCP server (BLT-19). Decided by the owner on 2026-11-06: operate includes view; the view policy alone gives read-only users.",
       "tags": ["M1"],
@@ -140,17 +140,19 @@
     {
       "id": "REQ-308", "kind": "invariant", "status": "approved",
       "entity": "DashboardEndpoint",
-      "ears": { "shall": "show a jobs list filterable by state (including Unroutable), name, queue, tag, correlation id and time range, and by free text over payloads only where the store supports it" },
-      "mentions": ["DashboardEndpoint.storeCapabilities", "jobs.Job.Unroutable", "jobs.Job.correlationId", "jobs.Job.tags"],
+      "ears": { "shall": "show a jobs list filterable by state (including Unroutable), name, queue, tag, correlation id and time range" },
+      "mentions": ["jobs.Job.Unroutable", "jobs.Job.correlationId", "jobs.Job.tags"],
       "tags": ["M1"],
+      "notes": "Decided by the owner on 2026-11-06: free-text search over payloads is dropped as overkill; tags (BLT-9) are how jobs are found by business key, and every store serves these filters.",
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-5; §4.2 JOB-3; §4.15 BLT-4, BLT-9" }]
     },
     {
-      "id": "INV-303", "kind": "invariant", "status": "approved",
+      "id": "INV-303", "kind": "invariant", "status": "retired",
       "entity": "DashboardEndpoint",
       "ears": { "if": "the store's capability set lacks a feature a filter needs", "shall": "hide that filter instead of offering it and failing" },
-      "mentions": ["DashboardEndpoint.storeCapabilities"],
+      "supersededBy": "REQ-308",
       "tags": ["M2"],
+      "notes": "Retired. Decided by the owner on 2026-11-06: with free-text search dropped, no jobs-list filter depends on a store capability any more.",
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-10", "quote": "the dashboard hides filters a store cannot serve instead of failing" }]
     },
     {

@@ -299,11 +299,12 @@ Format: refiner-tech/1
 ## TECH-33 — Store capability set
 
 - **Area:** other
-- **Statement:** IJobStore shall expose a capability set covering free-text payload search, transactional enqueue, push notifications and result storage.
-- **Applies to:** INV-303, REQ-153, REQ-512
+- **Statement:** IJobStore shall expose a capability set covering transactional enqueue, push notifications and result storage.
+- **Applies to:** REQ-153, REQ-512
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-10
+- **Notes:** Free-text payload search was removed from the set by owner decision on 2026-11-06 as overkill; tag filters cover lookups by business key.
 
 ## TECH-34 — IJobContextAccessor
 
@@ -541,12 +542,12 @@ Format: refiner-tech/1
 ## TECH-59 — Script time from the caller
 
 - **Area:** datastore
-- **Statement:** Redis scripts shall receive the current time in ARGV and never read it with TIME, and shall be deterministic and short.
+- **Statement:** Redis scripts shall receive the current time in ARGV, taken from a TIME call to the same server once per store call, never read TIME inside a script or use a node's clock, and shall be deterministic and short.
 - **Applies to:** TECH-57
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-4
-- **Notes:** INV-105 requires the database clock for claims and due checks; passing a node's clock in ARGV makes the Redis store use the caller's clock instead. That is a contradiction to resolve with the owner (see Open questions).
+- **Notes:** Decided by the owner on 2026-11-06: the client reads the server clock with TIME and passes it in, so scripts stay deterministic and claims and due checks use the Redis clock as INV-105 requires. The extra round trip can be pipelined with the script call.
 
 ## TECH-60 — Lua subset
 
@@ -1187,7 +1188,6 @@ Format: refiner-tech/1
 
 ## Open questions
 
-- TECH-59: Scripts get "now" from ARGV, i.e. from the calling node's clock, but INV-105 (EXE-9) says claims and due checks use the database clock. On Redis these conflict. Should the Redis store read TIME once per call outside the script, accept node clocks with the skew warning (REQ-26), or something else? Ask the owner.
 - TECH-37: Which PostgreSQL versions are supported? No version is given. Ask the owner.
 - TECH-40: Which SQL Server versions (and Azure SQL) are supported? Ask the owner.
 - TECH-42: SQLite is "single node". What happens if two nodes are pointed at one SQLite file: refuse to start, or undefined? Ask the owner.

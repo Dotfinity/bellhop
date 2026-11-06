@@ -13,7 +13,7 @@
       "description": "The Redis store as seen by one node.",
       "states": ["Connecting", "Ready", "Reconciling"],
       "initial": ["Connecting"],
-      "attributes": ["serverFamily", "serverVersion", "evalAvailable", "aofEnabled", "replication", "maxmemoryPolicy", "usedMemory", "maxMemory", "generationMarker", "topology", "shardMode", "reachable"]
+      "attributes": ["serverFamily", "serverVersion", "evalAvailable", "aofEnabled", "replication", "maxmemoryPolicy", "usedMemory", "maxMemory", "generationMarker", "resetAcknowledged", "topology", "shardMode", "reachable"]
     }
   ],
 
@@ -74,7 +74,7 @@
       "entity": "RedisStore",
       "ears": { "shall": "include the persistence mode in the health check and report used_memory against maxmemory" },
       "mentions": ["RedisStore.aofEnabled", "RedisStore.usedMemory", "RedisStore.maxMemory"],
-      "notes": "used_memory reporting is SHOULD (RED-13); the persistence mode is MUST (RED-7). Open question: at what share of maxmemory does the check turn Degraded?",
+      "notes": "used_memory reporting is SHOULD (RED-13); the persistence mode is MUST (RED-7). Decided by the owner on 2026-11-06: the check turns Degraded above 80% of maxmemory (REQ-519, REQ-520).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-7, RED-13" }]
     },
@@ -83,7 +83,7 @@
       "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Reconciling"],
       "ears": { "while": "the store is ready", "when": "the generation marker key is found missing", "shall": "log the ERROR event StoreWasReset and start re-seeding the code-defined recurring jobs and the queue registry" },
       "mentions": ["RedisStore.generationMarker", "recurring.RecurringJob.origin"],
-      "notes": "Causes: FLUSHALL, eviction, restore from an old snapshot. Open questions: (1) jobs that were in flight are gone, so their handlers may still complete against records that no longer exist; what does a heartbeat or completion do then? (2) runtime-defined recurring jobs cannot be re-seeded; is that loss reported?",
+      "notes": "Causes: FLUSHALL, eviction, restore from an old snapshot. Decided by the owner on 2026-11-06: a run whose job record vanished in the reset writes back a minimal record when it completes (REQ-521) and its heartbeats are ignored meanwhile (REQ-522). Runtime-defined recurring jobs cannot be re-seeded; the loss is reported and health stays Degraded until an operator acknowledges it (REQ-523 to REQ-525).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
@@ -140,8 +140,8 @@
     },
     {
       "id": "REQ-512", "kind": "assumption", "status": "approved",
-      "ears": { "shall": "report in the Redis store's capability set no free-text payload search and no transactional enqueue, while offering push notifications and result storage" },
-      "notes": "The source names the four capabilities and the two the Redis store lacks; that it has the other two is my reading of RED-6 and RED-13.",
+      "ears": { "shall": "report in the Redis store's capability set no transactional enqueue, while offering push notifications and result storage" },
+      "notes": "Decided by the owner on 2026-11-06: free-text payload search is dropped from Bellhop altogether as overkill; tag filters (BLT-9) cover looking jobs up by business key. Checked against current Redis: pub/sub gives push notifications and hashes with TTLs give result storage on every supported server, while no Redis server can join the application's SQL transaction. Redis 8 does ship a query engine with full-text search, but it is not used (RDV-2).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-10, RED-12" }]
     },
@@ -196,6 +196,69 @@
       "id": "REQ-518", "kind": "info", "status": "approved",
       "ears": { "shall": "not test or document Tendis, Pika/PikiwiDB or other region-specific forks, but accept reports about them" },
       "sources": [{ "document": "requirements.md", "section": "§4.9.2 RDV-9" }]
+    },
+    {
+      "id": "REQ-519", "kind": "transition", "status": "approved",
+      "entity": "hosting.Health", "actor": "system", "from": ["Healthy"], "to": ["Degraded"],
+      "ears": { "when": "the health check runs", "if": "the Redis server's used_memory is above RedisMemoryDegradedShare of its maxmemory", "shall": "report the node Degraded" },
+      "mentions": ["RedisStore.usedMemory", "RedisStore.maxMemory"],
+      "dependsOn": ["REQ-520"],
+      "notes": "Decided by the owner on 2026-11-06: an eviction is a store reset in disguise, so warn early.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-13" }]
+    },
+    {
+      "id": "REQ-520", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default RedisMemoryDegradedShare to 80% (RedisMemoryDegradedShare)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-13" }]
+    },
+    {
+      "id": "REQ-521", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "when": "a run completes or fails and its job's record no longer exists because the store's generation changed since the claim", "shall": "write a minimal job record with the job's id, name, outcome and node, marked as recreated after a store reset, and log a warning" },
+      "mentions": ["RedisStore.generationMarker", "jobs.Job.Succeeded", "jobs.Job.DeadLettered"],
+      "notes": "Decided by the owner on 2026-11-06 so the outcome is not lost from history. This is not a stale token in the sense of jobs INV-128: there is no current record to protect. A record missing for any other reason is still refused.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-522", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "if": "a heartbeat or progress write finds its job's record missing because the store's generation changed since the claim", "shall": "ignore the write without error and let the run continue" },
+      "mentions": ["RedisStore.generationMarker"],
+      "notes": "Decided by the owner on 2026-11-06; the run's result is recorded at completion (REQ-521).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-523", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "when": "the store detects a reset", "shall": "log an ERROR saying that runtime-defined recurring jobs may have been lost and cannot be re-seeded, and record the reset as unacknowledged" },
+      "mentions": ["RedisStore.resetAcknowledged", "recurring.RecurringJob.origin"],
+      "dependsOn": ["REQ-507"],
+      "notes": "Decided by the owner on 2026-11-06: report only; nodes do not cache runtime definitions.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-524", "kind": "transition", "status": "approved",
+      "entity": "hosting.Health", "actor": "system", "from": ["Healthy"], "to": ["Degraded"],
+      "ears": { "when": "the health check runs", "if": "a store reset has not been acknowledged", "shall": "report the node Degraded" },
+      "mentions": ["RedisStore.resetAcknowledged"],
+      "notes": "Decided by the owner on 2026-11-06. Lasts beyond reconciliation (REQ-508), until an operator acknowledges the reset (REQ-525).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
+    },
+    {
+      "id": "REQ-525", "kind": "invariant", "status": "approved",
+      "entity": "RedisStore",
+      "ears": { "when": "an operator acknowledges a store reset on the dashboard", "shall": "record the reset as acknowledged" },
+      "mentions": ["RedisStore.resetAcknowledged"],
+      "notes": "Decided by the owner on 2026-11-06. Acknowledging is an operate action (dashboard INV-301).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     }
   ],
 
@@ -208,7 +271,7 @@
         { "req": "REQ-508", "note": "health Degraded" },
         { "req": "REQ-509", "note": "re-seeded" }
       ],
-      "then": "nightly-cleanup exists again, a new generation marker is written, the store is Ready and one ERROR StoreWasReset event was logged."
+      "then": "nightly-cleanup exists again, a new generation marker is written, the store is Ready, one ERROR StoreWasReset event and one ERROR about possibly lost runtime-defined recurring jobs were logged, and health stays Degraded until an operator acknowledges the reset."
     },
     {
       "id": "SCN-501", "title": "Server without scripting fails startup", "status": "approved",
@@ -230,14 +293,15 @@
   ],
 
   "features": [
-    { "id": "FEAT-500", "name": "Server detection and durability disclosure", "members": ["REQ-500", "REQ-501", "REQ-502", "REQ-503", "REQ-504", "REQ-505", "REQ-506", "REQ-511", "REQ-512", "REQ-513", "REQ-514", "REQ-515", "REQ-518", "SCN-501"] },
-    { "id": "FEAT-501", "name": "Flush and eviction resilience", "members": ["REQ-507", "REQ-508", "REQ-509", "REQ-510", "LIV-500", "SCN-500"] },
+    { "id": "FEAT-500", "name": "Server detection and durability disclosure", "members": ["REQ-500", "REQ-501", "REQ-502", "REQ-503", "REQ-504", "REQ-505", "REQ-506", "REQ-511", "REQ-512", "REQ-513", "REQ-514", "REQ-515", "REQ-518", "REQ-519", "REQ-520", "SCN-501"] },
+    { "id": "FEAT-501", "name": "Flush and eviction resilience", "members": ["REQ-507", "REQ-508", "REQ-509", "REQ-510", "LIV-500", "REQ-521", "REQ-522", "REQ-523", "REQ-524", "REQ-525", "SCN-500"] },
     { "id": "FEAT-502", "name": "ShardByQueue and hybrid notifications", "members": ["INV-500", "REQ-516", "REQ-517", "INV-501", "SCN-502"] }
   ],
 
   "glossary": {
     "generationMarker": "A key the store writes so it can tell when its data has been flushed, evicted or restored (REQ-507).",
     "RecurringReconcileInterval": "5 minutes by default (REQ-510).",
+    "RedisMemoryDegradedShare": "Share of maxmemory above which health reports Degraded; 80% by default (REQ-520).",
     "ShardByQueue": "Opt-in Cluster mode with one hash tag per queue instead of per namespace (INV-500)."
   }
 }
