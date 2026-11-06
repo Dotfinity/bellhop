@@ -1,0 +1,134 @@
+{
+  "module": "redis",
+  "specHash": "eb75d09b96bf5bac6ef7f375db1cd3b37547c8eacd5eaa979a91b1392532a08b",
+  "generatedAt": "2026-11-06T15:05:50Z",
+  "model": "model/redis/Redis.tla",
+  "items": {
+    "REQ-500": {
+      "hash": "4e0d48931100e907168f50aaa85e912d30d3c0e7d2efa2caff80bb034f96595c",
+      "reviewed": false,
+      "note": "Connect(n); same action as REQ-501. Family/version/summary are log-only."
+    },
+    "REQ-501": {
+      "hash": "0330968ab4fa0445da5f73e3910574d68ea3907bb205e484f7e944f51a1adc1a",
+      "reviewed": false,
+      "note": "Connect(n) (same event as REQ-500)."
+    },
+    "REQ-502": {
+      "hash": "6ac2f2a608fdba007a6a50af75d61d799fbac89eb1fd8c1fc64827237ab5dd6a",
+      "reviewed": false,
+      "note": "StartupNoEval(n)."
+    },
+    "REQ-503": {
+      "hash": "abc67322a8a7203de91f86bda192ef252c3b17acc274d0fc1699cc3c82dcc824",
+      "reviewed": false,
+      "note": "absorbed: log-only consequence of the store becoming ready (Connect, FinishReconcile)."
+    },
+    "REQ-504": {
+      "hash": "2b1c887dc8dacb6455725e90449fd48ad30f7d209f5d2bb1796bc9e0d26844a5",
+      "reviewed": false,
+      "note": "absorbed: log-only; its 'failover can drop acknowledged writes' is modeled as Restore (Redis_Restore.cfg)."
+    },
+    "REQ-505": {
+      "hash": "56b995afc13676be39dee5c8982a7dd1ea443b42c6dadec8196f771499b3d248",
+      "reviewed": false,
+      "note": "absorbed: log-only; its eviction risk is modeled as EvictMarker/EvictJob/EvictRecurring."
+    },
+    "REQ-507": {
+      "hash": "b0de134460930ba562ef5d5097b2d9aa528922ea0324483fa44359a038388240",
+      "reviewed": false,
+      "note": "DetectReset(n) + Reseed(n); Liv_LossReported, Inv_NoFalseReset."
+    },
+    "REQ-508": {
+      "hash": "c154e5405c8d3c52564a3ae837e0deb7293b49b5dffbac10fa8b9ffc0e40829e",
+      "reviewed": false,
+      "note": "HealthCheck rule r508."
+    },
+    "REQ-509": {
+      "hash": "85aa187242ea36b3cf902eae332ae12265914c470950bb26bf1ac82981a55ff8",
+      "reviewed": false,
+      "note": "FinishReconcile(n)."
+    },
+    "REQ-510": {
+      "hash": "568bcda13e7dd90e9826a92b4b063a25a123ff908cdb9bad0e67d9fe8d380535",
+      "reviewed": false,
+      "note": "PeriodicReconcile(n) (interval abstracted: may happen at any time while ready)."
+    },
+    "LIV-500": {
+      "hash": "b3f99f3db02ac5400af5a7129a5505aeb2d8e87f9811efe800b6155986b374b1",
+      "reviewed": false,
+      "note": "Liv_Reseeded (while-reading: P ~> (Q \\/ ~P))."
+    },
+    "INV-500": {
+      "hash": "fd98a1fb4699c119cbcc060fdfb0c2284cde5451e6899e8f3081d3cd1a949bc8",
+      "reviewed": false,
+      "note": "Enqueue scope (SameScope) vs jobs INV-100 (Inv_UniqueKeyPerNamespace)."
+    },
+    "REQ-512": {
+      "hash": "7918ff93d7184ac186846a877653b798f33c6cae00d109130df1f324b7b69a7d",
+      "reviewed": false,
+      "note": "ASSUME comment only; no action reads it."
+    },
+    "REQ-513": {
+      "hash": "4c2ac02a577ec2b92cc4aa9676298d85d5735f7e686d01a6ef20ef32b8239972",
+      "reviewed": false,
+      "note": "ASSUME comment only; payload sizes not modeled."
+    },
+    "REQ-519": {
+      "hash": "df5d325f2f044e779ca536c40fd3f9b0d543c20dfe53d749a7aef9aeca06ceef",
+      "reviewed": false,
+      "note": "HealthCheck rule r519 (memHigh flag)."
+    },
+    "REQ-520": {
+      "hash": "e34f39f26e0f0c92cfff83a02a4f293448d1d8544d34294b4cf1f8167b456c82",
+      "reviewed": false,
+      "note": "absorbed into memHigh flag."
+    },
+    "REQ-521": {
+      "hash": "78e246d1319cdd32dcd6823605eab74c2294b9b755eb7ddb858715b3071e6fe4",
+      "reviewed": false,
+      "note": "Complete(n) branches; Inv_NoLostOutcome."
+    },
+    "REQ-522": {
+      "hash": "c38adfe9673fdedea2dd92d7689be5d6f93569ee6c45541dd67c4d5a1a6ba580",
+      "reviewed": false,
+      "note": "encoded by absence: no action stops a run whose record vanished."
+    },
+    "REQ-523": {
+      "hash": "a9a04b28c90c5814e2efe7618cbe11cf65816842ad7713f40e3fde6b415e0935",
+      "reviewed": false,
+      "note": "DetectReset(n) sets unacked; Inv_UnackedUntilOperator."
+    },
+    "REQ-524": {
+      "hash": "8705acbc67656cbaa62d4620ae4a35937ab9be4a984a0cbb50c6dc68cf964179",
+      "reviewed": false,
+      "note": "HealthCheck rule r524."
+    },
+    "REQ-525": {
+      "hash": "f23a4c822608f90fa87cf6c5cb09b4dcf6995b731fe6129617745ca8aabb71db",
+      "reviewed": false,
+      "note": "Acknowledge."
+    },
+    "SCN-500": {
+      "hash": "d4de58b8f8886a6adb9d6de5435cdeb49b1ac7839891e1fef99d9dab64433229",
+      "reviewed": false,
+      "note": "Redis_SCN500.cfg trap Scn_FlushRecovered_NotReached (violated = reachable); also Inv_OneEventPerReset."
+    },
+    "SCN-501": {
+      "hash": "6c5d66c00775a24165e0d4c05eae7c4eead5939da1a3adcd64c524287f3698c4",
+      "reviewed": false,
+      "note": "Scn_NoEvalNoReady in Redis_SCN501.cfg and Redis.cfg."
+    }
+  },
+  "skipped": {
+    "REQ-506": "could not encode: reporting content of the health check, no state transition",
+    "REQ-511": "could not encode: topology acceptance has no state in the model; a TECH/conformance concern (TECH-52..87, NFR-58)",
+    "REQ-514": "could not encode: needs real durations (TTL vs retention); reported as a static cross-module finding",
+    "REQ-515": "could not encode: stale-node age not given and node registrations belong to hosting; reported as ambiguity",
+    "REQ-516": "strength may (not checked)",
+    "REQ-517": "strength may (not checked)",
+    "INV-501": "strength may (not checked)",
+    "SCN-502": "all steps are may-strength requirements (REQ-517)",
+    "REQ-518": "info"
+  }
+}
