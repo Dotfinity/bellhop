@@ -1,0 +1,262 @@
+{
+  "module": "recurring",
+  "specHash": "577c79cef0e7a3329bb335ff06542f1779e2fc1db8e814f3c61790b86ce87aa6",
+  "generatedAt": "2026-11-06T15:09:53Z",
+  "model": "model/recurring/Recurring.tla",
+  "items": {
+    "REQ-201": {
+      "hash": "1a108b3088d0dece4689ee63450716a57ebd76d505d9c8a388877db9ded67bcc",
+      "reviewed": false,
+      "note": "policy sets are CONSTANTS; every policy explored, defaults not privileged"
+    },
+    "REQ-202": {
+      "hash": "81286ad3dea545640dfd6e7bd3d77d04a6f2e1f8e5fa63943a0b9bbbc2ce531c",
+      "reviewed": false,
+      "note": "origins code and runtime; configuration origin not modeled (INV-209/REQ-232 are 'may')"
+    },
+    "REQ-203": {
+      "hash": "5bfdf1a3d39ec5ddd7b39d56c4935f14811a5fb52dc573a1316f84db3ea56b98",
+      "reviewed": false,
+      "note": "part of NodeStart; atomic per start step (A-8)"
+    },
+    "REQ-204": {
+      "hash": "a00ef0418945a79f33025c234c54445bf3c0413fdd569ce00836c427243c732f",
+      "reviewed": false,
+      "note": "part of NodeStart; from Active/Paused only, as written — see F-5, F-6, F-10"
+    },
+    "REQ-205": {
+      "hash": "75e407ac30a101358fa679143a141b03307ae786a9d518525020a53f8bc10f3c",
+      "reviewed": false,
+      "note": "Orphan action, op = default"
+    },
+    "REQ-206": {
+      "hash": "555f44f7aac064fd32f05d500005b420163b7d1d3affb0b0bc5fd967edb4e800",
+      "reviewed": false,
+      "note": "Restore action — see F-5"
+    },
+    "REQ-207": {
+      "hash": "e4e99a386f5975e5e97a5241206dcd30fc4614054961e124f4e05e8b506671f6",
+      "reviewed": false,
+      "note": "Orphan action, op = delete (same event as REQ-205, complementary guard)"
+    },
+    "REQ-208": {
+      "hash": "8e271faa2399833189982413780b3741de828f8a8d970738bfc2d0fdf74abb40",
+      "reviewed": false,
+      "note": "OperatorAdd — see F-6 for the name-collision case"
+    },
+    "REQ-211": {
+      "hash": "da6259f7b416fb4f1c5bca3fb5817c14cd2e871c73a42316ddd522a45bedef47",
+      "reviewed": false,
+      "note": "guard CanEdit on OperatorUpdate; checked by Scn_CodeJobNotEditable"
+    },
+    "REQ-212": {
+      "hash": "e9a08be600b4835eef50b1e7f58bc8ddf96b386d5eff60960cdbe9c41ca706c1",
+      "reviewed": false,
+      "note": "OperatorUpdate"
+    },
+    "REQ-213": {
+      "hash": "bfe77dff0a33782eda594ad8d235be54f67df825134805b6430376aa27d88298",
+      "reviewed": false,
+      "note": "OperatorRemove"
+    },
+    "REQ-214": {
+      "hash": "5e5e807b87b26d0f8c99aefd24dc0addcb826948ccb67b738e4b2ac050b7ef04",
+      "reviewed": false,
+      "note": "Pause"
+    },
+    "REQ-215": {
+      "hash": "c2e66abee4d954848a92270a742ffc18e179506f2309624480030f6fd20bc856",
+      "reviewed": false,
+      "note": "Resume (nextRunAt from now) — see F-4"
+    },
+    "REQ-216": {
+      "hash": "59177779be26a55e45011161e1051e0c145d6c6f83db979649fa92beb3d3f9a9",
+      "reviewed": false,
+      "note": "Trigger: one atomic CAS (A-2)"
+    },
+    "REQ-217": {
+      "hash": "239cf872c1c2a14e724c681c0b0c9552291ed41e3999b93ebdcac0e06c86904b",
+      "reviewed": false,
+      "note": "inside Trigger"
+    },
+    "REQ-218": {
+      "hash": "6445419f523d19d62cba12c925fcd5d2c5b02eaf64ba9f9e4da29f873f0b268a",
+      "reviewed": false,
+      "note": "inside Trigger — see F-9"
+    },
+    "REQ-219": {
+      "hash": "3b9405f6d18aa66543059f39848e98d276347685caba47d9e1081008c4184e3b",
+      "reviewed": false,
+      "note": "RunAll(max) abstracted to max = 1 (A-4); multi-occurrence catch-up not explored"
+    },
+    "REQ-220": {
+      "hash": "8d2ae21b65733b1b749472e1c5a2b06f9e9eecffdbbbb599d7f07208d1b3dcc0",
+      "reviewed": false,
+      "note": "recorded as rj.miss (caughtUp/dropped); log text and event not modeled"
+    },
+    "REQ-221": {
+      "hash": "12cb75eef521ac9cdac4b181a1bb04d193077feaed30cca0b272906ee7f9e713",
+      "reviewed": false,
+      "note": "Decide (shared by Trigger and TriggerNow) — see F-1"
+    },
+    "REQ-222": {
+      "hash": "dc6b1e1f03a424050563e58eadb42182bd1c8957619a9f051504372b250cdd38",
+      "reviewed": false,
+      "note": "Decide, Skip branch"
+    },
+    "REQ-223": {
+      "hash": "7635389e57bba6df5e1cd8f85306d46ea47a228d72fc01d756418c745c87dedd",
+      "reviewed": false,
+      "note": "Decide, Queue branch — see F-1"
+    },
+    "REQ-224": {
+      "hash": "bbacaf56656261c5a9bb20c1197baeda5d26c0f4cf42c55f373f39eae28cf98e",
+      "reviewed": false,
+      "note": "StartWaiting, separate system step (A-7) — see F-1, F-2, F-8"
+    },
+    "REQ-225": {
+      "hash": "0054900a8665faf033b785934ae5127fcb7d188892c680d92107d465187cb32a",
+      "reviewed": false,
+      "note": "Decide, Allow/CancelPrevious branches"
+    },
+    "REQ-226": {
+      "hash": "8ea0aa1265ffaf77fc51ace30be67b426f65e4a8ecc5e50169f7d8df0d90f75e",
+      "reviewed": false,
+      "note": "TriggerNow"
+    },
+    "REQ-227": {
+      "hash": "0456d4ac404753c0f7bc1930c019abc8826494d16ae7cc4cd854d676ee3c7eea",
+      "reviewed": false,
+      "note": "OperatorUpdate with schedule change — see F-4, F-10"
+    },
+    "REQ-233": {
+      "hash": "3adcf32f8ee6d694d87f9327de77ca9d9828ba5acdbaf88f5f5b689bdf4783a2",
+      "reviewed": false,
+      "note": "CONSTANT MaxQueued (1 and 2 checked)"
+    },
+    "REQ-234": {
+      "hash": "d11b2b4e6b6abe4d8fe0bb54f6b0a2bc4e4a4df4ebb4a082c5a207258d905498",
+      "reviewed": false,
+      "note": "absorbed by nondeterministic 'missed' choice (A-3)"
+    },
+    "REQ-235": {
+      "hash": "b6bafd069922f80ec8c8cbe281ea1ad594ffa84aca218858e11618de29b60ce7",
+      "reviewed": false,
+      "note": "Decide, Queue-full branch"
+    },
+    "INV-200": {
+      "hash": "aabda1e033f251ea9cd5f8aafa56fce146593e49cb567fae992f9d330ce8b050",
+      "reviewed": false,
+      "note": "holds by construction: store keyed by name, create atomic (A-8); the model cannot judge the concurrency claim"
+    },
+    "INV-201": {
+      "hash": "b9aaf5e3ac76733ba16767d45a4289b50ec1fbe670ead2eb503e1fd0c8cd2163",
+      "reviewed": false,
+      "note": "Inv_NoScheduleWhilePaused — holds"
+    },
+    "INV-203": {
+      "hash": "8e2c452774097e70067d3887f0cb4ae7ce7169aee397d4c020f883268a0a4ff7",
+      "reviewed": false,
+      "note": "holds by construction: atomic CAS (A-2); Scn_SecondCasImpossible holds"
+    },
+    "INV-204": {
+      "hash": "b4f38506c9bd1df9f2408499c69231f1990ac30c36be72159c9eeff9adc9b86e",
+      "reviewed": false,
+      "note": "Inv_NoOverlapProcessing and Inv_NoOverlapRunning — both violated (F-1, F-2, F-3)"
+    },
+    "INV-206": {
+      "hash": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",
+      "reviewed": false,
+      "note": "guard on OperatorRemove; Scn_CodeJobNotRemovable holds"
+    },
+    "INV-207": {
+      "hash": "eb0b9994da29c80cfbbabf402ae0203a0bb5ee09b4903961ffe9e4dc99d5d68c",
+      "reviewed": false,
+      "note": "inside Trigger: on-time trigger always creates its occurrence"
+    },
+    "INV-210": {
+      "hash": "e38f5a4347fee4620e81918b3fe698d6c5d6dc2f0296ceb10ce8873be5986779",
+      "reviewed": false,
+      "note": "Inv_NoScheduleInMaintenance holds; Prop_MaintenanceKeepsNextRunAt violated (F-4)"
+    },
+    "SCN-200": {
+      "hash": "fa41a99be34596e66466472c7275874a429b00c26c61307f7792ad4db56ab2e0",
+      "reviewed": false,
+      "note": "Scn_SecondCasImpossible — holds (by construction)"
+    },
+    "SCN-201": {
+      "hash": "aaa1a789d897952d87d8463352685cb7d12ebe9f4872b753a7938ee348700799",
+      "reviewed": false,
+      "note": "Recurring_SCN201.cfg — reachable"
+    },
+    "SCN-202": {
+      "hash": "37258689921b2f1bcd2583997a82c86f84899e4247c6802221d3ba9b2047a27f",
+      "reviewed": false,
+      "note": "Inv_NoScheduleWhilePaused — holds"
+    },
+    "SCN-203": {
+      "hash": "f4f67a5017644d0c6ccdb802a384abbabf96d8ad4cc27e2c3660656d45de2f1b",
+      "reviewed": false,
+      "note": "Recurring_SCN203.cfg — reachable"
+    },
+    "SCN-204": {
+      "hash": "6e95b72653b6fc9bd215bad6e364c33f16117546b5873a7b584d4efd47bdb97c",
+      "reviewed": false,
+      "note": "Recurring_SCN204.cfg — reachable"
+    },
+    "SCN-205": {
+      "hash": "69c2bcaf008c2c8b333a2dd6dd5c312ad473954aab5c97c08aadd746eba06ae6",
+      "reviewed": false,
+      "note": "Scn_CodeJobNotEditable — holds"
+    },
+    "SCN-206": {
+      "hash": "1b2d6755bbd82bef9d7632efde47470e81d189abb4e2154848add7eabe29323b",
+      "reviewed": false,
+      "note": "Recurring_SCN206.cfg — reachable"
+    },
+    "SCN-207": {
+      "hash": "d1d384389f797004dcac08dd7ddfeca43fae49588dc58b6f1079f539fdf206f7",
+      "reviewed": false,
+      "note": "holds by construction (A-8); not a meaningful check"
+    },
+    "SCN-208": {
+      "hash": "b665d03060766dd2446d58f8026ed84feebbd670009dcc8c31674d309c7bfd39",
+      "reviewed": false,
+      "note": "Scn_NoOrphanWhileDeclared — holds"
+    },
+    "SCN-209": {
+      "hash": "ed40976cd08e8633ac064c22d1a5e0bfde53788b10d709ad3cb1ef9626b42413",
+      "reviewed": false,
+      "note": "Recurring_SCN209.cfg + Recurring_SCN209b.cfg (two legs) — reachable"
+    },
+    "SCN-210": {
+      "hash": "109b4964349917cfdcfccd6b199d5ab9444dbbd41c7fe2db2e7c0af945a4f936",
+      "reviewed": false,
+      "note": "Recurring_SCN210.cfg — reachable"
+    },
+    "SCN-211": {
+      "hash": "c779d4d0bb9823ce667d57875510938b4af3ade95eae90daa3fd529f37dd7ed6",
+      "reviewed": false,
+      "note": "Recurring_SCN211.cfg — reachable"
+    },
+    "SCN-212": {
+      "hash": "fcf75dd532c8a848bc24e90250043f171e6a18950363accb6bb72d887c0403b7",
+      "reviewed": false,
+      "note": "Scn_CodeJobNotRemovable — holds"
+    }
+  },
+  "skipped": {
+    "REQ-200": "time mode and IANA zone need a clock; no clock in the model (A-1)",
+    "REQ-209": "validity of schedule expressions and time zones is not representable at this abstraction",
+    "REQ-210": "same as REQ-209 (startup validation of schedule syntax)",
+    "REQ-228": "DST behaviour needs a real clock",
+    "REQ-229": "DST behaviour needs a real clock",
+    "REQ-230": "computing next N occurrences needs a real clock",
+    "INV-202": "validity window (ActiveFrom/ActiveUntil) needs a real clock",
+    "INV-208": "interval vs wall-clock schedules need a real clock",
+    "INV-205": "no exceptions, failures or lock waits exist in the model; nothing to check",
+    "REQ-231": "last-outcome bookkeeping; no requirement depends on it, would only add state",
+    "REQ-232": "strength may (not checked)",
+    "INV-209": "strength may (not checked)"
+  }
+}
