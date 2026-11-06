@@ -1,5 +1,5 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash 577c79cef0e7) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash bc55236159f4) — edit the requirements, not this file.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -15,13 +15,16 @@ CONSTANTS Names,            \* RecurringJob instances, keyed by name (entity.bou
           MaxQueued,        \* @req REQ-233  MaxQueuedOccurrences (1 by default)
           OverlapPolicies,  \* @req REQ-201  policies explored (default Skip)
           MisfirePolicies,  \* @req REQ-201  policies explored (default RunOnce)
-          OrphanPolicies,   \* @req REQ-205, REQ-207  orphan policy explored ("default" or "delete")
+          OrphanPolicies,   \* @req REQ-205, REQ-207  per-job orphanPolicy values explored ("Orphan" or "Delete")
+          RerouteOn,        \* explore jobs REQ-125 (Unroutable -> Enqueued)? lets checks separate findings
+          FixCancelUnroutable, \* CANDIDATE FIX for finding F-1 (run 2), not a requirement: see Supersede
           NULL
 
 ASSUME MaxQueued \in Nat \ {0}                                              \* @req REQ-233
 ASSUME OverlapPolicies \subseteq {"Skip", "Queue", "Allow", "CancelPrevious"}  \* @req REQ-201
 ASSUME MisfirePolicies \subseteq {"RunOnce", "Skip", "RunAll"}                 \* @req REQ-201
-ASSUME OrphanPolicies \subseteq {"default", "delete"}
+ASSUME OrphanPolicies \subseteq {"Orphan", "Delete"}
+ASSUME RerouteOn \in BOOLEAN /\ FixCancelUnroutable \in BOOLEAN
 ASSUME Releases \subseteq {"v1", "v2", "v3"} /\ DeclV1 \cup DeclV2 \cup DeclV3 \subseteq Names
 
 VARIABLES rj,     \* stored recurring definitions, keyed by name
@@ -30,14 +33,16 @@ VARIABLES rj,     \* stored recurring definitions, keyed by name
           job,    \* jobs.Job of each occurrence (same slot)
           order,  \* creation order of live occurrences ("earlier occurrence", "oldest first")
           maint,  \* jobs.Maintenance: global maintenance pause on?
-          ov, mf, op  \* per-job overlap / misfire policy and the orphan policy, fixed per behaviour (A-9)
+          ov, mf, op  \* per-job overlap / misfire / orphan policy, fixed per behaviour (A-9)
 vars == <<rj, node, occ, job, order, maint, ov, mf, op>>
 
 RjStatus  == {"none", "Active", "Paused", "Orphaned"}
 Defs      == {"none", "d1", "d2", "d3", "rt", "edited"}  \* definition content; dN = code of release vN
 OccStatus == {"none", "Waiting", "Started", "Skipped"}
 JobStatus == {"none", "Enqueued", "Processing", "Failed", "Succeeded", "DeadLettered", "Cancelled", "Unroutable"}
-Finals    == {"Succeeded", "DeadLettered", "Cancelled"}   \* glossary "unfinished" = not one of these
+Finals    == {"Succeeded", "DeadLettered", "Cancelled"}   \* final in the jobs module (an occurrence slot may be archived)
+\* @req REQ-239  for overlap decisions a job is finished when Succeeded, DeadLettered, Cancelled or Unroutable.
+DoneForOverlap == Finals \cup {"Unroutable"}
 
 Decl(v)    == CASE v = "v1" -> DeclV1 [] v = "v2" -> DeclV2 [] OTHER -> DeclV3
 CodeDef(v) == CASE v = "v1" -> "d1" [] v = "v2" -> "d2" [] OTHER -> "d3"
@@ -47,7 +52,7 @@ CodeDef(v) == CASE v = "v1" -> "d1" [] v = "v2" -> "d2" [] OTHER -> "d3"
 RjRec  == [st: RjStatus, origin: {"code", "runtime", "none"}, before: {"Active", "Paused", "none"},
            hash: Defs, def: Defs, behind: 0..2, miss: {"none", "caughtUp", "dropped"}]
 OccRec == [st: OccStatus, rj: Names \cup {NULL}, blk: SUBSET OccIds,
-           reason: {"none", "Overlap", "QueueFull"}, sched: BOOLEAN]
+           reason: {"none", "Overlap", "QueueFull", "Paused", "Orphaned", "Removed"}, sched: BOOLEAN]
 JobRec == [st: JobStatus, zombie: BOOLEAN, cancelReq: BOOLEAN]
 
 TypeInv ==
@@ -57,7 +62,7 @@ TypeInv ==
   /\ job   \in [OccIds -> JobRec]
   /\ order \in Seq(OccIds) /\ Len(order) <= Cardinality(OccIds)
   /\ maint \in BOOLEAN
-  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in OrphanPolicies
+  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in [Names -> OrphanPolicies]
 
 NoRj   == [st |-> "none", origin |-> "none", before |-> "none", hash |-> "none", def |-> "none", behind |-> 0, miss |-> "none"]
 NoOcc  == [st |-> "none", rj |-> NULL, blk |-> {}, reason |-> "none", sched |-> FALSE]
@@ -67,9 +72,10 @@ EnqJob == [st |-> "Enqueued", zombie |-> FALSE, cancelReq |-> FALSE]
 Live          == {o \in OccIds : occ[o].st # "none"}
 OfJob(r)      == {o \in Live : occ[o].rj = r}
 Finished(o)   == job[o].st \in Finals
-Unfinished(o) == occ[o].st = "Started" /\ ~Finished(o)
+Unfinished(o) == occ[o].st = "Started" /\ job[o].st \notin DoneForOverlap     \* @req REQ-239
 Blocking(r)   == {o \in OfJob(r) : Unfinished(o)}
 WaitingOf(r)  == {o \in OfJob(r) : occ[o].st = "Waiting"}
+InTheWay(r)   == Blocking(r) \cup WaitingOf(r)   \* "an earlier occurrence ... is waiting or has an unfinished job"
 FreeSlots     == {o \in OccIds : occ[o].st = "none"}
 Pos(o)        == CHOOSE i \in 1..Len(order) : order[i] = o
 RunningNodes  == {n \in Nodes : node[n].st = "Running"}
@@ -83,22 +89,33 @@ Init ==
   /\ job   = [o \in OccIds |-> NoJob]
   /\ order = <<>>
   /\ maint = FALSE
-  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in OrphanPolicies
+  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in [Names -> OrphanPolicies]
 
 -----------------------------------------------------------------------------
 \* Creating an occurrence and deciding it by the overlap policy: one event, five requirements.
 \* @req REQ-221, REQ-222, REQ-223, REQ-225, REQ-235
+\* "In the way" = an earlier occurrence that is waiting or has an unfinished job (REQ-239).
+\* Every live occurrence is earlier than the one being created (it is appended to order).
+\* StartJob enqueues o's job. With FixCancelUnroutable (CANDIDATE FIX for run-2 F-1, NOT a requirement)
+\* it also cancels, in the same step, the Unroutable jobs of earlier occurrences of r (jobs REQ-134
+\* allows cancelling an Unroutable job), so jobs REQ-125 can never bring one back beside o's job.
+StartJob(o, r) ==
+  job' = [x \in OccIds |-> IF x = o THEN EnqJob
+                           ELSE IF FixCancelUnroutable /\ x \in OfJob(r) /\ job[x].st = "Unroutable"
+                             THEN [job[x] EXCEPT !.st = "Cancelled"]
+                           ELSE job[x]]
 Decide(o, r, sched) ==
-  LET B == Blocking(r)
+  LET B == InTheWay(r)
       mk(st, blk, reason) == [st |-> st, rj |-> r, blk |-> blk, reason |-> reason, sched |-> sched]
   IN /\ order' = Append(order, o)
      /\ IF B = {} THEN                                                   \* @req REQ-221
           /\ occ' = [occ EXCEPT ![o] = mk("Started", {}, "none")]
-          /\ job' = [job EXCEPT ![o] = EnqJob]
+          /\ StartJob(o, r)
         ELSE CASE ov[r] = "Skip" ->                                      \* @req REQ-222
                     /\ occ' = [occ EXCEPT ![o] = mk("Skipped", {}, "Overlap")] /\ UNCHANGED job
                [] ov[r] = "Queue" /\ Cardinality(WaitingOf(r)) < MaxQueued ->   \* @req REQ-223
-                    /\ occ' = [occ EXCEPT ![o] = mk("Waiting", B, "none")] /\ UNCHANGED job
+                    \* blk stays {}: REQ-224 now reads the creation order, not who blocked it (smaller state space)
+                    /\ occ' = [occ EXCEPT ![o] = mk("Waiting", {}, "none")] /\ UNCHANGED job
                [] ov[r] = "Queue" ->                                     \* @req REQ-235
                     /\ occ' = [occ EXCEPT ![o] = mk("Skipped", {}, "QueueFull")] /\ UNCHANGED job
                [] ov[r] = "Allow" ->                                     \* @req REQ-225
@@ -123,12 +140,19 @@ Decide(o, r, sched) ==
 Trigger(r) ==
   /\ SchedulerRuns
   /\ rj[r].st = "Active" /\ ~maint /\ rj[r].behind >= 1
-  /\ \E missed \in (IF rj[r].behind = 2 THEN {TRUE} ELSE BOOLEAN) :   \* lateness > MisfireThreshold? (A-3)
-       IF missed /\ mf[r] = "Skip"
-         THEN /\ rj' = [rj EXCEPT ![r].behind = 0, ![r].miss = "dropped"]   \* @req REQ-218
-              /\ UNCHANGED <<occ, job, order>>
-         ELSE /\ rj' = [rj EXCEPT ![r].behind = 0, ![r].miss = IF missed THEN "caughtUp" ELSE "none"]
-              /\ \E o \in FreeSlots : Decide(o, r, TRUE)                 \* @req REQ-217, INV-207
+  \* The most recent due instant is judged on its own (INV-207); with behind = 2 at least one
+  \* older instant was passed over and is missed (A-3).
+  /\ \E newestLate \in BOOLEAN :                      \* newest instant later than MisfireThreshold?
+       LET olderMissed == rj[r].behind = 2
+           missed      == olderMissed \/ newestLate
+       IN IF mf[r] = "Skip" /\ newestLate
+            THEN /\ rj' = [rj EXCEPT ![r].behind = 0, ![r].miss = "dropped"]   \* @req REQ-218
+                 /\ UNCHANGED <<occ, job, order>>
+            ELSE /\ rj' = [rj EXCEPT ![r].behind = 0,
+                                     ![r].miss = IF ~missed THEN "none"
+                                                 ELSE IF mf[r] = "Skip" THEN "dropped"  \* @req REQ-218: older ones dropped, on-time newest created
+                                                 ELSE "caughtUp"]                       \* @req REQ-217, REQ-219 (max = 1, A-4)
+                 /\ \E o \in FreeSlots : Decide(o, r, TRUE)                 \* @req REQ-217, INV-207
   /\ UNCHANGED <<node, maint, ov, mf, op>>
 
 \* @req REQ-226  Trigger now: any stored job (also paused/orphaned), decided by the overlap policy,
@@ -138,34 +162,39 @@ TriggerNow(r) ==
   /\ \E o \in FreeSlots : Decide(o, r, FALSE)
   /\ UNCHANGED <<rj, node, maint, ov, mf, op>>
 
-\* @req REQ-224  While an occurrence is waiting, when the earlier occurrence's job succeeds, is
-\*              dead-lettered or cancelled: enqueue its job, record it started. Note: oldest first.
-\*              "The earlier occurrence" = the one(s) that blocked it when it was created (blk).
-\*              Runs as its own step after the job finished (A-7). No guard on the job's state.
+\* @req REQ-224  While an occurrence is waiting, when no earlier occurrence of the same recurring job
+\*              is waiting or has an unfinished job (REQ-239): enqueue its job, record it started.
+\*              Runs as its own step after the earlier job finished (A-7).
 StartWaiting(o) ==
   /\ occ[o].st = "Waiting"
-  /\ \A b \in occ[o].blk : ~Unfinished(b)
-  /\ \A w \in WaitingOf(occ[o].rj) : Pos(w) >= Pos(o)
+  /\ \A x \in InTheWay(occ[o].rj) : Pos(x) >= Pos(o)
   /\ occ' = [occ EXCEPT ![o].st = "Started", ![o].blk = {}]
-  /\ job' = [job EXCEPT ![o] = EnqJob]
+  /\ StartJob(o, occ[o].rj)
   /\ UNCHANGED <<rj, node, order, maint, ov, mf, op>>
 
 -----------------------------------------------------------------------------
 \* Definitions and reconciliation
 
 \* @req REQ-203  node start: create a missing code-defined job (Active, nextRunAt from now).
-\* @req REQ-204  node start: code definition changed vs stored definitionHash -> update, keep Active/Paused.
-\* Both happen in the one start step for every name the release declares (A-8).
+\* @req REQ-204  node start: a stored *code-defined* job whose code definition changed vs its
+\*              definitionHash -> update, keep Active/Paused; if the schedule changed (nondeterministic,
+\*              the content is abstract), nextRunAt from now (REQ-227).
+\* @req REQ-236  guard: a node whose release declares the name of a stored runtime-defined job does
+\*              not start (it goes to StartupFailed, abstracted as staying Down, A-16).
+\* REQ-203 and REQ-204 happen in the one start step for every name the release declares (A-8).
 NodeStart(n, v) ==
   /\ node[n].st = "Down" /\ v \in Releases
+  /\ \A r \in Decl(v) : rj[r].origin # "runtime"                       \* @req REQ-236
   /\ node' = [node EXCEPT ![n] = [st |-> "Running", ver |-> v]]
-  /\ rj' = [r \in Names |->
-              IF r \notin Decl(v) THEN rj[r]
-              ELSE IF rj[r].st = "none"
-                THEN [NoRj EXCEPT !.st = "Active", !.origin = "code", !.hash = CodeDef(v), !.def = CodeDef(v)]
-              ELSE IF rj[r].st \in {"Active", "Paused"} /\ rj[r].hash # CodeDef(v)
-                THEN [rj[r] EXCEPT !.hash = CodeDef(v), !.def = CodeDef(v)]
-              ELSE rj[r]]
+  /\ \E schedChanged \in [Names -> BOOLEAN] :
+       rj' = [r \in Names |->
+                IF r \notin Decl(v) THEN rj[r]
+                ELSE IF rj[r].st = "none"
+                  THEN [NoRj EXCEPT !.st = "Active", !.origin = "code", !.hash = CodeDef(v), !.def = CodeDef(v)]
+                ELSE IF rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code" /\ rj[r].hash # CodeDef(v)
+                  THEN [rj[r] EXCEPT !.hash = CodeDef(v), !.def = CodeDef(v),
+                                     !.behind = IF schedChanged[r] THEN 0 ELSE rj[r].behind]
+                ELSE rj[r]]
   /\ UNCHANGED <<occ, job, order, maint, ov, mf, op>>
 
 \* modeling artefact: a node stops or crashes (hosting module).
@@ -174,26 +203,38 @@ NodeStop(n) ==
   /\ node' = [node EXCEPT ![n].st = "Down"]
   /\ UNCHANGED <<rj, occ, job, order, maint, ov, mf, op>>
 
-\* @req REQ-205  no running worker node declares a stored code-defined job, default policy:
+\* @req REQ-237  pausing, orphaning or removing a job records its waiting occurrences as skipped
+\*              with reason Paused / Orphaned / Removed, in the same step (one event).
+SkipWaiting(r, why) ==
+  occ' = [o \in OccIds |-> IF o \in WaitingOf(r)
+                             THEN [occ[o] EXCEPT !.st = "Skipped", !.reason = why, !.blk = {}]
+                             ELSE occ[o]]
+
+\* @req REQ-205  no running worker node declares a stored code-defined job, orphanPolicy Orphan:
 \*              record its state, mark it orphaned (which pauses it).
-\* @req REQ-207  same event, policy delete: remove the definition.
+\* @req REQ-207  same event, orphanPolicy Delete: remove the definition.
+\* @req REQ-237  its waiting occurrences are skipped (Orphaned / Removed).
 Orphan(r) ==
   /\ SchedulerRuns
   /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code"
   /\ ~Declared(r)
-  /\ rj' = IF op = "default"
-             THEN [rj EXCEPT ![r].before = rj[r].st, ![r].st = "Orphaned"]
-             ELSE [rj EXCEPT ![r] = NoRj]
-  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
+  /\ IF op[r] = "Orphan"
+       THEN rj' = [rj EXCEPT ![r].before = rj[r].st, ![r].st = "Orphaned"] /\ SkipWaiting(r, "Orphaned")
+       ELSE rj' = [rj EXCEPT ![r] = NoRj] /\ SkipWaiting(r, "Removed")
+  /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
 
 \* @req REQ-206  a running worker node declares an orphaned job again: back to its earlier state,
-\*              nextRunAt from now.
+\*              definition and definitionHash from that node's code, nextRunAt from now.
 Restore(r) ==
-  /\ rj[r].st = "Orphaned" /\ Declared(r)
-  /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0]
+  /\ rj[r].st = "Orphaned"
+  /\ \E n \in RunningNodes :
+       /\ r \in Decl(node[n].ver)
+       /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0,
+                           ![r].hash = CodeDef(node[n].ver), ![r].def = CodeDef(node[n].ver)]
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
 
 \* @req REQ-208  operator adds a runtime job when no definition with its name exists.
+\* @req INV-211  a name that is already stored is rejected (guard), whatever its origin.
 OperatorAdd(r) ==
   /\ rj[r].st = "none"
   /\ rj' = [rj EXCEPT ![r] = [NoRj EXCEPT !.st = "Active", !.origin = "runtime", !.def = "rt"]]
@@ -213,16 +254,20 @@ OperatorUpdate(r) ==
 
 \* @req REQ-213  operator removes a runtime job, or an orphaned one of any origin.
 \* @req INV-206  a code job that is not orphaned is refused (guard).
+\* @req REQ-237  waiting occurrences skipped with reason Removed.
 OperatorRemove(r) ==
   /\ (rj[r].st # "none" /\ rj[r].origin = "runtime") \/ rj[r].st = "Orphaned"
   /\ rj' = [rj EXCEPT ![r] = NoRj]
-  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
+  /\ SkipWaiting(r, "Removed")
+  /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
 
 \* @req REQ-214
+\* @req REQ-237  waiting occurrences skipped with reason Paused.
 Pause(r) ==
   /\ rj[r].st = "Active"
   /\ rj' = [rj EXCEPT ![r].st = "Paused"]
-  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
+  /\ SkipWaiting(r, "Paused")
+  /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
 
 \* @req REQ-215  resume: Active, nextRunAt from now.
 Resume(r) ==
@@ -264,6 +309,10 @@ AbandonOnTimeout(o) == /\ job[o].st = "Processing" /\ ~job[o].zombie
 ZombieEnds(o) == /\ job[o].zombie /\ JobStep(o, [job[o] EXCEPT !.zombie = FALSE])
 \* jobs REQ-124: no running worker lists a handler for it.
 BecomeUnroutable(o) == /\ job[o].st = "Enqueued" /\ JobStep(o, [job[o] EXCEPT !.st = "Unroutable"])
+\* jobs REQ-125: a running worker node registers a handler for it -> back to Enqueued. Unroutable is not
+\* final in the jobs module, so an Unroutable occurrence job is never archived (A-11).
+Reroute(o) == /\ RerouteOn /\ job[o].st = "Unroutable" /\ SchedulerRuns
+              /\ JobStep(o, [job[o] EXCEPT !.st = "Enqueued"])
 
 \* modeling artefact A-11: finished occurrences free their slot (not while a waiting one refers to them).
 Archive(o) ==
@@ -280,7 +329,8 @@ Next ==
                       \/ OperatorUpdate(r) \/ OperatorRemove(r) \/ Pause(r) \/ Resume(r) \/ TimePasses(r)
   \/ \E n \in Nodes : NodeStop(n) \/ \E v \in Releases : NodeStart(n, v)
   \/ \E o \in OccIds : \/ StartWaiting(o) \/ Claim(o) \/ Complete(o) \/ RetryDue(o) \/ LeaseLost(o)
-                       \/ AbandonOnTimeout(o) \/ ZombieEnds(o) \/ BecomeUnroutable(o) \/ Archive(o)
+                       \/ AbandonOnTimeout(o) \/ ZombieEnds(o) \/ BecomeUnroutable(o) \/ Reroute(o)
+                       \/ Archive(o)
   \/ ToggleMaintenance
 
 \* Only actor: system transitions are fair.
@@ -299,17 +349,18 @@ Inv_NoScheduleWhilePaused ==
 \* @req INV-210  maintenance on: never an occurrence on schedule ...
 Inv_NoScheduleInMaintenance == maint => \A r \in Names : ~ENABLED Trigger(r)
 
-\* @req INV-210  ... and nextRunAt unchanged while maintenance is on (behind only grows).
-Prop_MaintenanceKeepsNextRunAt ==
-  [][maint /\ maint' => \A r \in Names : rj[r].st # "none" /\ rj'[r].st # "none" => rj'[r].behind >= rj[r].behind]_vars
+\* @req INV-210  ... and no scheduled trigger advances nextRunAt while maintenance is on. Operator and
+\*              reconciliation actions (REQ-204, REQ-206, REQ-215, REQ-227) keep their own "from now" rules.
+Prop_NoScheduledAdvanceInMaintenance ==
+  [][maint => \A r \in Names : ~Trigger(r)]_vars
 
-\* @req INV-204  Skip/Queue: never two of its occurrences' jobs processing at the same time on any
-\*              nodes — counting every running handler (current run or one abandoned/lease-lost).
+\* Not a requirement: REQ-238 (info) accepts that an abandoned or lease-lost handler can still run beside
+\* the next occurrence's job. Kept to show the accepted window is real (expected VIOLATED).
 Executing(o) == job[o].st = "Processing" \/ job[o].zombie
 Inv_NoOverlapRunning ==
   \A r \in Names : ov[r] \in {"Skip", "Queue"} => Cardinality({o \in OfJob(r) : Executing(o)}) <= 1
 
-\* @req INV-204  same, counting only jobs whose stored status is Processing (narrow reading, A-12).
+\* @req INV-204  Skip/Queue: never two of its occurrences' jobs in the Processing state at the same time.
 Inv_NoOverlapProcessing ==
   \A r \in Names : ov[r] \in {"Skip", "Queue"} => Cardinality({o \in OfJob(r) : job[o].st = "Processing"}) <= 1
 
@@ -330,6 +381,25 @@ Scn_NoOrphanWhileDeclared == \A r \in Names : Declared(r) => ~ENABLED Orphan(r)
 \* @req SCN-200, INV-203  once the CAS advanced nextRunAt past now, the old instant cannot fire again.
 Scn_SecondCasImpossible == \A r \in Names : rj[r].st # "none" /\ rj[r].behind = 0 => ~ENABLED Trigger(r)
 
+\* @req INV-211, SCN-214  a name that is already stored cannot be added again (impossibleAt: 1).
+Scn_StoredNameCannotBeAdded == \A r \in Names : rj[r].st # "none" => ~ENABLED OperatorAdd(r)
+
+\* @req REQ-236  a release that declares the name of a stored runtime-defined job never starts.
+Scn_RuntimeNameBlocksStart ==
+  \A n \in Nodes, v \in Releases : (\E r \in Decl(v) : rj[r].origin = "runtime") => ~ENABLED NodeStart(n, v)
+
+\* @req REQ-237  pausing, orphaning or removing a job leaves none of its occurrences waiting.
+Prop_PauseOrphanRemoveSkipsWaiting ==
+  [][\A r \in Names : rj[r].st # rj'[r].st /\ rj'[r].st \in {"Paused", "Orphaned", "none"}
+        => \A o \in OccIds : ~(occ'[o].rj = r /\ occ'[o].st = "Waiting")]_vars
+
+\* @req REQ-239, REQ-222, REQ-235  an occurrence is skipped for overlap only while an earlier one of the
+\*              same job is waiting or has an unfinished job (an Unroutable job is not in the way).
+Prop_SkipOnlyWhenInTheWay ==
+  [][\A o \in OccIds : occ[o].st = "none" /\ occ'[o].st = "Skipped" /\ occ'[o].reason \in {"Overlap", "QueueFull"}
+        => \E x \in OccIds \ {o} : occ[x].rj = occ'[o].rj
+                                   /\ (occ[x].st = "Waiting" \/ (occ[x].st = "Started" /\ job[x].st \notin DoneForOverlap))]_vars
+
 -----------------------------------------------------------------------------
 \* Positive scenarios: given state as Init, trap invariant expected to be VIOLATED.
 J1 == CHOOSE r \in Names : TRUE
@@ -340,7 +410,7 @@ BaseInit(r1, nd) ==
   /\ node = nd
   /\ occ = [o \in OccIds |-> NoOcc] /\ job = [o \in OccIds |-> NoJob] /\ order = <<>>
   /\ maint = FALSE
-  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in OrphanPolicies
+  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in [Names -> OrphanPolicies]
 AllRunning(v) == [n \in Nodes |-> [st |-> "Running", ver |-> v]]
 O1 == CHOOSE o \in OccIds : TRUE
 
@@ -351,7 +421,7 @@ Init_SCN201 ==
   /\ occ = [o \in OccIds |-> IF o = O1 THEN [NoOcc EXCEPT !.st = "Started", !.rj = J1, !.sched = TRUE] ELSE NoOcc]
   /\ job = [o \in OccIds |-> IF o = O1 THEN [EnqJob EXCEPT !.st = "Processing"] ELSE NoJob]
   /\ order = <<O1>> /\ maint = FALSE
-  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in OrphanPolicies
+  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in [Names -> OrphanPolicies]
 Scn201_NotReached ==
   ~(\E o \in OfJob(J1) : occ[o].st = "Skipped" /\ occ[o].reason = "Overlap"
       /\ job[O1].st = "Processing" /\ {x \in OfJob(J1) : job[x].st # "none"} = {O1})
@@ -386,6 +456,24 @@ Scn210_NotReached ==
     /\ \E o \in OfJob(J1) : occ[o].st = "Skipped" /\ occ[o].reason = "QueueFull" /\ occ[o].sched
     /\ {x \in OfJob(J1) : job[x].st = "Processing"} = {O1})
 
+\* @req SCN-213  Queue(max 1): the 10:00 job succeeded at 10:01:50, the 10:01 occurrence is still waiting
+\*              when the 10:02 trigger runs (given state as Init). 10:02 must be skipped QueueFull and
+\*              10:01 must be the only occurrence processing.
+O2 == CHOOSE o \in OccIds \ {O1} : TRUE
+Init_SCN213 ==
+  /\ rj = [r \in Names |-> IF r = J1 THEN [RuntimeRj("Active") EXCEPT !.behind = 1] ELSE NoRj]
+  /\ node = AllRunning("v1")
+  /\ occ = [o \in OccIds |-> IF o = O1 THEN [NoOcc EXCEPT !.st = "Started", !.rj = J1, !.sched = TRUE]
+                             ELSE IF o = O2 THEN [NoOcc EXCEPT !.st = "Waiting", !.rj = J1, !.blk = {O1}, !.sched = TRUE]
+                             ELSE NoOcc]
+  /\ job = [o \in OccIds |-> IF o = O1 THEN [EnqJob EXCEPT !.st = "Succeeded"] ELSE NoJob]
+  /\ order = <<O1, O2>> /\ maint = FALSE
+  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in [Names -> OrphanPolicies]
+Scn213_NotReached ==
+  ~(/\ occ[O2].st = "Started" /\ job[O2].st = "Processing"
+    /\ \E s \in OfJob(J1) : s \notin {O1, O2} /\ occ[s].st = "Skipped" /\ occ[s].reason = "QueueFull" /\ occ[s].sched
+    /\ {x \in OfJob(J1) : job[x].st = "Processing"} = {O2})
+
 \* @req SCN-211  Skip misfire; due 03:00:00, first poll 03:00:02 (within MisfireThreshold).
 Init_SCN211 == BaseInit([RuntimeRj("Active") EXCEPT !.behind = 1], AllRunning("v1"))
 Scn211_NotReached ==
@@ -404,7 +492,9 @@ Probe_StaleDefinitionAfterRestore ==
 Probe_RuntimeJobTakenOverByCode ==
   ~(\E r \in Names : rj[r].origin = "runtime" /\ rj[r].hash \in {"d1", "d2", "d3"})
 
-\* F: an unroutable occurrence job blocks the next occurrence.
+\* F (run 1, F-7): an unroutable occurrence job blocks the next occurrence. Under REQ-239 an occurrence
+\* skipped while the earlier job was still Enqueued (before it became Unroutable) also satisfies this
+\* state predicate, so the run-2 check of F-7 is Prop_SkipOnlyWhenInTheWay; the probe is kept for history.
 Probe_UnroutableBlocksNext ==
   ~(\E o, s \in OccIds : job[o].st = "Unroutable" /\ occ[s].st = "Skipped" /\ occ[s].rj = occ[o].rj)
 
