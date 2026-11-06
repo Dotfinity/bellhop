@@ -1,18 +1,18 @@
 {
   "module": "hosting",
-  "specHash": "40f284cf2fba0ca8fe76266669a0c1be00a7c3040138a5f78e1a04b5d8793fa0",
-  "generatedAt": "2026-11-06T00:00:00Z",
+  "specHash": "8159591701b2c3c6df7a0962279a88be27a8c81974ce75704522403d07f14f82",
+  "generatedAt": "2026-11-06T18:00:00Z",
   "model": "model/hosting/Hosting.tla",
   "items": {
     "REQ-9": {
-      "hash": "34986b68cb9072920d790f3e70d377c013ee4d812f4c49ca87e60baaa159e74c",
+      "hash": "905c2eacb309072858d1561d1a008717e704b5fab933add191959d92b531ed30",
       "reviewed": false,
-      "note": "ValidationFails"
+      "note": "ValidationFails (fail the host's start = StartupFailed, final)"
     },
     "REQ-12": {
-      "hash": "d4e5e0fce0a8bf1e3c4b8c635f5ea8e34efee2dadbdc2b0d1601c3d00cca4f29",
+      "hash": "48ebc02ddf12769c15eac0e7f3b48e9313d59b65c5d25a77d68670ba1c71792f",
       "reviewed": false,
-      "note": "HostStarts + ReconcileRecurring (reconcile order left nondeterministic, A-4, F-4)"
+      "note": "HostStarts + ValidateOptions; store actions guarded by validated; ReconcileRecurring only on an accepted schema with no migration pending (Chk_ReconcileOnAcceptedSchema holds). Order vs other modules' startup checks: F-1; vs REQ-18: F-2"
     },
     "REQ-13": {
       "hash": "386cb916d9322cd55c9dd504e16ea8d7a08d13c0447b8a470431a4eeb2e9b518",
@@ -22,7 +22,7 @@
     "REQ-14": {
       "hash": "18fba2d7e2d72b6933e5820bd3170cb4f2203db0d48800bad1a2870c22c18921",
       "reviewed": false,
-      "note": "Inv_NoWorkerInBuildTooling \u2014 VIOLATED if tooling starts the host (F-6)"
+      "note": "Inv_NoWorkerInBuildTooling holds, given REQ-57"
     },
     "REQ-15": {
       "hash": "b7129d7ec389cf5d6baa28ad008bd69916f28226221119cf26cb9564ce030362",
@@ -30,17 +30,17 @@
       "note": "Reach/Sch helpers + Inv_InMemoryWhenNoStore (holds)"
     },
     "REQ-16": {
-      "hash": "771afe7e15530c764b30d44e45c34baffb4fd337449d4b6e1b3ad21e626ac5b6",
+      "hash": "cb1d3bb7922e581ca05ff0456f69f8c1071bb66d47b715d9d42733514769ac7d",
       "reviewed": false,
-      "note": "WarnInMemoryStore (F-7)"
+      "note": "HostStarts sets the warning once when no store and not Development (Chk_OneMemoryWarning, Chk_MemoryWarningBeforeRunning hold)"
     },
     "REQ-18": {
-      "hash": "2c79296718ccff4085baa0b3ff6a999e59bfc8877994c549743cd444fc708d3c",
+      "hash": "b29c6e20b9fd78637b09d60bb524afe1a00eee3cf8c3ab69b87dd946b2ed79a4",
       "reviewed": false,
-      "note": "MarkRunning; 'startup checks' read as REQ-9/23/43 conditions (A-2)"
+      "note": "MarkRunning: Reach, validated, Accepted, ~Pending, other modules' checks pass (A-2, A-19). Chk_MigrateBeforeRunning holds (1 node and 2 nodes full)"
     },
     "REQ-19": {
-      "hash": "45bdd2009bd26e1cbca96db43fbeac853573875ae4fe3337b3cb3722fbbcad72",
+      "hash": "6775b55d8bf8b62f75c12e85a0234fc3fa125bbcb5f70921083b14f7fa0b84fa",
       "reviewed": false,
       "note": "same action as REQ-18 (summaryLogged)"
     },
@@ -57,12 +57,12 @@
     "REQ-22": {
       "hash": "f92d53a53b028145c650f89a67b16fadc19f78ccadf03718abfe4b5f74c2ea53",
       "reviewed": false,
-      "note": "AcquireMigrationLock + Migrate (F-2)"
+      "note": "AcquireMigrationLock + Migrate, only after validation"
     },
     "REQ-23": {
-      "hash": "fce0f32753c516571411b05b7a8c0ce98035a68bc2531788e1415d922823ead6",
+      "hash": "11e531604c0ab7a5afb3f38603a9f85bb8fb8d80d0dc32760c2e2f13fd269368",
       "reviewed": false,
-      "note": "SchemaTooOld"
+      "note": "SchemaTooOld (after validation; releases the lock, REQ-56)"
     },
     "REQ-24": {
       "hash": "ab682363f56a0c01d6bf6d4185856e3e5c579136d9788d430de1eb6f739ceb91",
@@ -85,14 +85,14 @@
       "note": "TimeoutPasses, no clock (A-1)"
     },
     "REQ-29": {
-      "hash": "6505ec1ecbc343cff80c949379ff6c9889f0b45e202a1a17cff5c9da7ce59f54",
+      "hash": "43ff648b6b34872a98aa5b5d15824e061509ed1da9e90cf85edb1763104de724",
       "reviewed": false,
-      "note": "StopNode; release via jobs REQ-140 abstraction (F-5)"
+      "note": "CancelAndRelease (release attempted; lands only if reachable) + StopNode; Chk_DrainEnds holds"
     },
     "REQ-30": {
-      "hash": "7926e7c19bd9b16a1988505d8f85d910374ea84ced8f61f35f50e06ae24ef39b",
+      "hash": "265579fad1610aa70cf10cc10f0dc05d610525fc5b898951dbfeca500c81a380",
       "reviewed": false,
-      "note": "ReportStall (F-3)"
+      "note": "HealthCheck: stalled is an Unhealthy check; Chk_StallStaysUnhealthy holds"
     },
     "REQ-31": {
       "hash": "46069edc116cba5b43aa75f2cde7efd7037f3512e18b47126de6bebccf006642",
@@ -110,19 +110,19 @@
       "note": "HealthCheck"
     },
     "REQ-34": {
-      "hash": "009927612d8788c154db06324df5cb9b32b6a94f74e5abd01fb14f81e5892634",
+      "hash": "2fa02f4a1317200e88f589848fd5cd8385b6ffcec833675b16b1da9bcfdb7b77",
       "reviewed": false,
-      "note": "HealthCheck (F-8)"
+      "note": "HealthCheck: from Healthy only, guarded by no Unhealthy check failing"
     },
     "REQ-35": {
-      "hash": "f8ee5d7196ce079b3da68a1a0576af9230b92727720e50f6db9c0bb6d87be0a0",
+      "hash": "08a5c7c7570d9039eed3234ddad10fb2c935af5fb9bfda9abe10b0d84971fde5",
       "reviewed": false,
-      "note": "HealthCheck, HealthyAfterPasses=2 (F-3)"
+      "note": "HealthCheck: Degraded -> Healthy after HealthyAfterPasses passes (2 in the model)"
     },
     "REQ-40": {
-      "hash": "d37166932497e48dcd2bcf57388c8647061cef0006a9686480e49b691426b8d3",
+      "hash": "abc1ea35345cde4958d9cc77e7095c4aef3874d429bddb3001a44021372161b3",
       "reviewed": false,
-      "note": "Inv_NoDutiesWithoutWorker (holds)"
+      "note": "Inv_NoDutiesWithoutWorker (holds); notification checks are REQ-59"
     },
     "REQ-42": {
       "hash": "1ed035b2d3649da6136d1df787bb12ef026728486b4a3653056803d2a1a2f086",
@@ -130,14 +130,19 @@
       "note": "Prop_MigrateOnlyUnderLock (holds); lock release not specified (F-4b)"
     },
     "REQ-43": {
-      "hash": "f2da9c6057789fde3db8c7459c34f9ab02cc11a0c08f7cb6dd16aa138fda88ca",
+      "hash": "7b8f7b357b201cb38b1b7612bb9dbe678580154b7c0b123aabb1d037c077b32b",
       "reviewed": false,
-      "note": "SchemaTooNew"
+      "note": "SchemaTooNew (after validation; releases the lock, REQ-56)"
     },
     "REQ-44": {
-      "hash": "2979d114631f56c9e77aec83232f54f4fea6f9f8eadb51304a779fae12ba6e2f",
+      "hash": "0d00260e9b13a8c19aeab1c5eb798053829be1ff5bd54059847b6805496dc4c9",
       "reviewed": false,
-      "note": "HealthCheck via nondeterministic fewAlive (A-8, F-9)"
+      "note": "HealthCheck: only where the worker is registered; nondeterministic fewAlive (A-8)"
+    },
+    "REQ-60": {
+      "hash": "b1e277e9a4c3ddba6e6d409f17a39322e1db322286af0831f1b9098432d1ff22",
+      "reviewed": false,
+      "note": "absorbed into the nondeterministic fewAlive flag (no clock, A-8)"
     },
     "REQ-46": {
       "hash": "b1d487c39a4571287041c27791cfde1c384fca53970ece60643c328a69cf9d9d",
@@ -165,39 +170,64 @@
       "note": "HealthyAfterPasses = 2 in the model (3 in the policy)"
     },
     "REQ-52": {
-      "hash": "44910fb5dc3ce974e89152b091ae7f95b3a5b30479451f5a89e81c44e2ac69fe",
+      "hash": "8a5f97c0b3e4ecd9ea1369d6e8937421f527810968a0e8174346ca9c18a1bb27",
       "reviewed": false,
-      "note": "RegVals none/client/worker; worker includes client"
+      "note": "RegVals none/client/worker (worker includes client) x AlertVals"
+    },
+    "REQ-55": {
+      "hash": "99abb818b13a29a559918d671a36eec06fa6b2822c17c7f7bf040c807f400668",
+      "reviewed": false,
+      "note": "HostStops while Starting -> Stopped, lock released; Chk_NoRunningAfterHostStop, Chk_NoClaimAfterHostStop hold"
+    },
+    "REQ-56": {
+      "hash": "bb5017eed7c55873cdc003ffcf0d622fd7613772534d24e4f57424971b4f4817",
+      "reviewed": false,
+      "note": "ReleaseIfHeld on every exit from Starting; Inv_LockHolderStarting holds (1 node, 2 nodes full)"
+    },
+    "REQ-57": {
+      "hash": "1a7b7f4a6f7b0c10cc4fdbbee91e01d7368f67797b843913feee2f75e3a15eba",
+      "reviewed": false,
+      "note": "HostStarts disabled for build tooling (assumption)"
+    },
+    "REQ-58": {
+      "hash": "fb1e6787f62844966ea35492c5f654c5ad6336e8094d3f1063748d7005560a75",
+      "reviewed": false,
+      "note": "HealthCheck: Unhealthy -> Degraded; Prop_NoUnhealthyToHealthy holds"
+    },
+    "REQ-59": {
+      "hash": "cdcd24dc95f920ed5634b867fa933c435c674924611db0deeb3a1fb64aec58e8",
+      "reviewed": false,
+      "note": "notifActive set at MarkRunning from the alerts registration; Inv_NoNotificationWithoutAlerts holds (by construction, A-20)"
     },
     "SCN-1": {
       "hash": "0242861c846d71afd75a30927dba2b09bd8362d8349547c3cf602d3f94ebbe56",
       "reviewed": false,
-      "note": "Hosting_SCN1.cfg trap violated (pass); but see F-7"
+      "note": "trap reached in 38 states (pass)"
     },
     "SCN-2": {
       "hash": "d0c1b9c5d1ce5d47d8a5ff15129b85192147fbf3ba998cab4f5db96e6146b38e",
       "reviewed": false,
-      "note": "Hosting_SCN2.cfg trap violated (pass) + Scn_InvalidOptionNeverClaims holds"
+      "note": "trap reached in 14 states (pass); Scn_InvalidOptionNeverClaims holds"
     },
     "SCN-3": {
       "hash": "1fc4f033f7fe9fb4216c34505f9befc289aa59d54a8087c6aae6fbf45422873e",
       "reviewed": false,
-      "note": "Scn_SchemaMismatchBlocksRunning holds"
+      "note": "Scn_SchemaMismatchBlocksRunning holds (1 node, 2 nodes full)"
     },
     "SCN-4": {
       "hash": "30c6ab1ba1a6301b05ef347fcbe09fb5293df3b0b55067ffd28cd76f77f7b06f",
       "reviewed": false,
-      "note": "Hosting_SCN4.cfg trap violated (pass)"
+      "note": "trap reached in 75 states (pass)"
     },
     "SCN-5": {
       "hash": "6cc1f10f209dbdcd39aa51ed2a640ec06b99e234cf0f66231eef77a534916929",
       "reviewed": false,
-      "note": "Hosting_SCN5.cfg trap violated (pass)"
+      "note": "trap reached in 44 states (pass)"
     },
     "SCN-6": {
       "hash": "d402e537049f0870ca757b46ce808e014ed861faeabdfa5415f65ce35efc5751",
       "reviewed": false,
-      "note": "Hosting_SCN6.cfg trap violated (pass)"
+      "note": "trap reached in 6 states (pass); node already Unhealthy at start"
     }
   },
   "skipped": {
@@ -220,7 +250,7 @@
     "REQ-41": "retired",
     "REQ-45": "constant only used by REQ-26 (skipped)",
     "REQ-51": "could not encode meaningfully: static rule (dashboard served iff mapped); see F-9 for the ambiguity",
-    "REQ-53": "log-only; same once/before-running pattern as REQ-16 (F-7)",
-    "REQ-54": "log-only; same once/before-running pattern as REQ-16 (F-7)"
+    "REQ-53": "log-only; same 'a node starts' event as REQ-16, which is modeled; nothing reads the state",
+    "REQ-54": "log-only; same 'a node starts' event as REQ-16, which is modeled; nothing reads the state"
   }
 }

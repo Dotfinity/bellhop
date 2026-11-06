@@ -17,6 +17,9 @@ CONSTANTS Nodes,            \* Node instances (entity.bound = 2; 1 in the single
           ToolVals,         \* @req REQ-14  process runs build-time tooling?
           ConfVals,         \* @req REQ-15  a store is configured?
           DevVals,          \* environment is Development?
+          AlertVals,        \* @req REQ-52  alerts registration (independent of client/worker)
+          OkVals,           \* the other modules' startup checks pass? (dashboard REQ-301/REQ-334, recurring
+                            \* REQ-210/REQ-236, redis REQ-502/REQ-505; abstracted, A-19)
           MaxInFlight,      \* worker concurrency in the model (real value irrelevant)
           HealthyAfterPasses, \* @req REQ-50 (3 in the policy; 2 in the model)
           HealthEnv,        \* TRUE: stalls, thresholds and node-count changes may happen
@@ -32,9 +35,12 @@ HealthVal  == {"Healthy", "Degraded", "Unhealthy"}
 
 \* Per-process configuration, fixed for the life of one process.
 CfgSet == [reg: RegVals, auto: AutoVals, valid: ValidVals, tool: ToolVals,
-           conf: ConfVals, dev: DevVals, exp: ExpectedVals]
+           conf: ConfVals, dev: DevVals, exp: ExpectedVals, alerts: AlertVals, ok: OkVals]
 
 NodeRec == [st: NodeStatus,
+            validated: BOOLEAN,         \* REQ-12 options validated (store work only after this)
+            notifActive: BOOLEAN,       \* notification checks running on this node (REQ-59)
+            otherBad: BOOLEAN,          \* history: wrote to the shared store while another startup check fails
             hostStopped: BOOLEAN,       \* the host has signalled stop
             workerActive: BOOLEAN,      \* worker loop + background duties started (REQ-18, REQ-40)
             inFlight: 0..MaxInFlight,
@@ -58,11 +64,13 @@ NodeRec == [st: NodeStatus,
 VARIABLES cfg, nd, schema, reachable, lock, fewAlive
 vars == <<cfg, nd, schema, reachable, lock, fewAlive>>
 
-Fresh == [st |-> "none", hostStopped |-> FALSE, workerActive |-> FALSE, inFlight |-> 0,
+\* @req Health.initial = Unhealthy (hosting F-11 resolution): a node is Unhealthy until REQ-58/REQ-35.
+Fresh == [st |-> "none", validated |-> FALSE, notifActive |-> FALSE, otherBad |-> FALSE,
+          hostStopped |-> FALSE, workerActive |-> FALSE, inFlight |-> 0,
           timeoutPassed |-> FALSE, released |-> 0, claimedEver |-> FALSE, claimedAfterStop |-> FALSE,
           reconciled |-> FALSE, reconcileBad |-> FALSE, migrateBad |-> FALSE, ranUnmigrated |-> FALSE,
           memWarnings |-> 0, summaryLogged |-> FALSE, io |-> FALSE,
-          health |-> "Healthy", passes |-> 0, stalled |-> FALSE, stallReported |-> FALSE,
+          health |-> "Unhealthy", passes |-> 0, stalled |-> FALSE, stallReported |-> FALSE,
           degradedCond |-> FALSE]
 
 TypeInv ==
@@ -81,8 +89,13 @@ Reach(n)    == ~cfg[n].conf \/ reachable
 Sch(n)      == IF cfg[n].conf THEN schema ELSE cfg[n].exp
 \* @req REQ-23, REQ-43  accepted range: expected version or one older.
 Accepted(n) == Sch(n) \in {cfg[n].exp, cfg[n].exp - 1}
-\* "all startup checks have passed" (REQ-18) read as: no condition of REQ-9/REQ-23/REQ-43 holds (A-2).
-StartupChecksPassed(n) == cfg[n].valid /\ Accepted(n)
+\* @req REQ-18, REQ-22  "no migration is pending under REQ-22": AutoMigrate on and the store older.
+Pending(n)  == cfg[n].conf /\ cfg[n].auto /\ schema < cfg[n].exp
+\* @req REQ-18  "all startup checks have passed, including option validation (REQ-9) and the dashboard
+\*              checks": options validated, and no other module's startup check fails (A-2, A-19).
+StartupChecksPassed(n) == nd[n].validated /\ Accepted(n) /\ ~Pending(n) /\ cfg[n].ok
+\* @req REQ-56  a node that leaves Starting for any reason releases the migration lock first.
+ReleaseIfHeld(n) == IF lock = n THEN NULL ELSE lock
 
 Init ==
   /\ cfg \in [Nodes -> CfgSet]
@@ -95,39 +108,65 @@ Init ==
 \* ------------------------------------------------------------------ startup
 
 \* @req REQ-12  When the host starts, start the Bellhop node (no I/O before this: REQ-13).
+\* @req REQ-16  Same event ("a node starts"): no store configured and not Development -> the in-memory
+\*              warning, logged once, before the node is marked running.
+\* @req REQ-57  Build-time tooling builds the host without starting it (assumption): never started.
 HostStarts(n) ==
   /\ nd[n].st = "none"
-  /\ nd' = [nd EXCEPT ![n].st = "Starting"]
+  /\ ~cfg[n].tool
+  /\ nd' = [nd EXCEPT ![n].st = "Starting",
+                      ![n].memWarnings = IF ~cfg[n].conf /\ ~cfg[n].dev THEN 1 ELSE 0]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-9  While starting, if an option fails validation, stop the node from starting.
+\* @req REQ-12  "validate the options, and only then connect to the store": options pass validation.
+ValidateOptions(n) ==
+  /\ nd[n].st = "Starting"
+  /\ cfg[n].valid /\ ~nd[n].validated
+  /\ nd' = [nd EXCEPT ![n].validated = TRUE]
+  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+
+\* @req REQ-9  While starting, if an option fails validation, fail the host's start.
 ValidationFails(n) ==
   /\ nd[n].st = "Starting"
   /\ ~cfg[n].valid
   /\ nd' = [nd EXCEPT ![n].st = "StartupFailed"]
-  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+  /\ lock' = ReleaseIfHeld(n)
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
-\* @req REQ-23  AutoMigrate off and schema more than one version older -> StartupFailed.
-SchemaTooOld(n) ==
+\* Cross-module, abstracted (A-19): dashboard REQ-301/REQ-334 (named by REQ-18), recurring REQ-210/
+\* REQ-236 and redis REQ-502/REQ-505 move a starting node to StartupFailed. No requirement orders them
+\* relative to REQ-12's store steps, so they may fire at any point while Starting.
+OtherCheckFails(n) ==
   /\ nd[n].st = "Starting"
+  /\ ~cfg[n].ok
+  /\ nd' = [nd EXCEPT ![n].st = "StartupFailed"]
+  /\ lock' = ReleaseIfHeld(n)
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
+
+\* @req REQ-23  AutoMigrate off and schema more than one version older -> fail the host's start.
+SchemaTooOld(n) ==
+  /\ nd[n].st = "Starting" /\ nd[n].validated
   /\ Reach(n)
   /\ ~cfg[n].auto
   /\ Sch(n) + 1 < cfg[n].exp
   /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE]
-  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+  /\ lock' = ReleaseIfHeld(n)
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
-\* @req REQ-43  Stored schema newer than expected -> StartupFailed (AutoMigrate on or off).
+\* @req REQ-43  Stored schema newer than expected -> fail the host's start (AutoMigrate on or off).
 SchemaTooNew(n) ==
-  /\ nd[n].st = "Starting"
+  /\ nd[n].st = "Starting" /\ nd[n].validated
   /\ Reach(n)
   /\ Sch(n) > cfg[n].exp
   /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE]
-  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+  /\ lock' = ReleaseIfHeld(n)
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
 \* @req REQ-22, REQ-42  AutoMigrate on and schema older: only the holder of the store's migration
 \*                      lock migrates; the others wait (this action is disabled for them) and re-read.
+\* @req REQ-12  only after the options were validated.
 AcquireMigrationLock(n) ==
-  /\ nd[n].st = "Starting"
+  /\ nd[n].st = "Starting" /\ nd[n].validated
   /\ cfg[n].conf /\ cfg[n].auto /\ reachable
   /\ schema < cfg[n].exp
   /\ lock = NULL
@@ -143,36 +182,33 @@ Migrate(n) ==
   /\ lock = n /\ reachable
   /\ schema' = IF schema < cfg[n].exp THEN cfg[n].exp ELSE schema
   /\ lock' = NULL
-  /\ nd' = [nd EXCEPT ![n].migrateBad = nd[n].migrateBad \/ ~cfg[n].valid]
+  /\ nd' = [nd EXCEPT ![n].migrateBad = nd[n].migrateBad \/ ~cfg[n].valid,
+                      ![n].otherBad = nd[n].otherBad \/ ~cfg[n].ok]
   /\ UNCHANGED <<cfg, reachable, fewAlive>>
 
-\* @req REQ-16  While starting, no store configured and not Development -> warn (in-memory store in use).
-WarnInMemoryStore(n) ==
-  /\ nd[n].st = "Starting"
-  /\ ~cfg[n].conf /\ ~cfg[n].dev
-  /\ nd[n].memWarnings < 2
-  /\ nd' = [nd EXCEPT ![n].memWarnings = @ + 1]
-  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
-
-\* @req REQ-12  ...connect to the store, check the schema and, where the worker is registered,
-\*              reconcile code-defined recurring jobs. The sentence orders reconciliation after the
-\*              schema *check*, not after the check *passed* or migration (A-4): left nondeterministic.
+\* @req REQ-12  ...where the worker is registered and the schema version is accepted with no migration
+\*              pending, reconcile code-defined recurring jobs.
 ReconcileRecurring(n) ==
-  /\ nd[n].st = "Starting"
+  /\ nd[n].st = "Starting" /\ nd[n].validated
   /\ HasWorker(n) /\ Reach(n)
+  /\ Accepted(n) /\ ~Pending(n)
   /\ ~nd[n].reconciled
   /\ nd' = [nd EXCEPT ![n].reconciled = TRUE, ![n].io = TRUE,
-                      ![n].reconcileBad = ~Accepted(n)]
+                      ![n].reconcileBad = ~Accepted(n),
+                      ![n].otherBad = nd[n].otherBad \/ ~cfg[n].ok]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-18  Store reachable, schema accepted, startup checks passed -> Running; start the worker.
+\* @req REQ-18  Store reachable, schema accepted, no migration pending, startup checks passed -> Running;
+\*              start the worker and its background duties where the worker is registered.
 \* @req REQ-19  Same event: log the one-screen summary.
 \* @req REQ-25  Claims only once the store is reachable (guard Reach).
+\* Notification checks start on a node with the alerts registration (integrations INV-411/REQ-438, A-20).
 MarkRunning(n) ==
   /\ nd[n].st = "Starting"
   /\ Reach(n)
   /\ StartupChecksPassed(n)
   /\ nd' = [nd EXCEPT ![n].st = "Running", ![n].workerActive = HasWorker(n),
+                      ![n].notifActive = cfg[n].alerts,
                       ![n].summaryLogged = TRUE, ![n].io = TRUE,
                       ![n].ranUnmigrated = cfg[n].conf /\ cfg[n].auto /\ schema < cfg[n].exp]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
@@ -200,13 +236,15 @@ JobFinishes(n) ==
 \* ------------------------------------------------------------------ shutdown
 
 \* Environment: the host signals stop. @req REQ-27  While running -> Draining (stop claiming).
-\* While Starting no requirement says anything: the flag is set and the status is unchanged (A-5).
+\* @req REQ-55  While starting -> stop retrying, Stopped, without starting the worker or any duty.
+\* @req REQ-56  a starting node that leaves Starting releases the migration lock first.
 HostStops(n) ==
   /\ nd[n].st \in {"Starting", "Running"}
   /\ ~nd[n].hostStopped
   /\ nd' = [nd EXCEPT ![n].hostStopped = TRUE,
-                      ![n].st = IF nd[n].st = "Running" THEN "Draining" ELSE "Starting"]
-  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+                      ![n].st = IF nd[n].st = "Running" THEN "Draining" ELSE "Stopped"]
+  /\ lock' = IF nd[n].st = "Starting" THEN ReleaseIfHeld(n) ELSE lock
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
 \* @req REQ-28  ShutdownTimeout passes (no clock: may happen at any moment while draining, A-1).
 TimeoutPasses(n) ==
@@ -215,21 +253,21 @@ TimeoutPasses(n) ==
   /\ nd' = [nd EXCEPT ![n].timeoutPassed = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* REQ-29's precondition "tokens cancelled and leases released" — done by jobs REQ-140 (A-7).
-\* Releasing a lease is a store write, so it needs the store.
+\* @req REQ-29  "the remaining jobs' tokens were cancelled and the release of their leases was attempted"
+\* (jobs REQ-140, A-7). The release is a store write: it lands only if the store is reachable; a failed
+\* release is left to lease expiry (jobs REQ-132), outside this model.
 CancelAndRelease(n) ==
   /\ nd[n].st = "Draining"
   /\ nd[n].timeoutPassed
   /\ nd[n].inFlight > 0
-  /\ Reach(n)
-  /\ nd' = [nd EXCEPT ![n].released = @ + nd[n].inFlight, ![n].inFlight = 0]
+  /\ nd' = [nd EXCEPT ![n].released = IF Reach(n) THEN @ + nd[n].inFlight ELSE @, ![n].inFlight = 0]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-29  Draining, every in-flight job finished (or timed out and released) -> Stopped.
+\* @req REQ-29  Draining, every in-flight job finished (or timed out, cancelled, release attempted) -> Stopped.
 StopNode(n) ==
   /\ nd[n].st = "Draining"
   /\ nd[n].inFlight = 0
-  /\ nd' = [nd EXCEPT ![n].st = "Stopped", ![n].workerActive = FALSE]
+  /\ nd' = [nd EXCEPT ![n].st = "Stopped", ![n].workerActive = FALSE, ![n].notifActive = FALSE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
 \* ------------------------------------------------------------------ health
@@ -237,36 +275,35 @@ StopNode(n) ==
 Alive(n) == nd[n].st \in {"Starting", "Running", "Draining"}
 
 UnhealthyCond(n) ==
+  \/ nd[n].stalled                               \* REQ-30  internal error stalling processing
   \/ ~Reach(n)                                   \* REQ-31
   \/ ~Accepted(n)                                \* REQ-32
   \/ HasWorker(n) /\ ~nd[n].workerActive         \* REQ-33  worker loop not alive
-  \/ fewAlive                                    \* REQ-44  fewer than MinNodesAlive (A-8)
+  \/ HasWorker(n) /\ fewAlive                    \* REQ-44  where the worker is registered (A-8)
 
-\* @req REQ-31, REQ-32, REQ-33, REQ-44, REQ-34, REQ-35  one event "the health check runs" (lint warning):
-\* Unhealthy checks first; else Degraded thresholds (REQ-34); else count a pass and, after
-\* HealthyAfterPasses passes in a row, report Healthy (REQ-35). Where no requirement covers the
-\* current status (e.g. Unhealthy and still failing) the status stays.
+\* @req REQ-30, REQ-31, REQ-32, REQ-33, REQ-44, REQ-34, REQ-35, REQ-58  one event "the health check runs"
+\* (lint warning). Unhealthy checks first (REQ-30..33, REQ-44: from Healthy/Degraded); else, while
+\* Unhealthy, REQ-58 -> Degraded; else Degraded thresholds (REQ-34: from Healthy); else count a pass and,
+\* from Degraded after HealthyAfterPasses passes in a row, Healthy (REQ-35). A run in which every check
+\* passes counts as a pass, including the REQ-58 run (A-15). Where no requirement covers the current
+\* status (e.g. Unhealthy and still failing) the status stays.
 HealthCheck(n) ==
   /\ Alive(n)
   /\ LET h == nd[n].health
          p == Min(nd[n].passes + 1, HealthyAfterPasses)
      IN  IF UnhealthyCond(n)
            THEN nd' = [nd EXCEPT ![n].health = IF h \in {"Healthy", "Degraded"} THEN "Unhealthy" ELSE h,
-                                 ![n].passes = 0]
+                                 ![n].passes = 0,
+                                 ![n].stallReported = nd[n].stalled]
+         ELSE IF h = "Unhealthy"
+           THEN nd' = [nd EXCEPT ![n].health = "Degraded",
+                                 ![n].passes = IF nd[n].degradedCond THEN 0 ELSE p]
          ELSE IF nd[n].degradedCond
-           THEN nd' = [nd EXCEPT ![n].health = IF h \in {"Healthy", "Unhealthy"} THEN "Degraded" ELSE h,
+           THEN nd' = [nd EXCEPT ![n].health = IF h = "Healthy" THEN "Degraded" ELSE h,
                                  ![n].passes = 0]
          ELSE nd' = [nd EXCEPT ![n].passes = p,
-                               ![n].health = IF p >= HealthyAfterPasses /\ h \in {"Degraded", "Unhealthy"}
+                               ![n].health = IF p >= HealthyAfterPasses /\ h = "Degraded"
                                              THEN "Healthy" ELSE h]
-  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
-
-\* @req REQ-30  If an internal error stalls processing, report the node Unhealthy.
-ReportStall(n) ==
-  /\ Alive(n)
-  /\ nd[n].stalled
-  /\ nd[n].health \in {"Healthy", "Degraded"}
-  /\ nd' = [nd EXCEPT ![n].health = "Unhealthy", ![n].stallReported = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
 \* ------------------------------------------------------------------ environment
@@ -302,24 +339,25 @@ Archive(n) ==
   /\ UNCHANGED <<schema, reachable, fewAlive>>
 
 NodeStep(n) ==
-  \/ HostStarts(n) \/ ValidationFails(n) \/ SchemaTooOld(n) \/ SchemaTooNew(n)
-  \/ AcquireMigrationLock(n) \/ Migrate(n) \/ WarnInMemoryStore(n) \/ ReconcileRecurring(n)
+  \/ HostStarts(n) \/ ValidateOptions(n) \/ ValidationFails(n) \/ OtherCheckFails(n)
+  \/ SchemaTooOld(n) \/ SchemaTooNew(n)
+  \/ AcquireMigrationLock(n) \/ Migrate(n) \/ ReconcileRecurring(n)
   \/ MarkRunning(n) \/ Claim(n) \/ JobFinishes(n) \/ HostStops(n) \/ TimeoutPasses(n)
-  \/ CancelAndRelease(n) \/ StopNode(n) \/ HealthCheck(n) \/ ReportStall(n)
+  \/ CancelAndRelease(n) \/ StopNode(n) \/ HealthCheck(n)
   \/ Stall(n) \/ Unstall(n) \/ ToggleDegraded(n) \/ Archive(n)
 
 Next ==
   \/ \E n \in Nodes : NodeStep(n)
   \/ StoreGoesDown \/ StoreComesBack \/ ToggleFewAlive
 
-\* System-actor transitions are fair (REQ-30..35, REQ-44). For the diagnostic Chk_DrainEnds the
+\* System-actor transitions are fair (REQ-30..35, REQ-44, REQ-58). For the diagnostic Chk_DrainEnds the
 \* host-side shutdown steps are also treated as obligations of the software (A-9); the store,
-\* handlers and the host's own stop signal are not. The release is strongly fair so that a store
-\* which keeps coming back is enough; only a store that stays down can block it.
+\* handlers and the host's own stop signal are not. Since REQ-29 only asks that the release be
+\* attempted, the release step no longer needs the store and weak fairness suffices.
 Fairness ==
   \A n \in Nodes :
-    /\ WF_vars(HealthCheck(n)) /\ WF_vars(ReportStall(n))
-    /\ WF_vars(TimeoutPasses(n)) /\ SF_vars(CancelAndRelease(n)) /\ WF_vars(StopNode(n))
+    /\ WF_vars(HealthCheck(n))
+    /\ WF_vars(TimeoutPasses(n)) /\ WF_vars(CancelAndRelease(n)) /\ WF_vars(StopNode(n))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
@@ -377,8 +415,24 @@ Chk_ReconcileOnAcceptedSchema == \A n \in Nodes : ~nd[n].reconcileBad
 \* A-12 from REQ-9: a node whose options fail validation does not migrate the shared store.
 Chk_NoMigrationWithInvalidOptions == \A n \in Nodes : ~nd[n].migrateBad
 
-\* A-13 from REQ-42: the migration lock is held only by a node that is still starting.
-Chk_LockHolderStarting == lock # NULL => nd[lock].st = "Starting"
+\* @req REQ-56  While a node holds the store's migration lock, that node is starting (was A-13's check).
+Inv_LockHolderStarting == lock # NULL => nd[lock].st = "Starting"
+Chk_LockHolderStarting == Inv_LockHolderStarting   \* name kept for traces/Chk_LockHolderStarting*.cfg
+
+\* @req REQ-59  A node without the alerts registration runs no notification check.
+Inv_NoNotificationWithoutAlerts == \A n \in Nodes : nd[n].notifActive => cfg[n].alerts
+
+\* @req REQ-58, REQ-35  Recovery from Unhealthy always passes through Degraded (hosting F-8).
+Prop_NoUnhealthyToHealthy ==
+  [][\A n \in Nodes : nd[n].health = "Unhealthy" => nd'[n].health # "Healthy"]_vars
+
+\* A-21 from REQ-12: a worker node reconciles code-defined recurring jobs before it is marked running.
+Chk_ReconciledBeforeRunning ==
+  \A n \in Nodes : (nd[n].st = "Running" /\ HasWorker(n)) => nd[n].reconciled
+
+\* A-12 extended (A-19): a node that will fail another module's startup check does not write to the
+\* shared store first (migrate or reconcile).
+Chk_NoStoreWriteBeforeOtherChecks == \A n \in Nodes : ~nd[n].otherBad
 
 \* A-14 from SCN-1 "exactly one warning": the in-memory warning is logged at most once per start.
 Chk_OneMemoryWarning == \A n \in Nodes : nd[n].memWarnings <= 1
@@ -399,10 +453,11 @@ Scn2_NotReached == ~(\E n \in Nodes : nd[n].st = "StartupFailed" /\ ~cfg[n].vali
 
 \* @req SCN-4  Graceful shutdown: one job finishes, one is cancelled and released; node Stopped.
 Init_SCN4 ==
-  /\ cfg \in [Nodes -> {c \in CfgSet : c.reg = "worker" /\ c.valid /\ c.conf /\ ~c.tool}]
+  /\ cfg \in [Nodes -> {c \in CfgSet : c.reg = "worker" /\ c.valid /\ c.conf /\ ~c.tool /\ c.ok}]
   /\ schema \in InitSchemaVals /\ \A n \in Nodes : schema = cfg[n].exp
   /\ reachable = TRUE /\ lock = NULL /\ fewAlive = FALSE
-  /\ nd = [n \in Nodes |-> [Fresh EXCEPT !.st = "Running", !.workerActive = TRUE, !.inFlight = 2,
+  /\ nd = [n \in Nodes |-> [Fresh EXCEPT !.st = "Running", !.validated = TRUE, !.workerActive = TRUE,
+                                         !.inFlight = 2,
                                          !.claimedEver = TRUE, !.io = TRUE, !.summaryLogged = TRUE]]
 Spec_SCN4 == Init_SCN4 /\ [][Next]_vars
 Scn4_NotReached ==
