@@ -52,15 +52,16 @@
     {
       "id": "REQ-203", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "Host", "to": ["Active"],
-      "ears": { "when": "a node starts and a code-defined recurring job has no stored definition with its name", "shall": "create the definition with its schedule, time mode and zone, policies and payload, a hash of the code definition, and nextRunAt computed from now" },
+      "ears": { "when": "a node with the worker registered starts and a code-defined recurring job has no stored definition with its name", "shall": "create the definition with its schedule, time mode and zone, policies and payload, a hash of the code definition, and nextRunAt computed from now" },
       "mentions": ["RecurringJob.name", "RecurringJob.nextRunAt", "RecurringJob.origin", "RecurringJob.definitionHash"],
       "tags": ["M1"],
+      "notes": "Decided by the owner on 2026-11-06: recurring definitions belong to worker processes; a process without AddWorker neither reconciles nor declares them (hosting REQ-53 warns).",
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3", "quote": "On startup each node MUST upsert code-defined recurring jobs idempotently by name." }]
     },
     {
       "id": "REQ-204", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "Host", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
-      "ears": { "when": "a node starts and the hash of a code-defined recurring job's code definition differs from the stored definitionHash", "shall": "update the stored definition and definitionHash to match the code, keeping its paused or active state" },
+      "ears": { "when": "a node with the worker registered starts and the hash of a code-defined recurring job's code definition differs from the stored definitionHash", "shall": "update the stored definition and definitionHash to match the code, keeping its paused or active state" },
       "mentions": ["RecurringJob.schedule", "RecurringJob.origin", "RecurringJob.definitionHash"],
       "notes": "Decided by the owner on 2026-11-06: code is reapplied only when the code definition itself changed, so a runtime edit under AllowRuntimeOverride survives restarts and deploys that leave the code unchanged. During a rolling deploy, nodes on N and N+1 may rewrite a changed definition back and forth; the last writer wins and it settles when the deploy ends. Keeping the paused state is confirmed.",
       "tags": ["M1"],
@@ -77,7 +78,7 @@
     {
       "id": "REQ-205", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "system", "from": ["Active", "Paused"], "to": ["Orphaned"],
-      "ears": { "when": "the scheduler finds a stored code-defined recurring job that no running node declares", "if": "the orphan policy is the default", "shall": "record the job's current state and mark it orphaned, which also pauses it, instead of deleting it" },
+      "ears": { "when": "the scheduler finds a stored code-defined recurring job that no running worker node declares", "if": "the orphan policy is the default", "shall": "record the job's current state and mark it orphaned, which also pauses it, instead of deleting it" },
       "mentions": ["RecurringJob.origin", "RecurringJob.stateBeforeOrphan", "hosting.Node.Running"],
       "notes": "Decided by the owner on 2026-11-06: nodes publish the recurring names they declare with their heartbeat, as they do handler names (jobs REQ-124), so a job is orphaned only once no live node declares it. A rolling deploy therefore no longer flips it between Active and Orphaned.",
       "tags": ["M1"],
@@ -86,7 +87,7 @@
     {
       "id": "REQ-206", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "Host", "from": ["Orphaned"], "to": ["Active", "Paused"],
-      "ears": { "when": "a running node declares an orphaned recurring job again", "shall": "return the job to the state it had before it was orphaned, with nextRunAt computed from now" },
+      "ears": { "when": "a running worker node declares an orphaned recurring job again", "shall": "return the job to the state it had before it was orphaned, with nextRunAt computed from now" },
       "mentions": ["RecurringJob.stateBeforeOrphan", "RecurringJob.nextRunAt", "hosting.Node.Running"],
       "notes": "Decided by the owner on 2026-11-06: a job whose removal is rolled back comes back Active or Paused, as it was. Instants missed while orphaned are not caught up.",
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3 (implied)" }]
@@ -94,7 +95,7 @@
     {
       "id": "REQ-207", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "system", "from": ["Active", "Paused"],
-      "ears": { "when": "the scheduler finds a stored code-defined recurring job that no running node declares", "if": "the orphan policy is set to delete", "shall": "remove the definition" },
+      "ears": { "when": "the scheduler finds a stored code-defined recurring job that no running worker node declares", "if": "the orphan policy is set to delete", "shall": "remove the definition" },
       "mentions": ["RecurringJob.origin", "hosting.Node.Running"],
       "notes": "Same event as REQ-205 with the complementary guard. The source only says the orphan behaviour is 'configurable'.",
       "tags": ["M1"],

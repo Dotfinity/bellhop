@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "id": "hosting",
   "name": "Bellhop hosting, configuration, startup, health and shutdown",
-  "description": "What a node does from registration to shutdown: option handling, store selection, schema migration, node modes, the startup summary, the health check and graceful shutdown. Also holds product-level context (scope, principles, non-goals, phasing, design decisions) as info items. Job-level effects of shutdown live in the jobs module.",
+  "description": "What a node does from registration to shutdown: option handling, store selection, schema migration, the client, worker and dashboard registrations, the startup summary, the health check and graceful shutdown. Also holds product-level context (scope, principles, non-goals, phasing, design decisions) as info items. Job-level effects of shutdown live in the jobs module.",
 
   "uses": ["jobs"],
 
@@ -15,7 +15,7 @@
       "states": ["Starting", "Running", "Draining", "Stopped", "StartupFailed"],
       "initial": ["Starting"],
       "final": ["Stopped", "StartupFailed"],
-      "attributes": ["mode", "environment", "concurrencyLimit", "clockSkew", "inFlightJobs"],
+      "attributes": ["hasClient", "hasWorker", "hasDashboard", "environment", "concurrencyLimit", "clockSkew", "inFlightJobs"],
       "bound": 2
     },
     {
@@ -97,17 +97,18 @@
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-5" }]
     },
     {
-      "id": "REQ-11", "kind": "assumption", "status": "approved",
+      "id": "REQ-11", "kind": "assumption", "status": "retired",
       "ears": { "shall": "allow a node mode of Both or ClientOnly, with Both as the default (NodeMode)" },
-      "mentions": ["Node.mode"],
-      "notes": "Decided by the owner on 2026-11-06: WorkerOnly is dropped from SET-7; a node that runs workers is simply Both. The mode governs only workers and the scheduler: ClientOnly runs neither (REQ-20, REQ-40). The dashboard is independent of the mode (REQ-51).",
+      "mentions": ["Node.hasWorker"],
+      "supersededBy": "REQ-52",
+      "notes": "Retired. Decided by the owner on 2026-11-06: there are no node modes. What a process does is defined only by what it registers: the client, the worker and the dashboard (REQ-52).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
       "id": "REQ-12", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "to": ["Starting"],
-      "ears": { "when": "the host starts", "shall": "start the Bellhop node and only then connect to the store, check the schema and reconcile code-defined recurring jobs" },
-      "mentions": ["Store.reachable", "Store.schemaVersion"],
+      "ears": { "when": "the host starts", "shall": "start the Bellhop node and only then connect to the store and check the schema, and, where the worker is registered, reconcile code-defined recurring jobs" },
+      "mentions": ["Store.reachable", "Store.schemaVersion", "Node.hasWorker"],
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5", "quote": "Database connectivity, schema checks and job reconciliation happen in the hosted service, after the host starts." }]
     },
     {
@@ -147,25 +148,26 @@
     {
       "id": "REQ-18", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
-      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "mark the node running and start the scheduler and the workers its mode allows" },
-      "mentions": ["Node.mode", "Store.reachable", "Store.schemaVersion"],
-      "dependsOn": ["REQ-11"],
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "mark the node running and, where the worker is registered, start the worker and its background duties" },
+      "mentions": ["Node.hasWorker", "Store.reachable", "Store.schemaVersion"],
+      "dependsOn": ["REQ-52"],
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5, SET-7; §4.5 EXE-10" }]
     },
     {
       "id": "REQ-19", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
-      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "log a one-screen summary with the store and schema version, the node mode, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
-      "mentions": ["Store.schemaVersion", "Node.mode", "Node.concurrencyLimit"],
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "log a one-screen summary with the store and schema version, which of the client, worker and dashboard are registered, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
+      "mentions": ["Store.schemaVersion", "Node.hasClient", "Node.hasWorker", "Node.hasDashboard", "Node.concurrencyLimit"],
       "notes": "Same event as REQ-18 with a second consequence; the agent should model one action. The Redis store adds the server family to the summary (REQ-500). Secrets never appear in it (NFR-41).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-8" }]
     },
     {
       "id": "REQ-20", "kind": "invariant", "status": "approved",
       "entity": "Node",
-      "ears": { "while": "a node's mode is ClientOnly", "shall": "never claim or execute a job on that node" },
-      "mentions": ["Node.mode", "jobs.Job.Processing"],
-      "dependsOn": ["REQ-11"],
+      "ears": { "while": "a node has no worker registered", "shall": "never claim or execute a job on that node" },
+      "mentions": ["Node.hasWorker", "jobs.Job.Processing"],
+      "dependsOn": ["REQ-52"],
+      "notes": "Decided by the owner on 2026-11-06: node modes are replaced by registrations (REQ-52); a process without AddWorker never runs jobs.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7", "quote": "ClientOnly (enqueue only, no workers)" }]
     },
     {
@@ -260,7 +262,9 @@
     {
       "id": "REQ-33", "kind": "transition", "status": "approved",
       "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
-      "ears": { "when": "the health check runs", "if": "the node's worker loop is not alive", "shall": "report the node Unhealthy" },
+      "ears": { "where": "the worker is registered", "when": "the health check runs", "if": "the node's worker loop is not alive", "shall": "report the node Unhealthy" },
+      "mentions": ["Node.hasWorker"],
+      "notes": "Decided by the owner on 2026-11-06: only nodes with a worker have a worker loop; a client- or dashboard-only process is not reported Unhealthy for lacking one.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5" }]
     },
     {
@@ -307,19 +311,19 @@
     {
       "id": "REQ-40", "kind": "invariant", "status": "approved",
       "entity": "Node",
-      "ears": { "while": "a node's mode is ClientOnly", "shall": "not promote scheduled jobs, trigger recurring jobs or recover expired leases on that node" },
-      "mentions": ["Node.mode"],
-      "dependsOn": ["REQ-11"],
-      "notes": "Decided by the owner on 2026-11-06 (meaning of the node modes).",
+      "ears": { "while": "a node has no worker registered", "shall": "run no background duty on that node: no promotion of scheduled or retry jobs, recurring triggers, lease recovery, retention cleanup, outbox relay, Unroutable or orphan sweep, Redis recurring reconciliation or notification check" },
+      "mentions": ["Node.hasWorker"],
+      "dependsOn": ["REQ-52"],
+      "notes": "Decided by the owner on 2026-11-06: every background duty is part of the worker. Many workers share them safely through store-side atomic operations and leases; a process without AddWorker does none of them.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
       "id": "REQ-41", "kind": "invariant", "status": "retired",
       "entity": "Node",
       "ears": { "while": "a node's mode is WorkerOnly", "shall": "not serve the dashboard on that node" },
-      "mentions": ["Node.mode"],
+      "mentions": ["Node.hasDashboard"],
       "supersededBy": "REQ-51",
-      "dependsOn": ["REQ-11"],
+      "dependsOn": ["REQ-52"],
       "notes": "Retired. Decided by the owner on 2026-11-06: the dashboard does not depend on the node mode; an instance serves it exactly when the application maps it (REQ-51).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
@@ -388,10 +392,35 @@
     {
       "id": "REQ-51", "kind": "invariant", "status": "approved",
       "entity": "Node",
-      "ears": { "shall": "serve the dashboard on a node exactly when the application maps it, whatever the node's mode" },
-      "mentions": ["Node.mode"],
-      "notes": "Decided by the owner on 2026-11-06: an instance can run workers and the dashboard, only workers, or only the dashboard (ClientOnly with the dashboard mapped). A worker never needs the dashboard mapped, and the dashboard never needs workers on the same instance.",
+      "ears": { "shall": "serve the dashboard on a node exactly when the application maps it, whether or not the client or the worker is registered" },
+      "mentions": ["Node.hasDashboard", "Node.hasClient", "Node.hasWorker"],
+      "notes": "Decided by the owner on 2026-11-06: the dashboard, the client and the worker never talk to each other directly, only through the store. An instance can serve the dashboard with no worker, run a worker with no dashboard, or both.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7; §4.10 DSH-1" }]
+    },
+    {
+      "id": "REQ-52", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "let a process configure the store with AddBellhop and then register the client (AddClient), the worker (AddWorker), both or neither, and map the dashboard independently, where registering the worker also makes the client available because handlers enqueue jobs" },
+      "mentions": ["Node.hasClient", "Node.hasWorker", "Node.hasDashboard"],
+      "notes": "Decided by the owner on 2026-11-06, replacing the node modes of SET-7 (REQ-11 retired). Like Hangfire's AddHangfire / AddHangfireServer split: a web API registers the client and maps the dashboard; a worker service registers the worker. The pieces interact only through the store.",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
+    },
+    {
+      "id": "REQ-53", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "code-defined recurring jobs are declared and the worker is not registered", "shall": "log a warning that this node will not create, update or keep those recurring jobs alive" },
+      "mentions": ["Node.hasWorker"],
+      "dependsOn": ["REQ-52"],
+      "notes": "Decided by the owner on 2026-11-06: recurring definitions belong to worker processes (recurring REQ-203 to REQ-207).",
+      "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3" }]
+    },
+    {
+      "id": "REQ-54", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
+      "ears": { "while": "a node is starting", "if": "Bellhop is configured but neither the client nor the worker is registered and the dashboard is not mapped", "shall": "log a warning that Bellhop will do nothing on this node" },
+      "mentions": ["Node.hasClient", "Node.hasWorker", "Node.hasDashboard"],
+      "dependsOn": ["REQ-52"],
+      "notes": "Follows from the owner's decision of 2026-11-06 that the client and the worker are both opt-in; without it, a forgotten AddWorker fails silently (P6).",
+      "sources": [{ "document": "requirements.md", "section": "§2 P6" }]
     }
   ],
 
@@ -456,14 +485,15 @@
   ],
 
   "features": [
-    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-51", "REQ-43", "REQ-45", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
+    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-51", "REQ-52", "REQ-53", "REQ-54", "REQ-43", "REQ-45", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
     { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35", "REQ-44", "REQ-46", "REQ-47", "REQ-48", "REQ-49", "REQ-50"] },
     { "id": "FEAT-3", "name": "Graceful shutdown", "members": ["REQ-27", "REQ-28", "REQ-29", "SCN-4"] },
     { "id": "FEAT-4", "name": "Product context", "members": ["REQ-1", "REQ-2", "REQ-3", "REQ-4", "REQ-5", "REQ-6", "REQ-7", "REQ-8", "REQ-10", "REQ-36", "REQ-37", "REQ-38", "REQ-39"] }
   ],
 
   "glossary": {
-    "NodeMode": "Both (default) or ClientOnly (REQ-11).",
+    "client": "AddClient(): IJobClient for application code; included in the worker (REQ-52).",
+    "worker": "AddWorker(...): job execution plus every background duty (REQ-52, REQ-40).",
     "ShutdownTimeout": "Time in-flight jobs get to finish after the host stops; 30 s by default (REQ-28).",
     "AutoMigrate": "Whether a node applies embedded schema migrations at startup; true by default (REQ-21).",
     "ClockSkewThreshold": "Node-versus-database clock difference above which a warning is logged; 5 s by default (REQ-45).",

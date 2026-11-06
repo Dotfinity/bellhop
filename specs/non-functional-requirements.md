@@ -5,13 +5,14 @@ Format: refiner-nfr/1
 ## NFR-1 — Minimal setup
 
 - **Category:** usability
-- **Statement:** The system shall give a developer a working single-node setup with only AddBellhop(...), a store and job registration, without creating a schema by hand, choosing polling intervals, writing an authorization filter, configuring a serializer, registering a hosted service or pinning package versions.
-- **Measure:** the §3 Program.cs (register, pick a store, map the dashboard) runs jobs end to end with no other Bellhop code or configuration; the dashboard line is optional
+- **Statement:** The system shall give a developer a working single-node setup with only AddBellhop(...), a store, AddWorker() and job registration, without creating a schema by hand, choosing polling intervals, writing an authorization filter, configuring a serializer, registering a hosted service or pinning package versions.
+- **Measure:** a Program.cs that registers Bellhop, picks a store, adds the worker and maps the dashboard runs jobs end to end with no other Bellhop code or configuration; the dashboard line is optional
 - **Verification:** demonstration
 - **Applies to:** system, TECH-11, TECH-50, TECH-88
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.1 SET-1; §2 P1 — "Three lines to a working system."; §3 — "Things the developer did not have to do: ..."
+- **Notes:** Decided by the owner on 2026-11-06: the client and the worker are opt-in (TECH-128), so the §3 snippet in requirements.md needs an AddWorker() call and no longer works as printed.
 
 ## NFR-2 — Safe documented defaults
 

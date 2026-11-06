@@ -98,8 +98,8 @@ Format: refiner-tech/1
 ## TECH-11 — Hosted service registration
 
 - **Area:** framework
-- **Statement:** AddBellhop shall register the Bellhop hosted service with Microsoft.Extensions.Hosting so the developer never registers it by hand.
-- **Applies to:** REQ-12, NFR-1
+- **Statement:** AddBellhop shall register the Bellhop hosted service with Microsoft.Extensions.Hosting, and AddWorker its worker loop and background duties, so the developer never registers a hosted service by hand.
+- **Applies to:** REQ-12, REQ-18, REQ-52, NFR-1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §3 — "Things the developer did not have to do: ... register a hosted service"; §4.1 SET-5
@@ -1192,3 +1192,13 @@ Format: refiner-tech/1
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-5
 - **Notes:** Decided by the owner on 2026-11-06 as part of the accepted schema range (expected version or one older).
+
+## TECH-128 — Client and worker registration
+
+- **Area:** framework
+- **Statement:** The AddBellhop builder shall offer AddClient(), which registers IJobClient and IRecurringJobManager for application code, and AddWorker(options), which registers the worker with its queues, concurrency and background duties and also registers the client.
+- **Applies to:** REQ-52, REQ-20, REQ-40, TECH-11, TECH-19
+- **Strength:** must
+- **Status:** approved
+- **Source:** requirements.md §4.1 SET-7
+- **Notes:** Decided by the owner on 2026-11-06, replacing the node modes. Worker options (queues and their order, concurrency, the LongRunning limit) move from the global options to AddWorker. The dashboard stays MapBellhopDashboard on the endpoint builder (TECH-88).

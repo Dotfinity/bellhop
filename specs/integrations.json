@@ -232,7 +232,7 @@
     {
       "id": "REQ-432", "kind": "transition", "status": "approved", "strength": "should",
       "entity": "OutboxRow", "actor": "system", "from": ["Pending"],
-      "ears": { "while": "an outbox row is pending", "when": "the relay, running on one node that holds the relay lease, processes its next batch", "shall": "enqueue the row's job in the job store, keyed by the row's outboxId so a repeated relay creates no second job, and then delete the row" },
+      "ears": { "while": "an outbox row is pending", "when": "the relay, running on one worker node that holds the relay lease, processes its next batch", "shall": "enqueue the row's job in the job store, keyed by the row's outboxId so a repeated relay creates no second job, and then delete the row" },
       "mentions": ["OutboxRow.job", "OutboxRow.outboxId", "jobs.Job.Enqueued"],
       "tags": ["M3"],
       "notes": "Decided by the owner on 2026-11-06: the relay deletes relayed rows, so the outbox table stays small. The job store and the application database are different databases in outbox mode, so the two steps cannot share a transaction; idempotency by outboxId (INV-406) covers a crash between them.",

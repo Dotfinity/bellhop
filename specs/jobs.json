@@ -145,17 +145,17 @@
     {
       "id": "REQ-123", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Enqueued"], "to": ["Processing"],
-      "ears": { "while": "a job is enqueued in an active queue, the maintenance pause is off and its concurrency key and rate limit admit it", "when": "a worker on a running node that is not ClientOnly and has a registered handler for the job's name or one of its aliases has a free slot and the job is the next one by queue order and priority", "shall": "claim the job for that worker, record the claiming node, issue a new leaseToken, increment the attempt number and set leaseExpiresAt to the database time plus LeaseDuration" },
-      "mentions": ["Job.leaseOwner", "Job.leaseToken", "Job.leaseExpiresAt", "Job.attempt", "Job.name", "Queue.Active", "Maintenance.Off", "Throttle.holders", "hosting.Node.Running", "hosting.Node.mode"],
+      "ears": { "while": "a job is enqueued in an active queue, the maintenance pause is off and its concurrency key and rate limit admit it", "when": "a running node with the worker registered and a handler for the job's name or one of its aliases has a free worker slot and the job is the next one by queue order and priority", "shall": "claim the job for that worker, record the claiming node, issue a new leaseToken, increment the attempt number and set leaseExpiresAt to the database time plus LeaseDuration" },
+      "mentions": ["Job.leaseOwner", "Job.leaseToken", "Job.leaseExpiresAt", "Job.attempt", "Job.name", "Queue.Active", "Maintenance.Off", "Throttle.holders", "hosting.Node.Running", "hosting.Node.hasWorker"],
       "dependsOn": ["REQ-102"],
-      "notes": "The attempt number is counted at claim time; that is what makes EXE-4 'attempt counted' hold for interrupted runs. Decided by the owner on 2026-11-06: a node claims only jobs it has a handler for (REQ-124), and every claim gets a fresh lease token (INV-128).",
+      "notes": "The attempt number is counted at claim time; that is what makes EXE-4 'attempt counted' hold for interrupted runs. Decided by the owner on 2026-11-06: only nodes with the worker registered claim (hosting REQ-20), a node claims only jobs it has a handler for (REQ-124), and every claim gets a fresh lease token (INV-128).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-2", "quote": "A job can be claimed by exactly one worker using store-native primitives. Claims carry a lease with an expiry." }]
     },
     {
       "id": "REQ-124", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Enqueued"], "to": ["Unroutable"],
-      "ears": { "while": "a job is enqueued", "when": "it has been enqueued for longer than UnroutableAfter", "if": "no running node lists a handler for its name or any of its aliases", "shall": "mark the job unroutable without failing, retrying or deleting it" },
+      "ears": { "while": "a job is enqueued", "when": "it has been enqueued for longer than UnroutableAfter", "if": "no running worker node lists a handler for its name or any of its aliases", "shall": "mark the job unroutable without failing, retrying or deleting it" },
       "mentions": ["Job.name", "hosting.Node.Running"],
       "dependsOn": ["REQ-101", "REQ-183"],
       "notes": "Decided by the owner on 2026-11-06: nodes publish their handler names with their heartbeat and claim only jobs they can run (REQ-123). A sweep marks a job Unroutable only when it has waited UnroutableAfter and no live node lists its name, so a node without the handler during a rolling deploy never parks a job another node can run, and a long backlog never triggers it.",
@@ -165,7 +165,7 @@
     {
       "id": "REQ-125", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Unroutable"], "to": ["Enqueued"],
-      "ears": { "while": "a job is unroutable", "when": "a running node registers a handler for its name or one of its aliases", "shall": "return the job to enqueued" },
+      "ears": { "while": "a job is unroutable", "when": "a running worker node registers a handler for its name or one of its aliases", "shall": "return the job to enqueued" },
       "mentions": ["Job.name", "hosting.Node.Running"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.2 JOB-3", "quote": "They resume automatically when a handler appears." }]
@@ -227,7 +227,7 @@
     {
       "id": "REQ-132", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Enqueued"],
-      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number is below maxAttempts", "shall": "let any running node return the job to enqueued with reason Interrupted, keeping the attempt counted" },
+      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number is below maxAttempts", "shall": "let any running worker node return the job to enqueued with reason Interrupted, keeping the attempt counted" },
       "mentions": ["Job.leaseExpiresAt", "Job.attempt", "Job.maxAttempts", "hosting.Node.Running"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-4", "quote": "When a lease expires (node crash, network partition) the job MUST be returned to Enqueued with the attempt counted and reason Interrupted, or dead-lettered if attempts are exhausted. Recovery is performed by any live node" }]
@@ -235,7 +235,7 @@
     {
       "id": "REQ-133", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["DeadLettered"],
-      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number has reached maxAttempts", "shall": "let any running node move the job to dead-lettered with reason Interrupted" },
+      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number has reached maxAttempts", "shall": "let any running worker node move the job to dead-lettered with reason Interrupted" },
       "mentions": ["Job.leaseExpiresAt", "Job.attempt", "Job.maxAttempts", "hosting.Node.Running"],
       "notes": "Same event as REQ-132 with the complementary guard.",
       "tags": ["M1"],
@@ -614,7 +614,7 @@
     {
       "id": "INV-115", "kind": "invariant", "status": "approved",
       "entity": "Job",
-      "ears": { "shall": "promote each due scheduled or failed job exactly once however many nodes run the scheduler, without relying on leader election for correctness" },
+      "ears": { "shall": "promote each due scheduled or failed job exactly once however many worker nodes run, without relying on leader election for correctness" },
       "mentions": ["Job.Scheduled", "Job.Failed"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-10" }]
@@ -622,7 +622,7 @@
     {
       "id": "REQ-164", "kind": "invariant", "status": "approved", "strength": "may",
       "entity": "Job",
-      "ears": { "when": "retention cleanup runs", "shall": "let at most one node clean up at a time by holding a short cleanup lease in the store" },
+      "ears": { "when": "retention cleanup runs", "shall": "let at most one worker node clean up at a time by holding a short cleanup lease in the store" },
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-10", "quote": "Cleanup MAY use a short lease to avoid redundant work." }]
     },
@@ -637,7 +637,7 @@
     {
       "id": "LIV-101", "kind": "liveness", "status": "approved",
       "entity": "Job",
-      "ears": { "while": "a job is processing and its lease has expired", "shall": "eventually return it to enqueued or dead-letter it, provided at least one node is running" },
+      "ears": { "while": "a job is processing and its lease has expired", "shall": "eventually return it to enqueued or dead-letter it, provided at least one worker node is running" },
       "mentions": ["Job.Processing", "Job.Enqueued", "Job.DeadLettered", "hosting.Node.Running"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-4", "quote": "Recovery is performed by any live node; there is no single point of failure." }]
@@ -1275,6 +1275,14 @@
         { "req": "REQ-181", "note": "c enqueued" }
       ],
       "then": "b is Succeeded and c is Enqueued exactly once."
+    },
+    {
+      "id": "SCN-120", "title": "A process without a worker never runs jobs", "status": "approved",
+      "given": "A web API registers AddBellhop with the client and maps the dashboard, without AddWorker; job j is enqueued and its handler is registered there.",
+      "steps": [
+        { "req": "REQ-123", "note": "the web API process tries to claim j" }
+      ],
+      "impossibleAt": 1
     }
   ],
 
@@ -1286,7 +1294,7 @@
     { "id": "FEAT-104", "name": "Queues, priority, concurrency and throttling", "members": ["REQ-106", "REQ-108", "INV-107", "INV-108", "REQ-156", "REQ-157", "INV-109", "REQ-158", "INV-110", "REQ-159", "INV-111", "INV-112", "REQ-160", "REQ-161", "INV-113", "REQ-162", "REQ-163", "INV-114", "LIV-100", "SCN-106", "SCN-110"] },
     { "id": "FEAT-105", "name": "Cancellation, requeue and deletion", "members": ["REQ-134", "REQ-135", "REQ-136", "REQ-143", "REQ-144", "INV-129", "INV-130"] },
     { "id": "FEAT-106", "name": "Continuations, chains and batches", "members": ["REQ-170", "REQ-171", "REQ-172", "REQ-173", "REQ-174", "REQ-175", "LIV-102", "REQ-176", "REQ-177", "REQ-178", "REQ-179", "REQ-180", "REQ-181", "REQ-188", "SCN-108", "SCN-109", "SCN-114", "SCN-118", "SCN-119"] },
-    { "id": "FEAT-107", "name": "Job identity, routing and payloads", "members": ["REQ-101", "REQ-124", "REQ-125", "INV-120", "INV-121", "INV-122", "INV-123", "INV-124", "INV-125", "REQ-183", "SCN-111"] },
+    { "id": "FEAT-107", "name": "Job identity, routing and payloads", "members": ["REQ-101", "REQ-124", "REQ-125", "INV-120", "INV-121", "INV-122", "INV-123", "INV-124", "INV-125", "REQ-183", "SCN-111", "SCN-120"] },
     { "id": "FEAT-108", "name": "Retention and cleanup", "members": ["REQ-104", "REQ-109", "REQ-145", "INV-119", "REQ-164"] },
     { "id": "FEAT-109", "name": "Captured logs, progress, tags, correlation and events", "members": ["REQ-165", "INV-126", "REQ-166", "REQ-167", "REQ-168", "INV-127", "REQ-169", "INV-136"] }
   ],
