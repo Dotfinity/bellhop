@@ -1,0 +1,206 @@
+{
+  "module": "dashboard",
+  "specHash": "ce16de70435fba1584ec443b26258c24c1db3a6e362d3c79d695efd8fc73cdc3",
+  "generatedAt": "2026-11-06T16:00:00Z",
+  "model": "model/dashboard/Dashboard.tla",
+  "items": {
+    "REQ-300": {
+      "hash": "262a89321865ce1f22af8ae59e6ad91592956ef4928779b2854c8b36accf63c7",
+      "reviewed": false,
+      "note": "Action AllowAnonymousInDev + rule R_REQ300; fires once (A-3). Contradicts INV-301 (F-1)."
+    },
+    "REQ-301": {
+      "hash": "55b8db314b3495f2e83b35e13af758cec32a53c9aee5b51eba75e79fbf4561e7",
+      "reviewed": false,
+      "note": "Action FailNoAuthorization; Inv_UnsafeConfigNeverRuns depends on reading A-2 of hosting REQ-18 (F-5)."
+    },
+    "REQ-334": {
+      "hash": "6c327fbaa3bd085a5c210857a384fb43541265e75acfc6b0700d63eaeac4f663",
+      "reviewed": false,
+      "note": "Action FailUnhashedPassword; Inv_UnsafeConfigNeverRuns."
+    },
+    "INV-300": {
+      "hash": "6df80d6c3cf268cb8c93c982e3bd1d51fa787e489fb95849e305bdaec7c7ac45",
+      "reviewed": false,
+      "note": "Response rule R_INV300; checked for joint satisfiability (Inv_RulesConsistent_*)."
+    },
+    "INV-301": {
+      "hash": "41dc0c67fd0c61f22988b43ff05cd5b2650078ca0451355830b3029d286361da",
+      "reviewed": false,
+      "note": "Response rule R_INV301 (the authorization step every operate action passes, A-5)."
+    },
+    "INV-302": {
+      "hash": "9ed1aac3f190e0df842f7f0ff4dd765128360bb5889f1451c1459008d6c0b2ff",
+      "reviewed": false,
+      "note": "Response rule R_INV302."
+    },
+    "REQ-302": {
+      "hash": "ee5a3f8a20e5b48108bfe5d6a8586972d2d8deee6c281432a1ed40a3fed34325",
+      "reviewed": false,
+      "note": "Abstracted: Olga has operate, Vic view (A-6); R_Grant."
+    },
+    "REQ-303": {
+      "hash": "adf9f743f163c1afe5f1a0434a2822c05073a88879dfea920c8e05a949211814",
+      "reviewed": false,
+      "note": "Rule R_REQ303 incl. the 'accept' reading (A-4)."
+    },
+    "REQ-304": {
+      "hash": "bc7bc7ae380ca5bd7619a1137c9aa79e55d3aa8e95858c129874ccc13646fd45",
+      "reviewed": false,
+      "note": "Rule R_REQ304, per-address counter only (A-8), window as nondeterministic reset (A-10). Contradicts REQ-305 (F-2)."
+    },
+    "REQ-305": {
+      "hash": "041b05165cba2b4d2fa552c04bdd1fefcbbc427a2a562736f91ce3bf555b817c",
+      "reviewed": false,
+      "note": "Rule R_REQ305."
+    },
+    "REQ-306": {
+      "hash": "83b6cf163fcd4c9a7225a8321497a5cb6f58689a664562ab4a38e8cb7245da16",
+      "reviewed": false,
+      "note": "Abstracted with REQ-302 (A-6)."
+    },
+    "REQ-319": {
+      "hash": "ad9276c75061ae01998e44324fca05723b8af6d78df0245ab6f575830264cfc4",
+      "reviewed": false,
+      "note": "Action SubmitInvalidLaunch."
+    },
+    "REQ-320": {
+      "hash": "032fd5d6f5753d06dd8fe5dd7d036f0ae24b5b5ec63cafde07c5d4069c728d4f",
+      "reviewed": false,
+      "note": "Action LaunchRunNow."
+    },
+    "REQ-321": {
+      "hash": "d0efd8ae2c21275966211989e71108e5384358c05269048ae6ad96ed9c5856a0",
+      "reviewed": false,
+      "note": "Action LaunchSchedule."
+    },
+    "REQ-322": {
+      "hash": "195098221b8e6ef1dd890fb00725fc62230c365d05a8683921d1eb5f0bb3b5ed",
+      "reviewed": false,
+      "note": "Action LaunchRecurring (no principal stored, F-9)."
+    },
+    "REQ-335": {
+      "hash": "c1dc6896432ba7a4cba4fdd812aa6ef4419175f187e1d46b702f3fea71f7c851",
+      "reviewed": false,
+      "note": "CONSTANT MaxFailedLogins (5 in policy, 2 in model)."
+    },
+    "REQ-336": {
+      "hash": "75b899b28da78f2b3dec0474ec33bd26235c60bf4812b496349cd0c687248e79",
+      "reviewed": false,
+      "note": "Absorbed by LockoutWindowPasses (no clock, A-10)."
+    },
+    "REQ-337": {
+      "hash": "31bf4f1bffee6cca269242f1ae36df8c8a922452590a23a61d174a36ee24c9ae",
+      "reviewed": false,
+      "note": "Action CreateKey (creator not stored in the model)."
+    },
+    "REQ-338": {
+      "hash": "2696fc2d153ee2d4e1a6c752e0d54bde5ec77cc7608fc3e53fc809dd5a141ff3",
+      "reviewed": false,
+      "note": "Action RevokeKey."
+    },
+    "REQ-339": {
+      "hash": "2e541556370808ac5f5e36df7ed1e0a011b55b75931528ca62fe7fc5c00fa5d4",
+      "reviewed": false,
+      "note": "Action MarkKeyExpired (fair); expiresAt passing is nondeterministic (A-12)."
+    },
+    "REQ-340": {
+      "hash": "caf58ecd85b3d5a911c874312836611d157301335b3d399123101162181fa034",
+      "reviewed": false,
+      "note": "neverExpires flag on CreateKey; 90 days absorbed by A-12."
+    },
+    "INV-307": {
+      "hash": "3ef4d73bf4933e78f8168dc90c410f8334c138ab3dd4943d94575e9c08b1bc52",
+      "reviewed": false,
+      "note": "Response rule R_INV307; SCN-306 holds."
+    },
+    "INV-308": {
+      "hash": "a8868b7108258d558567ff0ed6236464f281b52ffaad127053177e591c0c983a",
+      "reviewed": false,
+      "note": "Response rule R_INV308 + failure counting in Respond; 'expired' reading A-9 (F-4)."
+    },
+    "REQ-341": {
+      "hash": "6553be47a4e108c00729dbee53a10fae00e4d76d1f4de75b9a505b880b54c7c8",
+      "reviewed": false,
+      "note": "Banner part: Inv_BannerHasLastSeen (F-6). NodeLostAfter abstracted (A-14)."
+    },
+    "INV-305": {
+      "hash": "7bb3f4842ffe1652e07aa7c04d12938bcec9c1f22192a0e65f2a2f7971043d8d",
+      "reviewed": false,
+      "note": "Rollup part: Inv_RollupOneNode (should; F-7)."
+    },
+    "SCN-300": {
+      "hash": "75da8f34ab964b2cc2b5183a92f3efafc1d305890b520295cf89e30bb96a01dc",
+      "reviewed": false,
+      "note": "Dashboard_SCN300.cfg, trap violated (reachable)."
+    },
+    "SCN-301": {
+      "hash": "66f75a4862240d7e9e241815ee34141dcc1382e1b376de6276cf4aea93203679",
+      "reviewed": false,
+      "note": "Dashboard_SCN301.cfg, trap NOT violated: scenario impossible (F-1)."
+    },
+    "SCN-302": {
+      "hash": "9afd87fbffc4fd8665791b1342ed54e45c1b24e937a5c0edf847994edf186daa",
+      "reviewed": false,
+      "note": "Dashboard_SCN302.cfg, trap violated (reachable)."
+    },
+    "SCN-303": {
+      "hash": "71f24a80745fb1d4b82649256ef65fd8210113ee4fd53dde0c5d094b4e512c0a",
+      "reviewed": false,
+      "note": "Scn_ViewerCannotLaunch holds."
+    },
+    "SCN-304": {
+      "hash": "c458177d4546dbeea7c999abf13a620288f91d1a045c7756caac240cbbd7c691",
+      "reviewed": false,
+      "note": "Scn_ReadOnlyBlocksLaunch holds."
+    },
+    "SCN-305": {
+      "hash": "0b78c568af7bf5283308486a811e527ca408a0118e7335bf603bf6314a1e2dba",
+      "reviewed": false,
+      "note": "Dashboard_SCN305.cfg, trap violated (reachable)."
+    },
+    "SCN-306": {
+      "hash": "dfbc93376de2193c4a6376363482708809e1fb483b5f05f6822195a5f3611114",
+      "reviewed": false,
+      "note": "Scn_KeyCannotMintKey holds."
+    },
+    "SCN-307": {
+      "hash": "4dde6daecff5029f804bc91cafd6c8a95a6415a1281d90de7e2ad4496752ae54",
+      "reviewed": false,
+      "note": "Scn_ExpiredKeyRejected holds (state reading of 'expired')."
+    },
+    "SCN-308": {
+      "hash": "d86bd8b3789c68b21907e0a2e8cd7c26d86558d8406fb413364698aafbc3962d",
+      "reviewed": false,
+      "note": "Dashboard_SCN308.cfg, trap violated in the given state (reachable; no clock, A-14)."
+    }
+  },
+  "skipped": {
+    "REQ-307": "page content; no state change to explore — checked by inspection",
+    "REQ-308": "page content; no state change to explore — checked by inspection",
+    "REQ-309": "page content; no state change to explore — checked by inspection",
+    "REQ-310": "page content; no state change to explore — checked by inspection",
+    "REQ-311": "page content; no state change to explore — checked by inspection",
+    "REQ-312": "page content; no state change to explore — checked by inspection",
+    "REQ-313": "page content; no state change to explore — checked by inspection",
+    "REQ-315": "transport (SSE/polling); no state change to explore — checked by inspection",
+    "REQ-316": "page content; no state change to explore — checked by inspection",
+    "REQ-317": "page content (should); no state change to explore — checked by inspection",
+    "REQ-318": "strength may (not checked)",
+    "REQ-324": "strength may (not checked)",
+    "INV-304": "launch catalogue; no state change to explore — checked by inspection",
+    "REQ-323": "page content; no state change to explore — checked by inspection (attribution gap reported as F-9)",
+    "REQ-325": "page content; no state change to explore — checked by inspection",
+    "REQ-327": "page content; no state change to explore — checked by inspection",
+    "REQ-328": "preview; no state change to explore — checked by inspection",
+    "REQ-329": "page content; no state change to explore — checked by inspection",
+    "REQ-330": "rendering (should); no state change to explore — checked by inspection",
+    "REQ-331": "branding (should); no state change to explore — checked by inspection",
+    "REQ-333": "page content (should); no state change to explore — checked by inspection",
+    "INV-306": "read-side aggregation in ShardByQueue; no state change to explore — checked by inspection",
+    "REQ-314": "needs real quantities (15 s interval, 7-day retention); the model cannot judge them — node scope reported as F-8",
+    "REQ-332": "needs real quantities (per-minute/24 h, per-hour/30 days) — cannot judge without a clock",
+    "REQ-326": "bulk-by-tag semantics depend on the jobs-module state machine; not encoded — ambiguity F-11",
+    "INV-303": "retired"
+  }
+}
