@@ -1,23 +1,23 @@
 {
   "module": "dashboard",
-  "specHash": "2349c84071280d2c93d2689dc9e62fe9528ecccf662fb5e15e1e91e6d46a2d36",
-  "generatedAt": "2026-11-06T16:54:49Z",
+  "specHash": "fec5db365b2d09a0a082a140fa5039bd7bfdf6d50e08ff0c14ac82106910c11e",
+  "generatedAt": "2026-11-06T20:55:00Z",
   "model": "model/dashboard/Dashboard.tla",
   "items": {
     "REQ-300": {
-      "hash": "f5a2b3b47b515ad1c4adfa56b822a01f1f3ba2dda1e9d0d8ca449591ccdc9de8",
+      "hash": "4571c9e5a9d5aafb9d5a87142aaa58d0516c241376a4e413241e3a60bd8b836a",
       "reviewed": false,
-      "note": "AllowAnonymousInDev: anonPerm = operate (run 2). Anonymous principal name missing: F-1."
+      "note": "AllowAnonymousInDev: anonPerm = operate; principal name \"anonymous\" via AnonName/Launcher (run 3, A-11). Chk_LaunchHasPrincipal holds (40 608 states)."
     },
     "REQ-301": {
-      "hash": "72f500e80cb515bca247a05d45a411a3b2b5265090818aa016478705b3c71b16",
+      "hash": "81bf5e07c87954ed575ed6d5525eeb30b452c3c9b98d8532e7a288df63b64f3b",
       "reviewed": false,
-      "note": "FailNoAuthorization with the scheme list (RequireApiKey excluded); consequence F-2."
+      "note": "FailNoAuthorization ('fail the host's start'; the RequireApiKey() hint is message text, no state). Consequence accepted: Chk_ApiKeyNotBypassed (REQ-305 notes)."
     },
     "REQ-334": {
-      "hash": "6c327fbaa3bd085a5c210857a384fb43541265e75acfc6b0700d63eaeac4f663",
+      "hash": "81f24cf24ec133ecc3ffedfc9b1eded81e299652be33f60d50b73e2617a32d42",
       "reviewed": false,
-      "note": "Action FailUnhashedPassword; Inv_UnsafeConfigNeverRuns."
+      "note": "Action FailUnhashedPassword ('fail the host's start'); Inv_UnsafeConfigNeverRuns holds."
     },
     "INV-300": {
       "hash": "6df80d6c3cf268cb8c93c982e3bd1d51fa787e489fb95849e305bdaec7c7ac45",
@@ -52,7 +52,7 @@
     "REQ-305": {
       "hash": "73013d63997c33dc620514a62f3b84761478fef1dff4fbeeaa50d9cc2b8ba0d4",
       "reviewed": false,
-      "note": "R_REQ305 requires expiresAt not passed; principal apikey:<name> abstracted to \"apiKey\" (A-11)."
+      "note": "R_REQ305 requires expiresAt not passed; principal apikey:<name> abstracted to \"apiKey\" (A-11). Run 2 F-2 accepted: Chk_ApiKeyNotBypassed stays violated (listed under accepted checks)."
     },
     "REQ-306": {
       "hash": "83b6cf163fcd4c9a7225a8321497a5cb6f58689a664562ab4a38e8cb7245da16",
@@ -67,7 +67,7 @@
     "REQ-320": {
       "hash": "032fd5d6f5753d06dd8fe5dd7d036f0ae24b5b5ec63cafde07c5d4069c728d4f",
       "reviewed": false,
-      "note": "Action LaunchRunNow."
+      "note": "Action LaunchRunNow; stores Launcher(r) (anonymous named since run 3)."
     },
     "REQ-321": {
       "hash": "d0efd8ae2c21275966211989e71108e5384358c05269048ae6ad96ed9c5856a0",
@@ -125,19 +125,19 @@
       "note": "Banner + BannerDetail (lastSeen | neverConnected)."
     },
     "INV-305": {
-      "hash": "9a493bfaf66f5e2bccc29c4e8c5fd51aa80eb191a2c75908b53f8574f5b8a95e",
+      "hash": "5df71e8ca775af61aabeeb6b8ab2c2e4129d783bcfc632f3942d29672d5c8d6f",
       "reviewed": false,
-      "note": "Fenced write (WriteRollup/RollupWriteRefused); Inv_RollupOneWrite holds; literal compute-with-lease fails: F-3."
+      "note": "Run 3: AcquireRollupLease (start under the lease), fenced WriteRollup, RollupWriteRefused. Inv_RollupStartWithLease (action property) holds, 5 120 states; Inv_RollupOneWrite violated in 6 steps: F-1."
     },
     "SCN-300": {
       "hash": "75da8f34ab964b2cc2b5183a92f3efafc1d305890b520295cf89e30bb96a01dc",
       "reviewed": false,
-      "note": "Dashboard_SCN300.cfg, trap violated (reachable)."
+      "note": "Re-checked run 3 (impacted via REQ-301): trap violated in 2 steps (reachable)."
     },
     "SCN-301": {
       "hash": "be0951a01b7a29fee4222b27edff1b59cb194738169c12355f7009692eea45d9",
       "reviewed": false,
-      "note": "Trap reachable in 4 steps (anonymous operate served after the notice)."
+      "note": "Re-checked run 3 (impacted via REQ-300): trap reachable in 4 steps (anonymous operate served after the notice)."
     },
     "SCN-302": {
       "hash": "9afd87fbffc4fd8665791b1342ed54e45c1b24e937a5c0edf847994edf186daa",
@@ -209,7 +209,7 @@
     "REQ-318": "strength may (not checked)",
     "REQ-324": "strength may (not checked)",
     "INV-304": "launch catalogue; no state change to explore — checked by inspection",
-    "REQ-323": "page content; no state change to explore — checked by inspection (anonymous attribution gap: F-1)",
+    "REQ-323": "page content; no state change to explore — checked by inspection (every launch now has a principal name, run 3)",
     "REQ-325": "page content; no state change to explore — checked by inspection",
     "REQ-327": "page content; no state change to explore — checked by inspection",
     "REQ-328": "preview; no state change to explore — checked by inspection",

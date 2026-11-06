@@ -1,5 +1,5 @@
 ---------------------------- MODULE Dashboard ----------------------------
-\* Generated from specs/dashboard.json (specHash 2349c8407128; run 2 regenerated the handoff ids) — edit the requirements, not this file.
+\* Generated from specs/dashboard.json (specHash fec5db365b2d; run 3 regenerated the handoff ids) — edit the requirements, not this file.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Assumptions A-n refer to the table in specs/dashboard.findings.md.
 \*
@@ -56,7 +56,7 @@ Cfgs == [env: {"Development", "Production"},
 KeyStatus == {"none", "Active", "Revoked", "Expired"}
 KeyRec    == [status: KeyStatus, scope: {"view", "operate"}, neverExpires: BOOLEAN, expiresPassed: BOOLEAN]
 EmptyKey  == [status |-> "none", scope |-> "view", neverExpires |-> FALSE, expiresPassed |-> FALSE]
-JobRec    == [status: {"none", "Enqueued", "Scheduled"}, by: Principals \cup {"apiKey", NULL}]
+JobRec    == [status: {"none", "Enqueued", "Scheduled"}, by: Principals \cup {"apiKey", "anonymous", NULL}]
 EmptyJob  == [status |-> "none", by |-> NULL]
 
 TypeInv ==
@@ -68,7 +68,7 @@ TypeInv ==
   /\ failAddr \in 0..MaxFailedLogins
   /\ key \in [KeyIds -> KeyRec]
   /\ job \in [JobIds -> JobRec]
-  /\ recJob \in [status: {"none", "Active"}, by: Principals \cup {"apiKey", NULL}]
+  /\ recJob \in [status: {"none", "Active"}, by: Principals \cup {"apiKey", "anonymous", NULL}]
   /\ worker \in [WorkerNodes -> {"absent", "alive", "lost"}]
   /\ everSeen \in BOOLEAN
   /\ lease \in RollupNodes \cup {NULL}
@@ -86,7 +86,8 @@ Cond342 == ~HasAuthReq /\ cfg.allowAnon /\ cfg.env # "Development"
 Cond334 == cfg.basicAuth /\ ~cfg.pwHashed
 
 \* @req REQ-300  While starting, Development + none of the listed schemes: anonymous requests get operate
-\*               permission; log a notice. Fires once (A-3).
+\*               permission and the principal name "anonymous"; log a notice. Fires once (A-3). The name is
+\*               AnonName below: this action is the only one that sets anonPerm to "operate" (A-11).
 AllowAnonymousInDev ==
   /\ "access" \in Parts
   /\ node = "Starting" /\ Cond300 /\ anonPerm = "none"
@@ -101,14 +102,15 @@ GrantAnonymousView ==
   /\ anonPerm' = "view" /\ noticeLogged' = TRUE
   /\ UNCHANGED <<cfg, node, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen, lease, computing, wrote>>
 
-\* @req REQ-301  While starting, no auth requirement, no AllowAnonymous(), not Development: stop the node.
+\* @req REQ-301  While starting, no auth requirement, no AllowAnonymous(), not Development: fail the host's start
+\*               (the node never runs). The message text, including the RequireApiKey() hint, has no state.
 FailNoAuthorization ==
   /\ "access" \in Parts
   /\ node = "Starting" /\ Cond301
   /\ node' = "StartupFailed"
   /\ UNCHANGED <<cfg, anonPerm, noticeLogged, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen, lease, computing, wrote>>
 
-\* @req REQ-334  While starting, basic auth with a password that is not a supported salted hash: stop the node.
+\* @req REQ-334  While starting, basic auth with a password that is not a supported salted hash: fail the host's start.
 FailUnhashedPassword ==
   /\ "access" \in Parts
   /\ node = "Starting" /\ Cond334
@@ -229,9 +231,12 @@ LockoutWindowPasses ==
 -----------------------------------------------------------------------------
 \* Launch (part "access")
 
-\* @req REQ-305  A key-authenticated request's principal name is "apikey:<name>" ("apiKey": one key slot).
-\* A-11: an anonymous request has no principal name in any sentence (NULL).
-Launcher(r) == IF IsUser(r) THEN r.cred.p ELSE IF IsKey(r) THEN "apiKey" ELSE NULL
+\* @req REQ-300  Anonymous requests have the principal name "anonymous" where REQ-300 fired (A-11). REQ-342 gives
+\*               anonymous viewers no name, so outside Development an anonymous request has none (NULL).
+AnonName == IF anonPerm = "operate" THEN "anonymous" ELSE NULL
+\* @req REQ-305 REQ-300  A key-authenticated request's principal name is "apikey:<name>" ("apiKey": one key slot);
+\*               an anonymous request's is AnonName.
+Launcher(r) == IF IsUser(r) THEN r.cred.p ELSE IF IsKey(r) THEN "apiKey" ELSE AnonName
 
 \* @req REQ-319  Invalid launch form: show validation errors, create nothing.
 SubmitInvalidLaunch(r) ==
@@ -327,10 +332,13 @@ BannerDetail == IF everSeen THEN "lastSeen" ELSE "neverConnected"
 \* Insights rollups (part "rollup") — one interval i1. RollupNodes are nodes with the worker registered
 \* (INV-305 "where the worker is registered", hosting REQ-40).
 
-\* @req INV-305  A node starts computing the interval only while holding its lease in the store. (system → fair)
+\* @req INV-305  "start computing each rollup interval … only while the node holds the interval's lease": a node
+\*               takes the free lease and starts computing in one step. (system → fair) Run 3: no sentence says a
+\*               node skips an interval that is already written, so the run-2 guard wrote = {} is gone (F-1).
+\*               A node does not start a second computation of the interval while it is still computing one.
 AcquireRollupLease(n) ==
   /\ "rollup" \in Parts
-  /\ lease = NULL /\ wrote = {} /\ n \notin computing
+  /\ lease = NULL /\ n \notin computing
   /\ lease' = n /\ computing' = computing \cup {n}
   /\ UNCHANGED <<cfg, node, anonPerm, noticeLogged, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen, wrote>>
 
@@ -342,13 +350,12 @@ RollupLeaseExpires ==
   /\ UNCHANGED <<cfg, node, anonPerm, noticeLogged, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen, computing, wrote>>
 
 \* @req INV-305  The computing node writes the interval in one batched write that succeeds only if it still
-\*               holds the lease (fenced write).
+\*               holds the lease (fenced write). No sentence releases the lease after the write; it lapses (A-15).
 WriteRollup(n) ==
   /\ "rollup" \in Parts
   /\ n \in computing /\ lease = n
   /\ wrote' = wrote \cup {n} /\ computing' = computing \ {n}
-  /\ lease' = NULL
-  /\ UNCHANGED <<cfg, node, anonPerm, noticeLogged, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen>>
+  /\ UNCHANGED <<cfg, node, anonPerm, noticeLogged, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen, lease>>
 
 \* @req INV-305  A node whose lease is gone has its write refused and drops the computation.
 RollupWriteRefused(n) ==
@@ -424,13 +431,18 @@ Chk_LaunchHasPrincipal ==
   /\ recJob.status # "none" => recJob.by # NULL
 
 \* @req REQ-305 REQ-300  Chk (obvious intent of enabling RequireApiKey()): without AllowAnonymous(), a request
-\*               without a key is never served on a node that requires API keys.
+\*               without a key is never served on a node that requires API keys. Run 3: expected VIOLATED; the
+\*               owner accepted it (REQ-305 notes, glossary authorizationRequirement and anonymousPermission).
 Chk_ApiKeyNotBypassed == (cfg.apiKeyAuth /\ ~cfg.allowAnon) => anonServed = {}
 
-\* @req INV-305  Each rollup interval is written by at most one node (fenced write).
+\* @req INV-305  "one batched write per interval" (source BLT-13; notes: "at most one result is written per
+\*               interval"): no two nodes write the same interval. wrote is a set of nodes, so this catches a
+\*               second node's write, not the same node writing twice.
 Inv_RollupOneWrite == Cardinality(wrote) <= 1
-\* @req INV-305  "compute each rollup interval … only while the node holds the interval's lease" (literal reading).
-Inv_RollupComputeWithLease == computing \subseteq {lease}
+\* @req INV-305  "start computing each rollup interval … only while the node holds the interval's lease": an action
+\*               property (PROPERTIES), since it constrains the step that starts a computation, not a state.
+Inv_RollupStartWithLease ==
+  [][\A n \in RollupNodes : (n \notin computing /\ n \in computing') => lease' = n]_vars
 
 \* @req SCN-303  Vic (view only) cannot launch (impossibleAt 1).
 Scn_ViewerCannotLaunch ==
