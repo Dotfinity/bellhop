@@ -1,5 +1,5 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash bc55236159f4) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash 77018f6c8a50) — edit the requirements, not this file.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -17,14 +17,13 @@ CONSTANTS Names,            \* RecurringJob instances, keyed by name (entity.bou
           MisfirePolicies,  \* @req REQ-201  policies explored (default RunOnce)
           OrphanPolicies,   \* @req REQ-205, REQ-207  per-job orphanPolicy values explored ("Orphan" or "Delete")
           RerouteOn,        \* explore jobs REQ-125 (Unroutable -> Enqueued)? lets checks separate findings
-          FixCancelUnroutable, \* CANDIDATE FIX for finding F-1 (run 2), not a requirement: see Supersede
           NULL
 
 ASSUME MaxQueued \in Nat \ {0}                                              \* @req REQ-233
 ASSUME OverlapPolicies \subseteq {"Skip", "Queue", "Allow", "CancelPrevious"}  \* @req REQ-201
 ASSUME MisfirePolicies \subseteq {"RunOnce", "Skip", "RunAll"}                 \* @req REQ-201
 ASSUME OrphanPolicies \subseteq {"Orphan", "Delete"}
-ASSUME RerouteOn \in BOOLEAN /\ FixCancelUnroutable \in BOOLEAN
+ASSUME RerouteOn \in BOOLEAN
 ASSUME Releases \subseteq {"v1", "v2", "v3"} /\ DeclV1 \cup DeclV2 \cup DeclV3 \subseteq Names
 
 VARIABLES rj,     \* stored recurring definitions, keyed by name
@@ -96,13 +95,14 @@ Init ==
 \* @req REQ-221, REQ-222, REQ-223, REQ-225, REQ-235
 \* "In the way" = an earlier occurrence that is waiting or has an unfinished job (REQ-239).
 \* Every live occurrence is earlier than the one being created (it is appended to order).
-\* StartJob enqueues o's job. With FixCancelUnroutable (CANDIDATE FIX for run-2 F-1, NOT a requirement)
-\* it also cancels, in the same step, the Unroutable jobs of earlier occurrences of r (jobs REQ-134
-\* allows cancelling an Unroutable job), so jobs REQ-125 can never bring one back beside o's job.
-StartJob(o, r) ==
+\* @req REQ-240  an occurrence starts while an earlier occurrence of the same recurring job has an
+\*              Unroutable job: that job is cancelled (reason Superseded, not modeled) in the same write.
+\* Applied to every start (REQ-221, REQ-224 and REQ-225): the sentence says "an occurrence ... starts"
+\* (A-18). E = the earlier occurrences of the same recurring job.
+Superseded(x, E) == x \in E /\ job[x].st = "Unroutable"
+StartJob(o, E) ==
   job' = [x \in OccIds |-> IF x = o THEN EnqJob
-                           ELSE IF FixCancelUnroutable /\ x \in OfJob(r) /\ job[x].st = "Unroutable"
-                             THEN [job[x] EXCEPT !.st = "Cancelled"]
+                           ELSE IF Superseded(x, E) THEN [job[x] EXCEPT !.st = "Cancelled"]
                            ELSE job[x]]
 Decide(o, r, sched) ==
   LET B == InTheWay(r)
@@ -110,7 +110,7 @@ Decide(o, r, sched) ==
   IN /\ order' = Append(order, o)
      /\ IF B = {} THEN                                                   \* @req REQ-221
           /\ occ' = [occ EXCEPT ![o] = mk("Started", {}, "none")]
-          /\ StartJob(o, r)
+          /\ StartJob(o, OfJob(r))                                     \* @req REQ-240
         ELSE CASE ov[r] = "Skip" ->                                      \* @req REQ-222
                     /\ occ' = [occ EXCEPT ![o] = mk("Skipped", {}, "Overlap")] /\ UNCHANGED job
                [] ov[r] = "Queue" /\ Cardinality(WaitingOf(r)) < MaxQueued ->   \* @req REQ-223
@@ -120,7 +120,7 @@ Decide(o, r, sched) ==
                     /\ occ' = [occ EXCEPT ![o] = mk("Skipped", {}, "QueueFull")] /\ UNCHANGED job
                [] ov[r] = "Allow" ->                                     \* @req REQ-225
                     /\ occ' = [occ EXCEPT ![o] = mk("Started", {}, "none")]
-                    /\ job' = [job EXCEPT ![o] = EnqJob]
+                    /\ StartJob(o, OfJob(r))                            \* @req REQ-240 (A-18)
                [] ov[r] = "CancelPrevious" ->                            \* @req REQ-225 (+ jobs REQ-134/135)
                     /\ occ' = [occ EXCEPT ![o] = mk("Started", {}, "none")]
                     /\ job' = [x \in OccIds |->
@@ -129,7 +129,9 @@ Decide(o, r, sched) ==
                                    THEN IF job[x].st = "Processing"
                                           THEN [job[x] EXCEPT !.cancelReq = TRUE]
                                           ELSE [job[x] EXCEPT !.st = "Cancelled"]
-                                   ELSE job[x]]
+                                 ELSE IF Superseded(x, OfJob(r))                \* @req REQ-240 (A-18)
+                                   THEN [job[x] EXCEPT !.st = "Cancelled"]
+                                 ELSE job[x]]
 
 \* @req REQ-216  Active, maintenance off, nextRunAt passed: one compare-and-set advances nextRunAt
 \*              and creates what the misfire policy calls for.
@@ -165,11 +167,12 @@ TriggerNow(r) ==
 \* @req REQ-224  While an occurrence is waiting, when no earlier occurrence of the same recurring job
 \*              is waiting or has an unfinished job (REQ-239): enqueue its job, record it started.
 \*              Runs as its own step after the earlier job finished (A-7).
+\* @req REQ-240  earlier Unroutable jobs of the same recurring job are cancelled in the same step.
 StartWaiting(o) ==
   /\ occ[o].st = "Waiting"
   /\ \A x \in InTheWay(occ[o].rj) : Pos(x) >= Pos(o)
   /\ occ' = [occ EXCEPT ![o].st = "Started", ![o].blk = {}]
-  /\ StartJob(o, occ[o].rj)
+  /\ StartJob(o, {x \in OfJob(occ[o].rj) : Pos(x) < Pos(o)})
   /\ UNCHANGED <<rj, node, order, maint, ov, mf, op>>
 
 -----------------------------------------------------------------------------
@@ -231,6 +234,23 @@ Restore(r) ==
        /\ r \in Decl(node[n].ver)
        /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0,
                            ![r].hash = CodeDef(node[n].ver), ![r].def = CodeDef(node[n].ver)]
+  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
+
+\* @req REQ-241  the scheduler finds a stored code-defined job (Active or Paused) that running worker
+\*              nodes declare but whose definitionHash matches the code of none of them: take the code
+\*              definition of one of them, keep Active/Paused; if the schedule changed (nondeterministic,
+\*              as in REQ-204), nextRunAt from now (REQ-227). Nodes publish name + hash (A-6: instantly).
+DeclaringNodes(r) == {n \in RunningNodes : r \in Decl(node[n].ver)}
+Stale(r) ==
+  /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code"
+  /\ DeclaringNodes(r) # {}
+  /\ \A n \in DeclaringNodes(r) : rj[r].hash # CodeDef(node[n].ver)
+ReapplyCode(r) ==
+  /\ SchedulerRuns
+  /\ Stale(r)
+  /\ \E n \in DeclaringNodes(r), schedChanged \in BOOLEAN :
+       rj' = [rj EXCEPT ![r].hash = CodeDef(node[n].ver), ![r].def = CodeDef(node[n].ver),
+                        ![r].behind = IF schedChanged THEN 0 ELSE rj[r].behind]
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
 
 \* @req REQ-208  operator adds a runtime job when no definition with its name exists.
@@ -327,6 +347,7 @@ Archive(o) ==
 Next ==
   \/ \E r \in Names : \/ Trigger(r) \/ TriggerNow(r) \/ Orphan(r) \/ Restore(r) \/ OperatorAdd(r)
                       \/ OperatorUpdate(r) \/ OperatorRemove(r) \/ Pause(r) \/ Resume(r) \/ TimePasses(r)
+                      \/ ReapplyCode(r)
   \/ \E n \in Nodes : NodeStop(n) \/ \E v \in Releases : NodeStart(n, v)
   \/ \E o \in OccIds : \/ StartWaiting(o) \/ Claim(o) \/ Complete(o) \/ RetryDue(o) \/ LeaseLost(o)
                        \/ AbandonOnTimeout(o) \/ ZombieEnds(o) \/ BecomeUnroutable(o) \/ Reroute(o)
@@ -334,7 +355,7 @@ Next ==
   \/ ToggleMaintenance
 
 \* Only actor: system transitions are fair.
-Fairness == /\ \A r \in Names : WF_vars(Trigger(r)) /\ WF_vars(Orphan(r))
+Fairness == /\ \A r \in Names : WF_vars(Trigger(r)) /\ WF_vars(Orphan(r)) /\ WF_vars(ReapplyCode(r))
             /\ \A o \in OccIds : WF_vars(StartWaiting(o))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
@@ -399,6 +420,15 @@ Prop_SkipOnlyWhenInTheWay ==
   [][\A o \in OccIds : occ[o].st = "none" /\ occ'[o].st = "Skipped" /\ occ'[o].reason \in {"Overlap", "QueueFull"}
         => \E x \in OccIds \ {o} : occ[x].rj = occ'[o].rj
                                    /\ (occ[x].st = "Waiting" \/ (occ[x].st = "Started" /\ job[x].st \notin DoneForOverlap))]_vars
+
+\* @req REQ-241  settling (the REQ-241 / REQ-204 notes): a stored code definition that matches no running
+\*              declaring node eventually matches one again, under weak fairness of the scheduler.
+Liv_DefinitionSettles == \A r \in Names : Stale(r) ~> ~Stale(r)
+
+\* @req REQ-241  ... and once it matches, only a node stopping can make it stale again, so it stays settled
+\*              once the set of running nodes stops changing.
+Prop_StaleOnlyWhenNodeStops ==
+  [][\A r \in Names : ~Stale(r) /\ Stale(r)' => \E n \in Nodes : node[n].st = "Running" /\ node'[n].st = "Down"]_vars
 
 -----------------------------------------------------------------------------
 \* Positive scenarios: given state as Init, trap invariant expected to be VIOLATED.
@@ -479,6 +509,20 @@ Init_SCN211 == BaseInit([RuntimeRj("Active") EXCEPT !.behind = 1], AllRunning("v
 Scn211_NotReached ==
   ~(\E o \in OfJob(J1) : occ[o].st = "Started" /\ occ[o].sched /\ rj[J1].miss = "none" /\ rj[J1].behind = 0)
 
+\* @req SCN-215  sync-crm, overlap Skip; the 10:00 occurrence's job is Unroutable. The 10:06 occurrence
+\*              starts (REQ-221, REQ-239) and the 10:00 job is cancelled in the same write (REQ-240).
+Init_SCN215 ==
+  /\ rj = [r \in Names |-> IF r = J1 THEN [RuntimeRj("Active") EXCEPT !.behind = 1] ELSE NoRj]
+  /\ node = AllRunning("v1")
+  /\ occ = [o \in OccIds |-> IF o = O1 THEN [NoOcc EXCEPT !.st = "Started", !.rj = J1, !.sched = TRUE] ELSE NoOcc]
+  /\ job = [o \in OccIds |-> IF o = O1 THEN [EnqJob EXCEPT !.st = "Unroutable"] ELSE NoJob]
+  /\ order = <<O1>> /\ maint = FALSE
+  /\ ov \in [Names -> OverlapPolicies] /\ mf \in [Names -> MisfirePolicies] /\ op \in [Names -> OrphanPolicies]
+Scn215_NotReached ==
+  ~(/\ job[O1].st = "Cancelled"
+    /\ \E o \in OfJob(J1) : o # O1 /\ occ[o].st = "Started" /\ occ[o].sched /\ job[o].st = "Enqueued"
+    /\ \A x \in OfJob(J1) : job[x].st # "Unroutable")
+
 -----------------------------------------------------------------------------
 \* Reachability probes (modeling aids, NOT requirements): each is expected to be violated, and
 \* its trace is the example for a finding. Run with the Recurring_P_*.cfg files.
@@ -497,6 +541,21 @@ Probe_RuntimeJobTakenOverByCode ==
 \* state predicate, so the run-2 check of F-7 is Prop_SkipOnlyWhenInTheWay; the probe is kept for history.
 Probe_UnroutableBlocksNext ==
   ~(\E o, s \in OccIds : job[o].st = "Unroutable" /\ occ[s].st = "Skipped" /\ occ[s].rj = occ[o].rj)
+
+\* Run 3 (A-18): under Allow or CancelPrevious, a REQ-225 start can meet an earlier Unroutable job (another
+\* earlier job unfinished, a slot free for the next occurrence), so whether REQ-240 also covers REQ-225 starts
+\* changes behaviour. Reachable = the question is real.
+Probe_Req225StartMeetsUnroutable ==
+  ~(\E r \in Names, x, y \in OccIds :
+      ov[r] \in {"Allow", "CancelPrevious"} /\ x \in OfJob(r) /\ y \in OfJob(r)
+      /\ job[x].st = "Unroutable" /\ Unfinished(y) /\ FreeSlots # {})
+
+\* Run 3: a trigger-now occurrence (REQ-226, possibly with an overridden payload) whose job is Unroutable is
+\* cancelled by REQ-240 when a scheduled occurrence starts. Action probe, so it goes under PROPERTIES.
+ProbeAct_TriggerNowNeverSuperseded ==
+  [][\A x \in OccIds :
+       ~(/\ occ[x].st = "Started" /\ ~occ[x].sched /\ job[x].st = "Unroutable" /\ job'[x].st = "Cancelled"
+         /\ \E o \in OccIds : occ[o].st # "Started" /\ occ'[o].st = "Started" /\ occ'[o].sched)]_vars
 
 \* F: with Queue(max >= 2), a newer waiting occurrence starts while an older one is still unfinished.
 Probe_NewerWaiterStartsBesideOlder ==

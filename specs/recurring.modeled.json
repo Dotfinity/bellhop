@@ -1,7 +1,7 @@
 {
   "module": "recurring",
-  "specHash": "bc55236159f462fed18c1d62632276c66ae81b412d1ff99889134318e25ce2cf",
-  "generatedAt": "2026-11-06T17:10:54Z",
+  "specHash": "77018f6c8a5075edb339db2f3441e69eca2ac5114a1f29b88506a909a89ec473",
+  "generatedAt": "2026-11-06T21:12:21Z",
   "model": "model/recurring/Recurring.tla",
   "items": {
     "REQ-201": {
@@ -22,7 +22,7 @@
     "REQ-204": {
       "hash": "57bff9f1854378a72b526dc9f51994fc530174d471d1660b8196fbb6b04acaeb",
       "reviewed": false,
-      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Run-2 F-2: written only at node start."
+      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards."
     },
     "INV-200": {
       "hash": "aabda1e033f251ea9cd5f8aafa56fce146593e49cb567fae992f9d330ce8b050",
@@ -37,7 +37,7 @@
     "REQ-206": {
       "hash": "ef83e3180bd8455403659bee9823ac4b334ac5cdf6fb9d5ef97f7b74c09f9234",
       "reviewed": false,
-      "note": "restores the earlier state and takes the definition of one declaring running node (nondeterministic when several, run-2 F-2)"
+      "note": "restores the earlier state and takes the definition of one declaring running node (nondeterministic when several)"
     },
     "REQ-207": {
       "hash": "91514861ca4d1c05d3ca17e649a02bbe60e84a2ae0de4fbb10b63a4ee7ecfcb7",
@@ -112,7 +112,7 @@
     "REQ-221": {
       "hash": "b868f70271ab867fe6d63c167df27c70af33ea76b4224e91b8519a6b5f3c8613",
       "reviewed": false,
-      "note": "one Decide action with REQ-222/223/225/235; in the way = waiting or unfinished (REQ-239)"
+      "note": "one Decide action with REQ-222/223/225/235; in the way = waiting or unfinished (REQ-239); REQ-240 cancels earlier Unroutable jobs in the same step"
     },
     "REQ-222": {
       "hash": "f0096cae38b6c10c7ec32144ab24dfd88838e1f8546c03162f97287728dfb09e",
@@ -127,27 +127,27 @@
     "REQ-224": {
       "hash": "74f112f5027aff7e360eff6e84f32dd64ba571c9f7a134785fb87f885a4a34cc",
       "reviewed": false,
-      "note": "starts only when nothing earlier is waiting or unfinished (creation order); F_WaitingRace and P_QueueTwoWaiters hold"
+      "note": "starts only when nothing earlier is waiting or unfinished (creation order); REQ-240 in the same step; F_WaitingRace, P_QueueTwoWaiters and F_RerouteQueue hold"
     },
     "REQ-225": {
       "hash": "8f67ac4fb62146261d04db295b68743413d9cb64d8ce2df333847bd785b92c26",
       "reviewed": false,
-      "note": "same action as REQ-221"
+      "note": "same action as REQ-221; REQ-240 applied to REQ-225 starts too (literal reading, A-18 / run-3 F-1)"
     },
     "INV-204": {
       "hash": "d5631da898fef89fd951a1c66f0cf4a131cf5f11056129b45b0e841804634d71",
       "reviewed": false,
-      "note": "Inv_NoOverlapProcessing: holds without jobs REQ-125 (Main, OverlapAll, F_WaitingRace, P_QueueTwoWaiters); violated with it (run-2 F-1)"
+      "note": "Inv_NoOverlapProcessing holds in Main, MainR, OverlapAll, F_WaitingRace, P_QueueTwoWaiters, F_RerouteOverlap, F_RerouteQueue (jobs REQ-125 on in the last three and MainR)"
     },
     "REQ-226": {
       "hash": "8ea0aa1265ffaf77fc51ace30be67b426f65e4a8ecc5e50169f7d8df0d90f75e",
       "reviewed": false,
-      "note": "TriggerNow"
+      "note": "TriggerNow; its occurrence can be superseded by a later one under REQ-240 (run-3 F-2)"
     },
     "REQ-227": {
       "hash": "0456d4ac404753c0f7bc1930c019abc8826494d16ae7cc4cd854d676ee3c7eea",
       "reviewed": false,
-      "note": "OperatorUpdate with schedule change — see F-4, F-10"
+      "note": "OperatorUpdate with schedule change; also the 'from now' rule used by REQ-204, REQ-241"
     },
     "REQ-233": {
       "hash": "3adcf32f8ee6d694d87f9327de77ca9d9828ba5acdbaf88f5f5b689bdf4783a2",
@@ -165,9 +165,9 @@
       "note": "same action as REQ-221"
     },
     "REQ-236": {
-      "hash": "e4d2738d65703d7c805bebf230e3cefc8300ca11670100e9a81689934f618fc9",
+      "hash": "c01b9fc5273d890bcc590c94178ca50333183d27abb349222d24bd87ec84691d",
       "reviewed": false,
-      "note": "NodeStart guard; StartupFailed abstracted to the node staying down (A-16); configuration-defined jobs not modeled (A-14)"
+      "note": "NodeStart guard; 'fail the host's start' abstracted to the node staying down (A-16); configuration-defined jobs not modeled (A-14). Run 3: wording change only, re-checked in Defs (Scn_RuntimeNameBlocksStart holds)"
     },
     "REQ-237": {
       "hash": "ad976cd839222c75ddd3156ed51b4d38c91b6945d1a403bb56fd5931bbfae600",
@@ -177,7 +177,17 @@
     "REQ-239": {
       "hash": "97f8050051d05646f4fa77b86210d795a4c51ecbeee67cfa29f83bb9738e2eff",
       "reviewed": false,
-      "note": "DoneForOverlap; run-2 F-1: with jobs REQ-125 an Unroutable job can come back (F_RerouteOverlap violates INV-204)"
+      "note": "DoneForOverlap; with jobs REQ-125 and REQ-240, INV-204 holds (F_RerouteOverlap, F_RerouteQueue, MainR)"
+    },
+    "REQ-240": {
+      "hash": "c1e457de792c62f9bd688f8e3aaf1ead5fa7965ba232fda6daa563109df7c1a5",
+      "reviewed": false,
+      "note": "StartJob / CancelPrevious branch: earlier Unroutable jobs cancelled in the start step, on every start (REQ-221, REQ-224, REQ-225; A-18, run-3 F-1); reason Superseded not modeled"
+    },
+    "REQ-241": {
+      "hash": "359c92303bfac13c34e9c67cad41f49eb2efb4c92cb1d173c67a612c16f00f2e",
+      "reviewed": false,
+      "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check)"
     },
     "INV-206": {
       "hash": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",
@@ -273,12 +283,17 @@
       "hash": "b7dd2723277b51f719d3f495faf12a546b4eed2b9f6744480ae0109c2004ab3c",
       "reviewed": false,
       "note": "Scn_StoredNameCannotBeAdded holds (Defs)"
+    },
+    "SCN-215": {
+      "hash": "5222841df843a00e8c0f691579a02129e0bc03fc81e241374c35b488017c9bcd",
+      "reviewed": false,
+      "note": "Recurring_SCN215.cfg (jobs REQ-125 on) - reachable"
     }
   },
   "skipped": {
     "REQ-200": "time mode and IANA zone need a clock; no clock in the model (A-1)",
     "REQ-209": "validity of schedule expressions and time zones is not representable at this abstraction",
-    "REQ-210": "same as REQ-209 (startup validation of schedule syntax)",
+    "REQ-210": "same as REQ-209 (startup validation of schedule syntax); run-3 wording change ('fail the host's start') does not change that",
     "REQ-228": "DST behaviour needs a real clock",
     "REQ-229": "DST behaviour needs a real clock",
     "REQ-230": "computing next N occurrences needs a real clock",

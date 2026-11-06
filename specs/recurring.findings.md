@@ -1,188 +1,168 @@
 # Findings: Bellhop recurring jobs
 
-<!-- refiner-findings v1 | module: recurring | specHash: bc55236159f462fed18c1d62632276c66ae81b412d1ff99889134318e25ce2cf | run: 2026-11-06 (run 2) | previous: specs/model/recurring/previous.findings.md (run 1, specHash 577c79cef0e7) -->
+<!-- refiner-findings v1 | module: recurring | specHash: 77018f6c8a5075edb339db2f3441e69eca2ac5114a1f29b88506a909a89ec473 | run: 2026-11-06 (run 3) | previous: specs/model/recurring/previous.findings.md (run 2, specHash bc55236159f4) -->
 
-**Run:** 2026-11-06, run 2 · **Requirements file:** `specs/recurring.json` (specHash `bc55236159f4`) · **Model:** `specs/model/recurring/Recurring.tla` · **TLC:** 2.19; every check ran alone with `--stop-at-first` and completed with no TLC exception (24 cfgs, up to 7,356,508 distinct states, ≤ 157 s each); see [How to reproduce](#how-to-reproduce)
-**Result:** 2 findings — 1 contradiction · 1 gap · 0 unprovable · 0 ambiguities · 0 modeling notes. All 11 run-1 findings are resolved.
+**Run:** 2026-11-06, run 3 · **Requirements file:** `specs/recurring.json` (specHash `77018f6c8a50`) · **Model:** `specs/model/recurring/Recurring.tla` · **TLC:** 2.19; every check ran alone with `--stop-at-first` and finished with no TLC exception and no timeout (29 cfgs, up to 7,439,116 distinct states, ≤ 231 s each); see [How to reproduce](#how-to-reproduce)
+**Result:** 2 findings: 0 contradictions · 1 gap · 0 unprovable · 1 ambiguity · 0 modeling notes. Both run-2 findings are resolved. REQ-241's settling claim is checked as a liveness property and holds.
 
 The model has no clock. Anything that depends on real amounts of time (DST, time zones, validity windows, the 60 s misfire threshold as a number) is outside what it can judge; see *Coverage*.
 
 ## Changes since last run
 | Finding | Status | Fingerprint |
 |---|---|---|
-| F-1 | resolved | contradiction · INV-204 · REQ-221,REQ-223,REQ-224 |
-| F-2 | resolved | contradiction · INV-204 · REQ-223,REQ-224,REQ-233 |
-| F-3 | resolved | contradiction · INV-204 · REQ-221,jobs.REQ-132,jobs.REQ-138,jobs.REQ-186 |
-| F-4 | resolved | contradiction · INV-210 · REQ-206,REQ-215,REQ-227 |
-| F-5 | resolved | gap · RecurringJob.definitionHash · REQ-204,REQ-206 |
-| F-6 | resolved | gap · RecurringJob.origin · REQ-203,REQ-204,REQ-208,REQ-213 |
-| F-7 | resolved | gap · Occurrence.job · REQ-221,REQ-222,REQ-235,jobs.REQ-124 |
-| F-8 | resolved | ambiguity · Occurrence.Waiting · REQ-205,REQ-207,REQ-213,REQ-214,REQ-224 |
-| F-9 | resolved | ambiguity · REQ-217 · INV-207,REQ-217,REQ-218 |
-| F-10 | resolved | ambiguity · REQ-227 · REQ-204,REQ-227 |
-| F-11 | resolved | ambiguity · RecurringJob.orphanPolicy · REQ-205,REQ-207 |
-| F-1 | new | contradiction · INV-204 · REQ-221,REQ-224,REQ-239,jobs.REQ-124,jobs.REQ-125 |
-| F-2 | new | gap · REQ-204 · REQ-204,REQ-206 |
+| F-1 | resolved | contradiction · INV-204 · REQ-221,REQ-224,REQ-239,jobs.REQ-124,jobs.REQ-125 |
+| F-2 | resolved | gap · REQ-204 · REQ-204,REQ-206 |
+| F-1 | new | ambiguity · REQ-240 · REQ-225,REQ-239,REQ-240 |
+| F-2 | new | gap · REQ-240 · REQ-226,REQ-240 |
 
-11 resolved, 2 new, 0 still open
+2 resolved, 2 new, 0 still open
 
-(Table from `findings_delta.py`.) How each run-1 finding was re-checked against the changed requirements:
+(Table from `findings_delta.py`.) What changed in the requirements (handoff `specs/model/recurring/handoff.json`, base bb8be99): REQ-240 and REQ-241 are new, SCN-215 is new, and REQ-210 and REQ-236 now say "fail the host's start" instead of "stop the node from starting". The handoff lists no impacted ids. The model change is: REQ-240 replaces the run-2 switch `FixCancelUnroutable` (now gone from the model and every cfg), REQ-241 is a new weakly fair scheduler action `ReapplyCode`, SCN-215 has its own cfg, and REQ-236 keeps its encoding (A-16 already read StartupFailed as "the node does not start"). Because a new action changes every state space, every check was rerun.
 
-| Run-1 finding | Requirement change | Evidence in run 2 |
+How each run-2 finding was re-checked:
+
+| Run-2 finding | Requirement change | Evidence in run 3 |
 |---|---|---|
-| F-1 Queue(1) waiting race | REQ-221–REQ-225, REQ-235: a waiting occurrence is "in the way" | The run-1 trace config `Recurring_F_WaitingRace.cfg` (`Inv_NoOverlapProcessing`, 3 slots) now **passes**: 7,356,508 distinct states. SCN-213 (the regression scenario) is reachable in 5 states. |
-| F-2 Queue(≥ 2) releases every waiter | REQ-224: start only when nothing earlier is waiting or unfinished | `Recurring_P_QueueTwoWaiters.cfg` (the run-1 probe plus `Inv_NoOverlapProcessing`, Queue(2), 3 slots) now **passes**: 7,108,540 distinct states. |
-| F-3 abandoned handler overlaps | INV-204 now counts the Processing *state*; REQ-238 (`info`) accepts the handler overlap | `Inv_NoOverlapProcessing` passes in every config without jobs REQ-125 (see F-1 below for the one with it). `Inv_NoOverlapRunning`, kept to show the accepted window, is still violated in 7 states as REQ-238 says. |
-| F-4 maintenance vs nextRunAt | INV-210 narrowed to the scheduler | `Inv_NoScheduleInMaintenance` and `Prop_NoScheduledAdvanceInMaintenance` pass (`Recurring.cfg`, `Recurring_MainR.cfg`). The run-1 property encoded the broad reading, which is no longer required; its config was removed. |
-| F-5 restored orphan keeps old definition | REQ-206 applies the declaring node's code | `Recurring_P_StaleDefinition.cfg` (one node, three releases) now **passes**: 19,500 distinct states. With two nodes a related gap remains (F-2 below). |
-| F-6 runtime and code job merge | INV-211, REQ-236, REQ-204 limited to code origin | `Recurring_P_RuntimeTakenOver.cfg` now **passes** (19,500 states). `Scn_StoredNameCannotBeAdded` (INV-211, SCN-214) and `Scn_RuntimeNameBlocksStart` (REQ-236) pass in `Recurring_Defs.cfg` (44,552 states). |
-| F-7 unroutable job blocks for good | REQ-239 counts Unroutable as finished | `Prop_SkipOnlyWhenInTheWay` passes in `Recurring_P_UnroutableBlocks.cfg` (261,424 states). The change opens a new contradiction (F-1 below). |
-| F-8 waiting occurrences after pause/orphan/removal | REQ-237 | `Prop_PauseOrphanRemoveSkipsWaiting` passes in Main, MainR, Defs and the Queue(1) config. |
-| F-9 misfire count | REQ-217–REQ-219 judge the newest instant on its own | Modeled as written; SCN-206 (RunOnce catch-up) and SCN-211 (Skip, on time) are reachable. Nothing left to choose. |
-| F-10 schedule change with new code | REQ-204 recomputes nextRunAt from now | Modeled (nondeterministic "schedule changed" at node start); no check fails. |
-| F-11 orphan policy undefined | per-job `orphanPolicy` attribute | Modeled as a per-job constant; `Recurring_Defs.cfg` explores both values for two jobs. |
+| F-1 Unroutable job comes back beside the next occurrence | REQ-240 cancels an earlier occurrence's Unroutable job in the write that starts a new occurrence | The run-2 trace config `Recurring_F_RerouteOverlap.cfg` (all four overlap policies, jobs REQ-125 on) now **passes** `Inv_NoOverlapProcessing` (INV-204) and `Prop_SkipOnlyWhenInTheWay`: 262,576 distinct states. New `Recurring_F_RerouteQueue.cfg` (Queue(1), 3 slots, jobs REQ-125 on) passes INV-204, REQ-233, REQ-237 and the skip rule over 7,439,116 distinct states. `Recurring_MainR.cfg` now also checks INV-204 with jobs REQ-125 and passes: 194,712 distinct states. SCN-215 is reachable in 2 states with jobs REQ-125 on. |
+| F-2 stored definition stale after a rollback | REQ-241 re-applies a running node's code when the stored hash matches none of the running nodes that declare the job | `Liv_DefinitionSettles` (*a stale stored definition eventually matches a running declaring node again*, weak fairness on REQ-241 only) and `Prop_StaleOnlyWhenNodeStops` (*once it matches, only a node stopping makes it stale again*) **pass** with two nodes on v1/v2 (`Recurring_Liv_Settles.cfg`, 14,478 distinct states) and with two nodes on three releases and AllowRuntimeOverride (`Recurring_Liv_Settles3.cfg`, 72,078 distinct states). Together they say the definition settles as soon as the set of running nodes stops changing. The check is not vacuous: in a scratch copy of the model with REQ-241 removed from `Next` and from the fairness condition, `Liv_DefinitionSettles` fails with a lasso (back to state 9) in the same config. The run-2 probe `Probe_StaleDefinitionAfterRestore` is still violated in 5 states (`Recurring_P_StaleDefinition2.cfg`), as expected: REQ-241 closes the window one scheduler step later. |
+
+**Settling: what the model can and cannot say.** It can say that under weak fairness of the scheduler's REQ-241 step, and with nodes publishing their declarations instantly (A-6), the stored definition always comes back to a running release, also after a rollback or a late restart of an old node. It cannot say *how soon*: the scheduler's polling interval and heartbeat expiry are amounts of time. One consequence of REQ-241 that the model shows but that is not a finding: whenever every node of the new release is down at once while old nodes still run (for example the first v2 node restarting early in a deploy), REQ-241 writes the old definition back and REQ-204 writes the new one again when the node returns. That is what REQ-241 says (the stored definition follows the running nodes), and with a changed schedule nextRunAt is recomputed from now twice (REQ-227). REQ-241's note, "there is no back-and-forth during a deploy", holds only while at least one new-release node stays up; consider rewording it when you next edit REQ-241.
 
 ## Summary
 | # | Kind | Severity | Requirements | One line |
 |---|---|---|---|---|
-| F-1 | contradiction | high | INV-204, REQ-239, REQ-221, REQ-224, jobs REQ-124, jobs REQ-125 | An Unroutable occurrence job counts as finished, the next occurrence starts, then the old job comes back and both run |
-| F-2 | gap | medium | REQ-204, REQ-206 | After a rollback, or an old node restarting late in a deploy, the stored definition belongs to a release no running node runs, and nothing fixes it |
+| F-1 | ambiguity | medium | REQ-240, REQ-225, REQ-239 | REQ-240's sentence covers every start, but its dependsOn and notes cover only Skip and Queue starts; under Allow the two readings differ |
+| F-2 | gap | low | REQ-240, REQ-226 | An operator's "trigger now" run (perhaps with an overridden payload) whose job is Unroutable is cancelled as Superseded by the next scheduled occurrence |
 
 ---
 
-## F-1 · contradiction · high — An Unroutable occurrence job counts as finished, the next occurrence starts, then the old job comes back and both run
-<!-- finding: contradiction | INV-204 | REQ-239,REQ-221,REQ-224,jobs.REQ-124,jobs.REQ-125 -->
+## F-1 · ambiguity · medium — REQ-240 says "an occurrence starts"; its dependsOn and notes cover only Skip and Queue starts
+<!-- finding: ambiguity | REQ-240 | REQ-240,REQ-225,REQ-239 -->
 
 **Requirements involved**
-- INV-204: *Where a recurring job's overlap policy is Skip or Queue, the system shall never have two of its occurrences' jobs in the Processing state at the same time.*
-- REQ-239: *The system shall treat an occurrence's job as unfinished for overlap decisions while it is not Succeeded, DeadLettered, Cancelled or Unroutable.*
-- REQ-221: *When an occurrence is created and no earlier occurrence of the same recurring job is waiting or has an unfinished job, the system shall enqueue a job with the recurring job's payload and record the occurrence as started.* (REQ-224 is the same for a waiting occurrence.)
-- jobs REQ-125: *While a job is unroutable, when a running worker node registers a handler for its name or one of its aliases, the system shall return the job to enqueued.*
+- REQ-240: *When an occurrence of a recurring job starts while an earlier occurrence of the same recurring job has an unroutable job, the system shall cancel that unroutable job with reason Superseded in the same write that starts the new occurrence.* `dependsOn`: REQ-221, REQ-224, REQ-239. Notes: *"The newer occurrence replaces the stale one, which is what Skip and Queue intend."*
+- REQ-225: *When an occurrence is created while an earlier occurrence of the same recurring job is waiting or has an unfinished job, if the overlap policy is Allow or CancelPrevious, the system shall enqueue a job for the new occurrence and record it as started, and under CancelPrevious also request cancellation of the earlier occurrence's job.*
+- REQ-239: an Unroutable job is not "unfinished" for overlap, so REQ-225's "earlier occurrence's job" never includes it.
 
-**What happens** (TLC counter-example, `Inv_NoOverlapProcessing`, `Recurring_F_RerouteOverlap.cfg`, 8 states). `sync-crm` runs every minute with overlap Skip:
-1. A worker node starts and creates the code-defined job (REQ-203).
-2. The 10:00 occurrence starts and its job is enqueued (REQ-216, REQ-221).
-3. No running worker lists a handler for `SyncCrm`, for example because a deploy dropped it. After UnroutableAfter the 10:00 job is marked Unroutable (jobs REQ-124).
-4. The 10:06 occurrence is created. The 10:00 job is Unroutable, which counts as finished (REQ-239), so nothing is in the way and the 10:06 occurrence starts with an enqueued job (REQ-221).
-5. A worker node with the `SyncCrm` handler starts. The 10:00 job goes back to Enqueued (jobs REQ-125).
-6. The 10:00 job is claimed and is Processing (jobs REQ-123).
-7. The 10:06 job is claimed on another worker and is Processing too. **Two of `sync-crm`'s occurrences' jobs are Processing; INV-204 is violated.**
+**What happens** (TLC counter-example, probe `Probe_Req225StartMeetsUnroutable`, `Recurring_P_Req225Unroutable.cfg`, Allow and CancelPrevious with 3 slots, 5 states). `tenant-sync` runs every minute with overlap Allow:
+1. `tenant-sync` is stored and active (REQ-208).
+2. The 10:00 occurrence starts and its job is enqueued (REQ-221).
+3. The 10:01 occurrence is created while the 10:00 job is still enqueued. Allow starts it too (REQ-225).
+4. No running worker lists the `TenantSync` handler. The 10:00 job has waited UnroutableAfter and is marked Unroutable (jobs REQ-124). The 10:01 job is still Enqueued because it has waited less. **This is the state the probe reports.**
+5. The 10:02 occurrence is created. The 10:01 job is unfinished, so REQ-225 starts it, not REQ-221.
+   - Read REQ-240 as written: the 10:00 job is cancelled with reason Superseded.
+   - Read it as its dependsOn says (REQ-221 and REQ-224 starts only): the 10:00 job stays Unroutable. When `TenantSync` comes back, jobs REQ-125 returns it to Enqueued and it runs beside the newer jobs. Allow permits that.
 
-(Step 2 uses "trigger now" (REQ-226) in the TLC trace; a scheduled trigger gives the same result.)
+With the dependsOn reading, the outcome for the 10:00 job depends on something unrelated: if the 10:01 job had finished before 10:02, the 10:02 occurrence would start under REQ-221 and the 10:00 job *would* be cancelled.
 
-**Why** REQ-239 treats Unroutable as final for overlap, which fixed run-1 F-7. But Unroutable is not final in the jobs module: REQ-125 brings the job back as soon as a handler appears, and that is exactly when the newer occurrence's job becomes runnable too.
+**Why** The sentence says "an occurrence ... starts", and REQ-225 records occurrences as started. But REQ-240 was written for run-2 F-1, which was about INV-204 (Skip and Queue only), and its metadata still reflects that. Skip and Queue never start through REQ-225, so INV-204 holds under both readings. Only Allow and CancelPrevious behave differently. The model uses the sentence as written (A-18).
 
 **Options**
-1. *(recommended)* **Supersede the stale job.** When an occurrence starts (REQ-221 or REQ-224) while an earlier occurrence of the same recurring job has an Unroutable job, cancel that job in the same write. jobs REQ-134 already allows cancelling an Unroutable job. The newer occurrence replaces the stale one, which is what Skip and Queue intend. Checked: with this rule (`Recurring_F_RerouteOverlapFix.cfg`, all four overlap policies, REQ-125 on), `Inv_NoOverlapProcessing` and `Prop_SkipOnlyWhenInTheWay` **pass** over 262,576 distinct states. Cost: the stale occurrence's run is lost; it is recorded as cancelled.
-2. **Undo the Unroutable part of REQ-239** and report the block instead (run-1 F-7 option 2): an Unroutable job is in the way again, and a recurring job blocked by one is reported on the dashboard and in health. INV-204 then holds, but the recurring job stops until someone acts.
-3. **Change jobs REQ-125** so that an occurrence job is cancelled instead of returned to Enqueued when a later occurrence of its recurring job has started. This puts recurring knowledge into the jobs module.
+1. *(recommended)* **Confirm the sentence as written.** Add REQ-225 to dependsOn and say in the notes that every start supersedes, under every overlap policy. A recurring job then never has more than one Unroutable job under any policy, and the outcome no longer depends on whether another earlier job happened to be unfinished. This is what the model checks now; no other requirement changes. Cost: under Allow, a stale run that Allow would have let overlap is lost.
+2. **Limit REQ-240 to Skip and Queue.** Add `"where": "the recurring job's overlap policy is Skip or Queue"`. Under Allow and CancelPrevious, a stale Unroutable job runs when its handler comes back, beside newer runs. That is consistent with Allow, but under CancelPrevious it is odd, because that policy exists to cancel earlier runs. INV-204 is unaffected (it covers Skip and Queue only).
+3. **Limit REQ-240 to REQ-221 and REQ-224 starts**, as dependsOn suggests. Not recommended: as the example shows, the outcome then depends on whether an unrelated earlier job is still unfinished.
 
 **Ready to apply (option 1)**
 ```json
-{ "id": "REQ-240", "kind": "transition", "status": "approved", "strength": "must",
-  "entity": "jobs.Job", "actor": "system", "from": ["Unroutable"], "to": ["Cancelled"],
-  "ears": { "when": "an occurrence of a recurring job is started while an earlier occurrence of the same recurring job has an unroutable job",
-            "shall": "cancel the earlier occurrence's unroutable job in the same write that starts the new occurrence" },
-  "mentions": ["Occurrence.job", "jobs.Job.Unroutable", "jobs.Job.Cancelled"],
-  "dependsOn": ["REQ-239", "REQ-221", "REQ-224"],
-  "notes": "refiner-model 2026-11-06 run 2 F-1: without this, jobs REQ-125 returns the Unroutable job to Enqueued when a handler appears, beside the newer occurrence's job (INV-204). jobs REQ-134 already allows cancelling an Unroutable job." }
+{ "id": "REQ-240", "dependsOn": ["REQ-221", "REQ-224", "REQ-225", "REQ-239"],
+  "notes": "refiner-model 2026-11-06 run 2 F-1 (recommended option; checked by the model over 262,576 states with all four overlap policies). The newer occurrence replaces the stale one, which is what Skip and Queue intend, so a recurring job never holds more than one Unroutable job and only one runs when a handler comes back. Cost: the stale occurrence's run is lost; the cancel reason says why. jobs REQ-134 already allows cancelling an Unroutable job, so the jobs module needs no change. Run 3 F-1: applies to every start under every overlap policy, including Allow and CancelPrevious starts under REQ-225." }
 ```
-Add REQ-240 to the feature that holds REQ-221–REQ-225.
+(Only `dependsOn` and the last sentence of `notes` change; the ears sentence stays.)
 
 ---
 
-## F-2 · gap · medium — After a rollback, or an old node restarting late in a deploy, the stored definition belongs to a release no running node runs
-<!-- finding: gap | REQ-204 | REQ-204,REQ-206 -->
+## F-2 · gap · low — An Unroutable "trigger now" run is cancelled as Superseded by the next scheduled occurrence
+<!-- finding: gap | REQ-240 | REQ-240,REQ-226 -->
 
 **Requirements involved**
-- REQ-204: *When a node with the worker registered starts and the hash of a code-defined recurring job's code definition differs from the definitionHash of the stored code-defined job with that name, the system shall update the stored definition and definitionHash to match the code, …*
-- REQ-204 notes: *"During a rolling deploy, nodes on N and N+1 may rewrite a changed definition back and forth; the last writer wins and it settles when the deploy ends."*
-- REQ-206: *When a running worker node declares an orphaned recurring job again, the system shall … update the stored definition and definitionHash to match that node's code definition …*
+- REQ-226: *When an operator triggers a recurring job now, optionally with an overridden payload, the system shall create an occurrence immediately, using the overridden payload if one was given, decide it by the overlap policy like a scheduled occurrence, and leave nextRunAt unchanged.*
+- REQ-240 (quoted under F-1). Notes: *"Cost: the stale occurrence's run is lost; the cancel reason says why."*
 
-**What happens** (TLC counter-example, probe `Probe_StaleDefinitionAfterRestore`, `Recurring_P_StaleDefinition2.cfg`, 4 states). `weekly-report` is code-defined. Release v1 and release v2 declare it with different schedules:
-1. Node a starts on v1 and creates the job with v1's definition (REQ-203).
-2. Node b starts on v2 and rewrites the stored definition to v2's (REQ-204).
-3. The v2 deploy is rolled back: node b stops. **Only v1 runs, but the stored definition, schedule included, is v2's.** Nothing in the requirements rewrites it until some node starts again.
+**What happens** (TLC counter-example, action probe `ProbeAct_TriggerNowNeverSuperseded`, `Recurring_P_TriggerNowSuperseded.cfg`, 6 states, overlap Skip). `nightly-export` runs at 02:00 with overlap Skip, one export per tenant chosen by payload:
+1. A worker node starts on a release that declares `nightly-export`, and the job is created (REQ-203).
+2. An operator triggers `nightly-export` now with the payload overridden to tenant 42. The occurrence starts and its job is enqueued (REQ-226, REQ-221).
+3. The 02:00 instant passes.
+4. No running worker lists the `NightlyExport` handler, for example because a deploy dropped it. After UnroutableAfter the operator's job is marked Unroutable (jobs REQ-124).
+5. The scheduler fires the 02:00 occurrence. The Unroutable job does not count as unfinished (REQ-239), so the occurrence starts (REQ-221). **In the same write the operator's tenant-42 job is cancelled with reason Superseded (REQ-240).** When the handler comes back, only the 02:00 run with the default payload runs. The tenant-42 export the operator asked for never happens, and nobody is told except by the cancel reason.
 
-The forward case is the same: an old v1 node that restarts after the last v2 node started (a crash during the deploy) writes v1's definition back. When the v1 nodes are then stopped, no node starts, and the stored definition stays v1 while only v2 runs. So the note's "it settles when the deploy ends" holds only if the last node to start runs the new release. REQ-206 has the same root: with nodes on two releases, "that node's code definition" is whichever one restores the job.
-
-**Why** The stored definition is reconciled only at node start (REQ-204) and on restore (REQ-206), so it reflects the last node to start, not the nodes that are running.
+**Why** REQ-240 treats every earlier occurrence as interchangeable with the newer one. For scheduled occurrences that is true: same payload, same work. A "trigger now" occurrence may carry an overridden payload (REQ-226), so a later scheduled occurrence does not do the work it asked for. REQ-240's notes accept that a stale run is lost, but they do not mention the explicit operator run, which is the case where losing it surprises someone.
 
 **Options**
-1. *(recommended)* **Reconcile while running.** Add a scheduler rule: when the scheduler finds a stored code-defined job whose definitionHash matches the code of *no* running worker node that declares it, update it to the code of one such node, with REQ-204's rules. While the hash matches any running node's code nothing changes, so there is no back-and-forth during a deploy, and the definition settles as soon as the running nodes agree. Not model-checked: settling is an "eventually" property and the model has no liveness requirement for it. The state probe is violated for a moment by design.
-2. **Document it.** After a rollback, or after an old node restarted during a deploy, restart one node of the intended release. Correct the REQ-204 note.
-3. **Let only a newer definition overwrite an older one** (needs a definition version). The back-and-forth stops, but a rollback then never restores the old schedule.
+1. *(recommended)* **Accept it and say so.** Add to REQ-240's notes that an Unroutable trigger-now occurrence is superseded like any other, and that the operator sees reason Superseded and triggers again once the handler is back. No behaviour change, and INV-204 stays as checked.
+2. **Exempt overridden-payload occurrences from REQ-240 and keep their Unroutable job in the way.** Add an exception to REQ-239: an occurrence with an overridden payload whose job is Unroutable counts as unfinished. The operator's run is kept. But the recurring job's scheduled runs are skipped (Skip) or queued (Queue) until someone deals with the Unroutable job, which brings back the run-1 F-7 blockage for this case. Not model-checked; payloads are not modeled.
+3. **Exempt them from REQ-240 only.** Not viable: the exempt job comes back beside the newer one when the handler reappears, which is exactly run-2 F-1 (INV-204 violated).
 
 **Ready to apply (option 1)**
 ```json
-{ "id": "REQ-241", "kind": "transition", "status": "approved", "strength": "must",
-  "entity": "RecurringJob", "actor": "system", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
-  "ears": { "when": "the scheduler finds a stored code-defined recurring job whose definitionHash matches the code definition of no running worker node that declares it",
-            "shall": "update the stored definition and definitionHash to the code definition of one such node, keeping its paused or active state, and, if the schedule changed, compute nextRunAt from now as in REQ-227" },
-  "mentions": ["RecurringJob.definitionHash", "RecurringJob.origin", "RecurringJob.nextRunAt", "hosting.Node.Running"],
-  "dependsOn": ["REQ-204", "REQ-227"],
-  "notes": "refiner-model 2026-11-06 run 2 F-2: REQ-204 runs only at node start, so after a rollback or a late restart of an old node the stored definition can belong to a release no running node runs." }
+{ "id": "REQ-240",
+  "notes": "<existing notes> Run 3 F-2: an earlier trigger-now occurrence (REQ-226), even one with an overridden payload, is superseded like a scheduled one; the operator sees reason Superseded and triggers it again once the handler is back." }
 ```
-And correct the REQ-204 note ("it settles when the deploy ends") to point at REQ-241.
 
 ---
 
 ## Modeling assumptions
-These are decisions taken where the sentences were silent. Each one shapes the results above; if one is wrong, say so and rerun. A-1–A-15 are from run 1 (changes marked).
+These are decisions taken where the sentences were silent. Each one shapes the results above; if one is wrong, say so and rerun. A-1–A-17 are from runs 1 and 2 (changes marked).
 | # | Assumption | Affects |
 |---|---|---|
-| A-1 | No clock. Each job keeps a count of due instants passed since nextRunAt was set (0, 1, "2 or more"), and time passing is a nondeterministic step. "nextRunAt computed from now" resets the count to 0. | REQ-215, REQ-216, REQ-227, REQ-204, REQ-206, INV-210 |
+| A-1 | No clock. Each job keeps a count of due instants passed since nextRunAt was set (0, 1, "2 or more"), and time passing is a nondeterministic step. "nextRunAt computed from now" resets the count to 0. | REQ-215, REQ-216, REQ-227, REQ-204, REQ-206, REQ-241, INV-210 |
 | A-2 | REQ-216's compare-and-set is one atomic step, so INV-203 and SCN-200 hold by construction. | INV-203, SCN-200 |
-| A-3 | *(run 2)* The newest due instant is late or on time by nondeterministic choice. With two or more instants due, the older ones are always missed, which assumes the schedule interval exceeds MisfireThreshold. | REQ-217–REQ-219, REQ-234, INV-207 |
+| A-3 | The newest due instant is late or on time by nondeterministic choice. With two or more instants due, the older ones are always missed, which assumes the schedule interval exceeds MisfireThreshold. | REQ-217–REQ-219, REQ-234, INV-207 |
 | A-4 | RunAll(max) is modeled with max = 1, which makes it indistinguishable from RunOnce. | REQ-219 |
 | A-5 | A trigger creates at most one occurrence. | REQ-216–REQ-219 |
-| A-6 | Every modeled node has the worker registered. A node declares exactly what its release declares, and "running" means up. The scheduler (triggers, orphan sweep) and jobs REQ-125's handler registration need some running worker (hosting REQ-40). | REQ-203–REQ-207, REQ-216 |
+| A-6 | Every modeled node has the worker registered. A node declares exactly what its release declares, and "running" means up. *(run 3)* What nodes publish in their heartbeat (declared names, and now each name's definition hash for REQ-241) is known to the scheduler at once; heartbeat expiry is not modeled. The scheduler (triggers, orphan sweep, REQ-241) and jobs REQ-125's handler registration need some running worker (hosting REQ-40). | REQ-203–REQ-207, REQ-216, REQ-241 |
 | A-7 | REQ-224 is a separate system step after the earlier job finishes. | REQ-224 |
 | A-8 | At node start, REQ-203 and REQ-204 are applied together for every declared name. The store is keyed by name, so INV-200 and SCN-207 hold by construction. | REQ-203, REQ-204, INV-200, SCN-207 |
-| A-9 | *(run 2)* Overlap, misfire and orphan policies are fixed per job for a whole run (orphanPolicy is now a per-job attribute). | REQ-205, REQ-207, REQ-212, REQ-221–REQ-225 |
-| A-10 | jobs.Job is reduced to Enqueued / Processing / Failed / Succeeded / DeadLettered / Cancelled / Unroutable plus a "handler still executing" flag (lease lost, jobs REQ-132; abandoned on timeout, jobs REQ-138/REQ-186). *(run 2)* jobs REQ-125 (Unroutable → Enqueued) is added; handlers are abstract, so it can happen whenever a worker runs. | INV-204, REQ-221–REQ-225, REQ-239 |
-| A-11 | *(run 2)* Occurrences whose job is final in the jobs module (not Unroutable) free their slot (modeling artefact). | all |
-| A-12 | *(run 2)* INV-204 is checked as written (`Inv_NoOverlapProcessing`, the Processing state). `Inv_NoOverlapRunning` (any executing handler) is kept only to show the window REQ-238 accepts. | INV-204, REQ-238 |
-| A-13 | definitionHash is the hash of the code definition last applied. A runtime edit under AllowRuntimeOverride changes the stored definition but not the hash. | REQ-204, REQ-212 |
-| A-14 | Configuration-defined jobs are not modeled (INV-209 and REQ-232 are `may`). *(run 2)* So REQ-236 is checked for code-defined names only. | INV-209, REQ-232, REQ-236 |
+| A-9 | Overlap, misfire and orphan policies are fixed per job for a whole run. | REQ-205, REQ-207, REQ-212, REQ-221–REQ-225 |
+| A-10 | jobs.Job is reduced to Enqueued / Processing / Failed / Succeeded / DeadLettered / Cancelled / Unroutable plus a "handler still executing" flag (lease lost, jobs REQ-132; abandoned on timeout, jobs REQ-138/REQ-186). jobs REQ-125 (Unroutable → Enqueued) can happen whenever a worker runs. | INV-204, REQ-221–REQ-225, REQ-239, REQ-240 |
+| A-11 | Occurrences whose job is final in the jobs module (not Unroutable) free their slot (modeling artefact). | all |
+| A-12 | INV-204 is checked as written (`Inv_NoOverlapProcessing`, the Processing state). `Inv_NoOverlapRunning` (any executing handler) is kept only to show the window REQ-238 accepts. | INV-204, REQ-238 |
+| A-13 | definitionHash is the hash of the code definition last applied. A runtime edit under AllowRuntimeOverride changes the stored definition but not the hash. *(run 3)* So REQ-241 never fires because of a runtime edit, and it overwrites one only when no running node's code matches the stored hash, as REQ-204 does at a node start. | REQ-204, REQ-212, REQ-241 |
+| A-14 | Configuration-defined jobs are not modeled (INV-209 and REQ-232 are `may`), so REQ-236 is checked for code-defined names only. | INV-209, REQ-232, REQ-236 |
 | A-15 | The same-trigger warnings from `validate` (REQ-205/REQ-207; REQ-222/REQ-223/REQ-225/REQ-235 with REQ-221) are each one action, with complementary and exhaustive guards. | — |
-| A-16 | *(new)* REQ-236's StartupFailed is abstracted as the node staying down. The hosting module owns the node's states. | REQ-236 |
-| A-17 | *(new)* Two switches separate the checks: `RerouteOn` explores jobs REQ-125 only in `MainR`, `F_RerouteOverlap` and `F_RerouteOverlapFix`, so the run-1 fixes and F-1 are judged separately. `FixCancelUnroutable` turns on F-1's candidate fix (option 1) only in `F_RerouteOverlapFix`; it is not a requirement. | INV-204, F-1 |
+| A-16 | REQ-236's and REQ-210's "fail the host's start" (run 3 wording; was "stop the node from starting") is abstracted as the node staying down. The hosting module owns the node's states. | REQ-236 |
+| A-17 | *(run 3)* One switch remains: `RerouteOn` explores jobs REQ-125 only in `MainR`, `F_RerouteOverlap`, `F_RerouteQueue` and SCN-215, so the run-1 fixes and the Unroutable rules are judged separately. The run-2 switch `FixCancelUnroutable` is gone: REQ-240 is a requirement and is always on. | INV-204, REQ-240 |
+| A-18 | *(new)* REQ-240 is applied to every start: REQ-221, REQ-224 and REQ-225 (Allow and CancelPrevious). "Earlier" means created before, in creation order. See F-1. | REQ-240, REQ-225 |
+| A-19 | *(new)* REQ-240's start and cancel are one atomic step, so jobs REQ-125 cannot return the job to Enqueued between them. The model cannot judge an implementation that reads the job's state and writes later; REQ-240's "in the same write" is what rules that out. | REQ-240, INV-204 |
+| A-20 | *(new)* REQ-241 is a reconciliation step, not a scheduled trigger, so INV-210 does not stop it during maintenance (as for REQ-204 and REQ-206 in INV-210's notes). Whether the schedule changed is a nondeterministic choice, as in REQ-204. | REQ-241, INV-210 |
 
 ## Coverage
 | Modeled | Skipped (reason) |
 |---|---|
-| REQ-201–REQ-208, REQ-211–REQ-227, REQ-233–REQ-237, REQ-239, INV-200, INV-201, INV-203, INV-204, INV-206, INV-207, INV-210, INV-211, SCN-200–SCN-214 | REQ-200, REQ-228, REQ-229, REQ-230, INV-202, INV-208 (need a real clock: time zones, DST, validity window) · REQ-209, REQ-210 (schedule/time-zone validity not representable) · INV-205 (no exceptions or lock waits in the model) · REQ-231 (bookkeeping, nothing depends on it) · REQ-232, INV-209 (strength `may`) · REQ-238 (`info`; shown by `Inv_NoOverlapRunning`) |
+| REQ-201–REQ-208, REQ-211–REQ-227, REQ-233–REQ-237, REQ-239–REQ-241, INV-200, INV-201, INV-203, INV-204, INV-206, INV-207, INV-210, INV-211, SCN-200–SCN-215 | REQ-200, REQ-228, REQ-229, REQ-230, INV-202, INV-208 (need a real clock: time zones, DST, validity window) · REQ-209, REQ-210 (schedule/time-zone validity not representable; REQ-210's rewording changes nothing here) · INV-205 (no exceptions or lock waits in the model) · REQ-231 (bookkeeping, nothing depends on it) · REQ-232, INV-209 (strength `may`) · REQ-238 (`info`; shown by `Inv_NoOverlapRunning`) |
 
-Not judged although modeled: INV-200, INV-203, SCN-200 and SCN-207 hold by construction (A-2, A-8). REQ-219 is modeled only with max = 1 (A-4). REQ-236 is checked for code-defined names only (A-14).
+Not judged although modeled: INV-200, INV-203, SCN-200 and SCN-207 hold by construction (A-2, A-8). REQ-219 is modeled only with max = 1 (A-4). REQ-236 is checked for code-defined names only (A-14). REQ-241's settling is checked as "eventually", not "within a time" (A-6). The cancel reason Superseded (REQ-240) is not modeled.
 
 ## How to reproduce
 From `specs/model/recurring`: `sh gen_cfgs.sh` regenerates the non-scenario cfgs, and `sh run_all.sh` reruns every check below. Each check is one `run_tlc.py Recurring.tla --config <cfg> --stop-at-first --workers 2` call; scenario cfgs add `--no-deadlock`. `run_all.sh <name>` runs one check. The `run*.json`/`run*.md` outputs are gitignored.
 
-- TLC 2.19 throws "unexpected exception" when `-continue` has to rebuild many traces, so every check uses `--stop-at-first`; the run that produced this report grepped every output for that message and found none.
-- The three-slot Queue cfgs (about 7 M distinct states) take 2–3 minutes with other TLC runs on the machine, longer than `run_tlc.py`'s 120 s default. `run_all.sh` therefore uses a 300 s limit (`TLC_TIMEOUT`), and wraps each run in `timeout`, because `run_tlc.py --timeout` does not stop TLC on Windows.
+- TLC 2.19 throws "unexpected exception" when `-continue` has to rebuild many traces, so every check uses `--stop-at-first`. The run that produced this report grepped every output for that message and found none.
+- `run_all.sh` wraps each run in `timeout` because `run_tlc.py --timeout` does not stop TLC on Windows. This run used `TLC_TIMEOUT=290` (so `timeout 300`) for the five three-slot Queue cfgs and `TLC_TIMEOUT=160` (`timeout 170`) for the rest. None hit the limit.
 - Don't start a second TLC run in this folder while one is running: TLC's `-cleanup` removes the shared `states/` folder and the other run fails with "when reading the disk".
 
 | Check | Config | Result |
 |---|---|---|
-| Main: INV-201, INV-210 (both), REQ-233, SCN-200/202, REQ-237, REQ-239 skip rule, INV-204 — 1 job, 2 slots, Skip/Queue × RunOnce/Skip | `Recurring.cfg` | passed, 193,176 distinct, 3 s |
-| Main with jobs REQ-125, every check except INV-204 | `Recurring_MainR.cfg` | passed, 303,768 distinct, 6 s |
-| Definitions: REQ-211/SCN-205, INV-206/SCN-212, SCN-208, INV-211/SCN-214, REQ-236, REQ-237 — 2 jobs, 2 nodes, both orphan policies | `Recurring_Defs.cfg` | passed, 44,552 distinct, 2 s |
-| Overlap, all four policies, 2 slots: REQ-233, INV-204, REQ-239 skip rule | `Recurring_OverlapAll.cfg` | passed, 261,424 distinct, 4 s |
-| Overlap Queue(1), 3 slots: REQ-233, REQ-237, REQ-239 skip rule | `Recurring_OverlapQueue.cfg` | passed, 7,356,508 distinct, 156 s |
-| Overlap Queue(2), 3 slots: REQ-233, REQ-239 skip rule | `Recurring_OverlapQueue2.cfg` | passed, 7,108,540 distinct, 138 s |
-| Run-1 F-1: INV-204, Queue(1), 3 slots | `Recurring_F_WaitingRace.cfg` | passed, 7,356,508 distinct, 125 s |
-| Run-1 F-2: probe + INV-204, Queue(2), 3 slots | `Recurring_P_QueueTwoWaiters.cfg` | passed, 7,108,540 distinct, 123 s |
-| Run-1 F-5: probe, one node, 3 releases | `Recurring_P_StaleDefinition.cfg` | passed, 19,500 distinct, 1 s |
-| Run-1 F-6: probe | `Recurring_P_RuntimeTakenOver.cfg` | passed, 19,500 distinct, 1 s |
-| Run-1 F-7: REQ-239 skip rule | `Recurring_P_UnroutableBlocks.cfg` | passed, 261,424 distinct, 4 s |
-| **F-1**: INV-204 with jobs REQ-125 | `Recurring_F_RerouteOverlap.cfg` | `Inv_NoOverlapProcessing` violated, 8 states |
-| F-1 option 1 (candidate fix) | `Recurring_F_RerouteOverlapFix.cfg` | passed, 262,576 distinct, 4 s |
-| **F-2**: probe, two nodes on v1/v2 | `Recurring_P_StaleDefinition2.cfg` | probe violated, 4 states |
+| Main: INV-201, INV-210 (both), REQ-233, SCN-200/202, REQ-237, REQ-239 skip rule, INV-204 (1 job, 2 slots, Skip/Queue × RunOnce/Skip) | `Recurring.cfg` | passed, 194,712 distinct, 6 s |
+| Main with jobs REQ-125, now including INV-204 | `Recurring_MainR.cfg` | passed, 194,712 distinct, 6 s |
+| Definitions: REQ-211/SCN-205, INV-206/SCN-212, SCN-208, INV-211/SCN-214, REQ-236, REQ-237 (2 jobs, 2 nodes, both orphan policies) | `Recurring_Defs.cfg` | passed, 44,552 distinct, 3 s |
+| Overlap, all four policies, 2 slots: REQ-233, INV-204, REQ-239 skip rule | `Recurring_OverlapAll.cfg` | passed, 262,576 distinct, 7 s |
+| Overlap Queue(1), 3 slots: REQ-233, REQ-237, REQ-239 skip rule | `Recurring_OverlapQueue.cfg` | passed, 7,439,116 distinct, 211 s |
+| Overlap Queue(2), 3 slots: REQ-233, REQ-239 skip rule | `Recurring_OverlapQueue2.cfg` | passed, 7,191,148 distinct, 203 s |
+| Run-1 F-1: INV-204, Queue(1), 3 slots | `Recurring_F_WaitingRace.cfg` | passed, 7,439,116 distinct, 171 s |
+| Run-1 F-2: probe + INV-204, Queue(2), 3 slots | `Recurring_P_QueueTwoWaiters.cfg` | passed, 7,191,148 distinct, 177 s |
+| Run-1 F-5: probe, one node, 3 releases | `Recurring_P_StaleDefinition.cfg` | passed, 19,500 distinct, 2 s |
+| Run-1 F-6: probe | `Recurring_P_RuntimeTakenOver.cfg` | passed, 19,500 distinct, 2 s |
+| Run-1 F-7: REQ-239 skip rule | `Recurring_P_UnroutableBlocks.cfg` | passed, 262,576 distinct, 6 s |
+| **Run-2 F-1**: INV-204 + skip rule with jobs REQ-125 and REQ-240, all four policies | `Recurring_F_RerouteOverlap.cfg` | passed, 262,576 distinct, 6 s |
+| **Run-2 F-1**: INV-204, REQ-233, REQ-237, skip rule with jobs REQ-125 and REQ-240, Queue(1), 3 slots | `Recurring_F_RerouteQueue.cfg` | passed, 7,439,116 distinct, 231 s |
+| **Run-2 F-2**: REQ-241 settling (liveness + action property), two nodes, v1/v2 | `Recurring_Liv_Settles.cfg` | passed, 14,478 distinct, 4 s |
+| **Run-2 F-2**: same, two nodes, three releases, AllowRuntimeOverride | `Recurring_Liv_Settles3.cfg` | passed, 72,078 distinct, 13 s |
+| Run-2 F-2 window (probe; REQ-241 closes it one step later) | `Recurring_P_StaleDefinition2.cfg` | probe violated, 5 states, as expected |
+| **F-1**: a REQ-225 start can meet an Unroutable job (probe) | `Recurring_P_Req225Unroutable.cfg` | probe violated, 5 states |
+| **F-2**: a trigger-now Unroutable job superseded by a scheduled start (action probe) | `Recurring_P_TriggerNowSuperseded.cfg` | action probe violated, 6 states (`run_tlc.py` labels an action-property violation "error"; the TLC message is "Action property … is violated") |
 | REQ-238 window (info) | `Recurring_F_RunningHandlers.cfg` | `Inv_NoOverlapRunning` violated, 7 states, as REQ-238 accepts |
-| SCN-201, 203, 204, 206, 209 (legs `SCN209`, `SCN209b`), 210, 211, 213 | `Recurring_SCNnnn.cfg` | every trap violated as expected (2–6 states): all reachable |
+| SCN-201, 203, 204, 206, 209 (legs `SCN209`, `SCN209b`), 210, 211, 213, 215 | `Recurring_SCNnnn.cfg` | every trap violated as expected (2–6 states): all reachable |
 
-Deadlock checking is on in every non-scenario run, and none was found. Probes (`Probe_…`) are modeling aids, not requirements: each asserts that a situation is unreachable.
+Deadlock checking is on in every non-scenario run, and none was found. Probes (`Probe_…`, `ProbeAct_…`) are modeling aids, not requirements: each asserts that a situation is unreachable. The vacuity check for `Liv_DefinitionSettles` (REQ-241 removed) ran on a scratch copy outside the repository and is not part of `run_all.sh`.
 
 ## Next
-Apply the chosen options to `specs/recurring.json` with the `refiner-requirements` skill (it validates and diffs), then run `refiner-model` again. F-1 also touches the jobs module's view of Unroutable; option 1 needs no jobs change.
+Apply the chosen options to `specs/recurring.json` with the `refiner-requirements` skill (it validates and diffs), then run `refiner-model` again. Both findings are notes-and-metadata changes if you take the recommended options; neither changes a sentence.
