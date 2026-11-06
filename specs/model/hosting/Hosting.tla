@@ -18,8 +18,9 @@ CONSTANTS Nodes,            \* Node instances (entity.bound = 2; 1 in the single
           ConfVals,         \* @req REQ-15  a store is configured?
           DevVals,          \* environment is Development?
           AlertVals,        \* @req REQ-52  alerts registration (independent of client/worker)
-          OkVals,           \* the other modules' startup checks pass? (dashboard REQ-301/REQ-334, recurring
-                            \* REQ-210/REQ-236, redis REQ-502/REQ-505; abstracted, A-19)
+          OkVals,           \* @req REQ-12  the other modules' startup checks: "pass", "failNoStore" (one that
+                            \* needs no store fails: dashboard REQ-301/REQ-334, recurring REQ-210) or "failStore"
+                            \* (one that needs the store fails: redis REQ-502/REQ-505, recurring REQ-236); A-19
           MaxInFlight,      \* worker concurrency in the model (real value irrelevant)
           HealthyAfterPasses, \* @req REQ-50 (3 in the policy; 2 in the model)
           HealthEnv,        \* TRUE: stalls, thresholds and node-count changes may happen
@@ -28,6 +29,7 @@ CONSTANTS Nodes,            \* Node instances (entity.bound = 2; 1 in the single
 ASSUME HealthyAfterPasses \in Nat \ {0}                     \* @req REQ-50
 ASSUME \A e \in ExpectedVals : e >= 1 /\ e \in Versions
 ASSUME RegVals \subseteq {"none", "client", "worker"}
+ASSUME OkVals \subseteq {"pass", "failNoStore", "failStore"}
 
 NodeStatus == {"none", "Starting", "Running", "Draining", "Stopped", "StartupFailed"}
 Final      == {"Stopped", "StartupFailed"}
@@ -39,6 +41,9 @@ CfgSet == [reg: RegVals, auto: AutoVals, valid: ValidVals, tool: ToolVals,
 
 NodeRec == [st: NodeStatus,
             validated: BOOLEAN,         \* REQ-12 options validated (store work only after this)
+            prechecked: BOOLEAN,        \* REQ-12 the startup checks that need no store have passed
+            storeChecked: BOOLEAN,      \* REQ-12 the startup checks that need the store have passed
+            storeCheckBad: BOOLEAN,     \* history: the store checks ran on a schema the node does not accept
             notifActive: BOOLEAN,       \* notification checks running on this node (REQ-59)
             otherBad: BOOLEAN,          \* history: wrote to the shared store while another startup check fails
             hostStopped: BOOLEAN,       \* the host has signalled stop
@@ -65,7 +70,8 @@ VARIABLES cfg, nd, schema, reachable, lock, fewAlive
 vars == <<cfg, nd, schema, reachable, lock, fewAlive>>
 
 \* @req Health.initial = Unhealthy (hosting F-11 resolution): a node is Unhealthy until REQ-58/REQ-35.
-Fresh == [st |-> "none", validated |-> FALSE, notifActive |-> FALSE, otherBad |-> FALSE,
+Fresh == [st |-> "none", validated |-> FALSE, prechecked |-> FALSE, storeChecked |-> FALSE,
+          storeCheckBad |-> FALSE, notifActive |-> FALSE, otherBad |-> FALSE,
           hostStopped |-> FALSE, workerActive |-> FALSE, inFlight |-> 0,
           timeoutPassed |-> FALSE, released |-> 0, claimedEver |-> FALSE, claimedAfterStop |-> FALSE,
           reconciled |-> FALSE, reconcileBad |-> FALSE, migrateBad |-> FALSE, ranUnmigrated |-> FALSE,
@@ -91,9 +97,16 @@ Sch(n)      == IF cfg[n].conf THEN schema ELSE cfg[n].exp
 Accepted(n) == Sch(n) \in {cfg[n].exp, cfg[n].exp - 1}
 \* @req REQ-18, REQ-22  "no migration is pending under REQ-22": AutoMigrate on and the store older.
 Pending(n)  == cfg[n].conf /\ cfg[n].auto /\ schema < cfg[n].exp
+\* @req REQ-12, REQ-23, REQ-43  the schema check passes: neither too old with AutoMigrate off nor too new.
+SchemaCheckPasses(n) == ~(~cfg[n].auto /\ Sch(n) + 1 < cfg[n].exp) /\ ~(Sch(n) > cfg[n].exp)
 \* @req REQ-18  "all startup checks have passed, including option validation (REQ-9) and the dashboard
-\*              checks": options validated, and no other module's startup check fails (A-2, A-19).
-StartupChecksPassed(n) == nd[n].validated /\ Accepted(n) /\ ~Pending(n) /\ cfg[n].ok
+\*              checks, and, where the worker is registered, code-defined recurring jobs have been
+\*              reconciled (REQ-12)": options validated, both groups of REQ-12 startup checks passed,
+\*              and a worker node has reconciled (A-2, A-19).
+StartupChecksPassed(n) ==
+  /\ nd[n].validated /\ nd[n].prechecked /\ nd[n].storeChecked
+  /\ Accepted(n) /\ ~Pending(n)
+  /\ HasWorker(n) => nd[n].reconciled
 \* @req REQ-56  a node that leaves Starting for any reason releases the migration lock first.
 ReleaseIfHeld(n) == IF lock = n THEN NULL ELSE lock
 
@@ -133,19 +146,48 @@ ValidationFails(n) ==
   /\ lock' = ReleaseIfHeld(n)
   /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
-\* Cross-module, abstracted (A-19): dashboard REQ-301/REQ-334 (named by REQ-18), recurring REQ-210/
-\* REQ-236 and redis REQ-502/REQ-505 move a starting node to StartupFailed. No requirement orders them
-\* relative to REQ-12's store steps, so they may fire at any point while Starting.
-OtherCheckFails(n) ==
+\* @req REQ-12  "validate the options and run the startup checks that need no store (dashboard REQ-301
+\*              and REQ-334, recurring REQ-210)": they pass. Unordered with option validation.
+NoStoreChecksPass(n) ==
   /\ nd[n].st = "Starting"
-  /\ ~cfg[n].ok
+  /\ cfg[n].ok # "failNoStore" /\ ~nd[n].prechecked
+  /\ nd' = [nd EXCEPT ![n].prechecked = TRUE]
+  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+
+\* @req REQ-12  Cross-module, abstracted (A-19): one of dashboard REQ-301/REQ-334 or recurring REQ-210
+\*              fails the host's start. These need no store, so no store step precedes them.
+NoStoreCheckFails(n) ==
+  /\ nd[n].st = "Starting"
+  /\ cfg[n].ok = "failNoStore"
   /\ nd' = [nd EXCEPT ![n].st = "StartupFailed"]
+  /\ lock' = ReleaseIfHeld(n)
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
+
+\* @req REQ-12  "then connect to the store, check the schema (failing under REQ-23 or REQ-43) and run the
+\*              startup checks that need the store (redis REQ-502 and REQ-505, recurring REQ-236), and only
+\*              then migrate": they pass. They read the store as it is, before any migration.
+StoreChecksPass(n) ==
+  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked
+  /\ Reach(n) /\ SchemaCheckPasses(n)
+  /\ cfg[n].ok # "failStore" /\ ~nd[n].storeChecked
+  /\ nd' = [nd EXCEPT ![n].storeChecked = TRUE, ![n].io = TRUE,
+                      ![n].storeCheckBad = nd[n].storeCheckBad \/ ~Accepted(n)]
+  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+
+\* @req REQ-12  Cross-module, abstracted (A-19): one of redis REQ-502/REQ-505 or recurring REQ-236 fails
+\*              the host's start, after the schema check and before any migration or reconciliation.
+StoreCheckFails(n) ==
+  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked
+  /\ Reach(n) /\ SchemaCheckPasses(n)
+  /\ cfg[n].ok = "failStore"
+  /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE,
+                      ![n].storeCheckBad = nd[n].storeCheckBad \/ ~Accepted(n)]
   /\ lock' = ReleaseIfHeld(n)
   /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
 \* @req REQ-23  AutoMigrate off and schema more than one version older -> fail the host's start.
 SchemaTooOld(n) ==
-  /\ nd[n].st = "Starting" /\ nd[n].validated
+  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked   \* @req REQ-12 order
   /\ Reach(n)
   /\ ~cfg[n].auto
   /\ Sch(n) + 1 < cfg[n].exp
@@ -155,7 +197,7 @@ SchemaTooOld(n) ==
 
 \* @req REQ-43  Stored schema newer than expected -> fail the host's start (AutoMigrate on or off).
 SchemaTooNew(n) ==
-  /\ nd[n].st = "Starting" /\ nd[n].validated
+  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked   \* @req REQ-12 order
   /\ Reach(n)
   /\ Sch(n) > cfg[n].exp
   /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE]
@@ -164,9 +206,9 @@ SchemaTooNew(n) ==
 
 \* @req REQ-22, REQ-42  AutoMigrate on and schema older: only the holder of the store's migration
 \*                      lock migrates; the others wait (this action is disabled for them) and re-read.
-\* @req REQ-12  only after the options were validated.
+\* @req REQ-12  only after the options were validated and every startup check has passed.
 AcquireMigrationLock(n) ==
-  /\ nd[n].st = "Starting" /\ nd[n].validated
+  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked /\ nd[n].storeChecked
   /\ cfg[n].conf /\ cfg[n].auto /\ reachable
   /\ schema < cfg[n].exp
   /\ lock = NULL
@@ -183,23 +225,24 @@ Migrate(n) ==
   /\ schema' = IF schema < cfg[n].exp THEN cfg[n].exp ELSE schema
   /\ lock' = NULL
   /\ nd' = [nd EXCEPT ![n].migrateBad = nd[n].migrateBad \/ ~cfg[n].valid,
-                      ![n].otherBad = nd[n].otherBad \/ ~cfg[n].ok]
+                      ![n].otherBad = nd[n].otherBad \/ cfg[n].ok # "pass"]
   /\ UNCHANGED <<cfg, reachable, fewAlive>>
 
-\* @req REQ-12  ...where the worker is registered and the schema version is accepted with no migration
-\*              pending, reconcile code-defined recurring jobs.
+\* @req REQ-12  ...and only then [after every startup check], where the worker is registered and the
+\*              schema version is accepted with no migration pending, reconcile code-defined recurring jobs.
 ReconcileRecurring(n) ==
-  /\ nd[n].st = "Starting" /\ nd[n].validated
+  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked /\ nd[n].storeChecked
   /\ HasWorker(n) /\ Reach(n)
   /\ Accepted(n) /\ ~Pending(n)
   /\ ~nd[n].reconciled
   /\ nd' = [nd EXCEPT ![n].reconciled = TRUE, ![n].io = TRUE,
                       ![n].reconcileBad = ~Accepted(n),
-                      ![n].otherBad = nd[n].otherBad \/ ~cfg[n].ok]
+                      ![n].otherBad = nd[n].otherBad \/ cfg[n].ok # "pass"]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-18  Store reachable, schema accepted, no migration pending, startup checks passed -> Running;
-\*              start the worker and its background duties where the worker is registered.
+\* @req REQ-18  Store reachable, schema accepted, no migration pending, startup checks passed and, where
+\*              the worker is registered, recurring jobs reconciled -> Running; start the worker and its
+\*              background duties where the worker is registered.
 \* @req REQ-19  Same event: log the one-screen summary.
 \* @req REQ-25  Claims only once the store is reachable (guard Reach).
 \* Notification checks start on a node with the alerts registration (integrations INV-411/REQ-438, A-20).
@@ -339,7 +382,8 @@ Archive(n) ==
   /\ UNCHANGED <<schema, reachable, fewAlive>>
 
 NodeStep(n) ==
-  \/ HostStarts(n) \/ ValidateOptions(n) \/ ValidationFails(n) \/ OtherCheckFails(n)
+  \/ HostStarts(n) \/ ValidateOptions(n) \/ ValidationFails(n)
+  \/ NoStoreChecksPass(n) \/ NoStoreCheckFails(n) \/ StoreChecksPass(n) \/ StoreCheckFails(n)
   \/ SchemaTooOld(n) \/ SchemaTooNew(n)
   \/ AcquireMigrationLock(n) \/ Migrate(n) \/ ReconcileRecurring(n)
   \/ MarkRunning(n) \/ Claim(n) \/ JobFinishes(n) \/ HostStops(n) \/ TimeoutPasses(n)
@@ -434,6 +478,10 @@ Chk_ReconciledBeforeRunning ==
 \* shared store first (migrate or reconcile).
 Chk_NoStoreWriteBeforeOtherChecks == \A n \in Nodes : ~nd[n].otherBad
 
+\* A-22 from REQ-12 with REQ-23/REQ-32: the startup checks that read the store (recurring REQ-236 reads the
+\* stored recurring jobs) run only on a schema the node accepts, i.e. one this library version can read.
+Chk_StoreChecksOnAcceptedSchema == \A n \in Nodes : ~nd[n].storeCheckBad
+
 \* A-14 from SCN-1 "exactly one warning": the in-memory warning is logged at most once per start.
 Chk_OneMemoryWarning == \A n \in Nodes : nd[n].memWarnings <= 1
 \* A-14 from SCN-1: a Production node running on the in-memory store has logged the warning.
@@ -453,10 +501,11 @@ Scn2_NotReached == ~(\E n \in Nodes : nd[n].st = "StartupFailed" /\ ~cfg[n].vali
 
 \* @req SCN-4  Graceful shutdown: one job finishes, one is cancelled and released; node Stopped.
 Init_SCN4 ==
-  /\ cfg \in [Nodes -> {c \in CfgSet : c.reg = "worker" /\ c.valid /\ c.conf /\ ~c.tool /\ c.ok}]
+  /\ cfg \in [Nodes -> {c \in CfgSet : c.reg = "worker" /\ c.valid /\ c.conf /\ ~c.tool /\ c.ok = "pass"}]
   /\ schema \in InitSchemaVals /\ \A n \in Nodes : schema = cfg[n].exp
   /\ reachable = TRUE /\ lock = NULL /\ fewAlive = FALSE
   /\ nd = [n \in Nodes |-> [Fresh EXCEPT !.st = "Running", !.validated = TRUE, !.workerActive = TRUE,
+                                         !.prechecked = TRUE, !.storeChecked = TRUE, !.reconciled = TRUE,
                                          !.inFlight = 2,
                                          !.claimedEver = TRUE, !.io = TRUE, !.summaryLogged = TRUE]]
 Spec_SCN4 == Init_SCN4 /\ [][Next]_vars

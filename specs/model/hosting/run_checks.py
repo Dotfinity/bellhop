@@ -3,6 +3,8 @@
 
     python run_checks.py [name-substring ...]      (from specs/model/hosting)
 
+An argument equal to a check's full name runs only that check; otherwise it is a substring.
+
 Each check gets a generated cfg in checks/<name>.cfg: the CONSTANTS of a base cfg plus one
 invariant or property (TypeInv always on). TLC runs with --stop-at-first because TLC 2.19 crashes
 under -continue, and every result is scanned for "unexpected exception": only a completed,
@@ -13,7 +15,7 @@ import json, pathlib, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUN_TLC = pathlib.Path.home() / ".claude-personal/skills/refiner-model/scripts/run_tlc.py"
-HARD_TIMEOUT = 175
+HARD_TIMEOUT = 160
 
 # (name, base cfg, kind, property, expect)   kind: inv | prop | deadlock ; expect: holds | violated
 CHECKS = [
@@ -25,10 +27,13 @@ CHECKS = [
         "Inv_NoNotificationWithoutAlerts", "Scn_InvalidOptionNeverClaims", "Scn_SchemaMismatchBlocksRunning",
         "Chk_NoRunningAfterHostStop", "Chk_NoClaimAfterHostStop", "Chk_MigrateBeforeRunning",
         "Chk_ReconcileOnAcceptedSchema", "Chk_NoMigrationWithInvalidOptions", "Chk_OneMemoryWarning",
-        "Chk_MemoryWarningBeforeRunning", "Chk_ReconciledBeforeRunning", "Chk_NoStoreWriteBeforeOtherChecks"]
+        "Chk_MemoryWarningBeforeRunning", "Chk_ReconciledBeforeRunning", "Chk_NoStoreWriteBeforeOtherChecks",
+        "Chk_StoreChecksOnAcceptedSchema"]
 ] + [
     (f"main_{p}", "Hosting.cfg", "prop", p, "holds") for p in [
-        "Prop_MigrationIdempotent", "Prop_MigrateOnlyUnderLock", "Prop_NoUnhealthyToHealthy", "Chk_DrainEnds"]
+        "Prop_MigrationIdempotent", "Prop_MigrateOnlyUnderLock", "Prop_NoUnhealthyToHealthy"]
+] + [
+    ("live_Chk_DrainEnds", "Hosting_Live.cfg", "prop", "Chk_DrainEnds", "holds"),
 ] + [
     ("health_Chk_StallStaysUnhealthy", "Hosting_Health.cfg", "inv", "Chk_StallStaysUnhealthy", "holds"),
     ("health_Prop_NoUnhealthyToHealthy", "Hosting_Health.cfg", "prop", "Prop_NoUnhealthyToHealthy", "holds"),
@@ -42,12 +47,15 @@ CHECKS = [
 ] + [
     (f"2Nfail_{p}", "Hosting_2N_fail.cfg", "inv", p, "holds") for p in [
         "Inv_LockHolderStarting", "Chk_NoMigrationWithInvalidOptions", "Chk_NoStoreWriteBeforeOtherChecks",
-        "Scn_InvalidOptionNeverClaims"]
+        "Scn_InvalidOptionNeverClaims", "Chk_ReconciledBeforeRunning"]
+] + [
+    ("2Nfull_deadlock", "Hosting_2N.cfg", "deadlock", None, "holds"),
 ] + [
     (f"2Nfull_{p}", "Hosting_2N.cfg", k, p, "holds") for k, p in [
         ("inv", "Inv_LockHolderStarting"), ("inv", "Chk_MigrateBeforeRunning"),
         ("inv", "Chk_NoMigrationWithInvalidOptions"), ("inv", "Scn_InvalidOptionNeverClaims"),
         ("inv", "Scn_SchemaMismatchBlocksRunning"), ("inv", "Inv_NoJobsWithoutWorker"),
+        ("inv", "Chk_NoStoreWriteBeforeOtherChecks"), ("inv", "Chk_ReconciledBeforeRunning"),
         ("prop", "Prop_MigrateOnlyUnderLock"), ("prop", "Prop_MigrationIdempotent")]
 ] + [
     (f"scn_{n}", f"Hosting_SCN{n[3:]}.cfg", "trap", f"Scn{n[3:]}_NotReached", "violated")
@@ -89,8 +97,12 @@ def run(name, base, kind, prop, expect):
 
 if __name__ == "__main__":
     pick = sys.argv[1:]
+    names = {c[0] for c in CHECKS}
+    exact = [s for s in pick if s in names]
     for c in CHECKS:
-        if pick and not any(s in c[0] for s in pick):
+        if exact and c[0] not in exact:
+            continue
+        if pick and not exact and not any(s in c[0] for s in pick):
             continue
         name, status, states, exc, expect = run(*c)
         ok = (status == "passed") if expect == "holds" else (status in ("safety",))

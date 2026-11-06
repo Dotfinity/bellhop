@@ -1,7 +1,7 @@
 {
   "module": "hosting",
-  "specHash": "8159591701b2c3c6df7a0962279a88be27a8c81974ce75704522403d07f14f82",
-  "generatedAt": "2026-11-06T18:00:00Z",
+  "specHash": "9cb2ea34d3cbc61533a6cd58982324c3035947bb82b28668ef057f7fb20dd591",
+  "generatedAt": "2026-11-06T21:40:00Z",
   "model": "model/hosting/Hosting.tla",
   "items": {
     "REQ-9": {
@@ -10,9 +10,9 @@
       "note": "ValidationFails (fail the host's start = StartupFailed, final)"
     },
     "REQ-12": {
-      "hash": "48ebc02ddf12769c15eac0e7f3b48e9313d59b65c5d25a77d68670ba1c71792f",
+      "hash": "ce8af1be4114ef622f426b0067489396fb03198d9df1860a32937db8095a73dd",
       "reviewed": false,
-      "note": "HostStarts + ValidateOptions; store actions guarded by validated; ReconcileRecurring only on an accepted schema with no migration pending (Chk_ReconcileOnAcceptedSchema holds). Order vs other modules' startup checks: F-1; vs REQ-18: F-2"
+      "note": "HostStarts; ValidateOptions + NoStoreChecksPass/NoStoreCheckFails (dashboard REQ-301/334, recurring REQ-210); SchemaTooOld/TooNew; StoreChecksPass/StoreCheckFails (redis REQ-502/505, recurring REQ-236); then AcquireMigrationLock/Migrate and ReconcileRecurring. Chk_NoStoreWriteBeforeOtherChecks holds (1 node 85,728; 2 nodes 881,138). Store checks on an unmigrated schema: F-1; redis checks vs connect: F-2"
     },
     "REQ-13": {
       "hash": "386cb916d9322cd55c9dd504e16ea8d7a08d13c0447b8a470431a4eeb2e9b518",
@@ -35,14 +35,14 @@
       "note": "HostStarts sets the warning once when no store and not Development (Chk_OneMemoryWarning, Chk_MemoryWarningBeforeRunning hold)"
     },
     "REQ-18": {
-      "hash": "b29c6e20b9fd78637b09d60bb524afe1a00eee3cf8c3ab69b87dd946b2ed79a4",
+      "hash": "51c40b44c1ee0016909b2c365eb50752b53271411cec222b02cb1d5d219b2e64",
       "reviewed": false,
-      "note": "MarkRunning: Reach, validated, Accepted, ~Pending, other modules' checks pass (A-2, A-19). Chk_MigrateBeforeRunning holds (1 node and 2 nodes full)"
+      "note": "MarkRunning: Reach, validated, both REQ-12 check groups passed, Accepted, ~Pending, and reconciled where the worker is registered. Chk_ReconciledBeforeRunning and Chk_MigrateBeforeRunning hold (1 node 85,728; 2 nodes 881,138)"
     },
     "REQ-19": {
-      "hash": "6775b55d8bf8b62f75c12e85a0234fc3fa125bbcb5f70921083b14f7fa0b84fa",
+      "hash": "7faad003bdb21cf065a1dd7d981d73c44f71d3a0830607b3c823ac9c30a55a59",
       "reviewed": false,
-      "note": "same action as REQ-18 (summaryLogged)"
+      "note": "same action as REQ-18 (summaryLogged); trigger identical to REQ-18"
     },
     "REQ-20": {
       "hash": "28ac7ba8bb6444582a99be523ee672ca9450c2c3cbe398d4db095e5fffc02f91",
@@ -87,7 +87,7 @@
     "REQ-29": {
       "hash": "43ff648b6b34872a98aa5b5d15824e061509ed1da9e90cf85edb1763104de724",
       "reviewed": false,
-      "note": "CancelAndRelease (release attempted; lands only if reachable) + StopNode; Chk_DrainEnds holds"
+      "note": "CancelAndRelease (release attempted; lands only if reachable) + StopNode; Chk_DrainEnds holds on Hosting_Live.cfg (42,720; timed out on the full Hosting.cfg)"
     },
     "REQ-30": {
       "hash": "265579fad1610aa70cf10cc10f0dc05d610525fc5b898951dbfeca500c81a380",
@@ -202,17 +202,17 @@
     "SCN-1": {
       "hash": "0242861c846d71afd75a30927dba2b09bd8362d8349547c3cf602d3f94ebbe56",
       "reviewed": false,
-      "note": "trap reached in 38 states (pass)"
+      "note": "trap reached in 116 states (pass); path now includes both REQ-12 check groups and reconciliation"
     },
     "SCN-2": {
       "hash": "d0c1b9c5d1ce5d47d8a5ff15129b85192147fbf3ba998cab4f5db96e6146b38e",
       "reviewed": false,
-      "note": "trap reached in 14 states (pass); Scn_InvalidOptionNeverClaims holds"
+      "note": "trap reached in 20 states (pass); Scn_InvalidOptionNeverClaims holds (1 node, 2 nodes full)"
     },
     "SCN-3": {
       "hash": "1fc4f033f7fe9fb4216c34505f9befc289aa59d54a8087c6aae6fbf45422873e",
       "reviewed": false,
-      "note": "Scn_SchemaMismatchBlocksRunning holds (1 node, 2 nodes full)"
+      "note": "Scn_SchemaMismatchBlocksRunning holds (1 node 85,728; 2 nodes 881,138)"
     },
     "SCN-4": {
       "hash": "30c6ab1ba1a6301b05ef347fcbe09fb5293df3b0b55067ffd28cd76f77f7b06f",
@@ -222,12 +222,12 @@
     "SCN-5": {
       "hash": "6cc1f10f209dbdcd39aa51ed2a640ec06b99e234cf0f66231eef77a534916929",
       "reviewed": false,
-      "note": "trap reached in 44 states (pass)"
+      "note": "trap reached in 115 states (pass)"
     },
     "SCN-6": {
       "hash": "d402e537049f0870ca757b46ce808e014ed861faeabdfa5415f65ce35efc5751",
       "reviewed": false,
-      "note": "trap reached in 6 states (pass); node already Unhealthy at start"
+      "note": "trap reached in 8 states (pass); node already Unhealthy at start"
     }
   },
   "skipped": {
