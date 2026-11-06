@@ -1,0 +1,551 @@
+{
+  "module": "jobs",
+  "specHash": "1779db13a8ddd6fd161d15e3590919eca421f2346c34b014f1777e30a30f8dee",
+  "generatedAt": "2026-11-06T17:30:00Z",
+  "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla",
+  "items": {
+    "INV-100": {
+      "hash": "ded7c419f09d09bb258cafff445d72c4b9b7f50c3cbefb64b432d4770f524855",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla"
+    },
+    "INV-103": {
+      "hash": "67154542b112b249ffab15aa9805140f3359ba7a74dde81d2d03642a682077bd",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-104": {
+      "hash": "aea79d7810e896a3cfaaf43c5f7a5b186b2a6dcadfc3fb40d3eb4d08ca45f7f8",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-106": {
+      "hash": "6b2ef320268d4abb0e56154752174c74787f9c45f5f4622df7c61074d0245992",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-107": {
+      "hash": "dc5c84f283e73140e6a0933fed55d4f189c7fa79667da92491fbae8704fcb67e",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "INV-108": {
+      "hash": "8c767ded9b2630a52ff6ade644fe0d2a4c97bba79b404c07d162631811fef4b3",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "INV-109": {
+      "hash": "5d8b3d7046bb251a81a6b82458774cf751720561f44fe656daad73bb116857ff",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "INV-110": {
+      "hash": "8ece86a3e5d215536adb6ab2aac245fcd459f13dd48f88ec6f9b92986fa346bb",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "INV-111": {
+      "hash": "8ace1a6cbf14f303e57be3b407104736ad4c769a70860c6b0e75c8ac2217fb9a",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "INV-113": {
+      "hash": "4bef02e483673f096b79c40a7f05d4387d97365a2278f3c4d8d943d3c631e1ca",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-114": {
+      "hash": "7b917f8f208c6a3a83a3934f377b50a5fd1e5ecba0a47540668a90e6883d4299",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-115": {
+      "hash": "810a2fcbd8342b19907fd38453745032c9b8c481282e853f6fd16ea2777df998",
+      "reviewed": false,
+      "note": "Jobs.tla - holds by construction: promotion is one atomic step"
+    },
+    "INV-118": {
+      "hash": "e2b4e32ef9f71ba8a667e98a1c0a557320a6b3c744a5ca67ed043ec78c0d6dbc",
+      "reviewed": false,
+      "note": "Jobs.tla - holds by construction: only Delete and Retention remove a dead letter"
+    },
+    "INV-128": {
+      "hash": "5ff9530e2cf1e30016090bace22d853c601278469e02c0220d0e6d0928058f20",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-129": {
+      "hash": "a7b8ab9db0f2b42f316917f9fe0d29629075efce22af178e1bd8f70f84edc767",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Unique.tla"
+    },
+    "INV-130": {
+      "hash": "d829f3a22574a8eb58fc86aa1037213827b6367c976a4ae43cfe7fac97268f42",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "INV-135": {
+      "hash": "dfe05e6e6f1d50eabc77c3a5cde7f2f5541a4a3d1765bfa4ed6df7853b7e4bba",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla"
+    },
+    "LIV-100": {
+      "hash": "2fffe4a7664eb76b9ceaecb87e4cd183ea8f95a1f2764d55106e8808a766884a",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "LIV-101": {
+      "hash": "33a606f30ffde9217acb530f80cf0548cab007f4f7d679a47072a1d285ff8c01",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "LIV-102": {
+      "hash": "6b2cb2c18589b2f7c7c3a1e66d9d9012b6e2901b2c52a27f8cec7fb9e0b0658a",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-100": {
+      "hash": "93f2063d111409838341953f2c712211398325d82c22b2f85bd7d01a2c040e23",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Flow.tla - MaxAttempts = 2 (5 by default); backoff timing abstracted (A-1)"
+    },
+    "REQ-101": {
+      "hash": "07c6ca29267f82dcfe1e5017a85b2b60a86d271ec33daae7fa3f5eb14ee98597",
+      "reviewed": false,
+      "note": "Jobs.tla - one job name; \"handler for its name or an alias\" abstracted to a per-node handler flag"
+    },
+    "REQ-102": {
+      "hash": "a129c3fa235dc8299d4690f425293df2ed042b5d9df45c8ee2f8f6ad146ed1fd",
+      "reviewed": false,
+      "note": "Jobs.tla - lease and heartbeat abstracted to a leaseExpired flag + LeaseExpires/Renew (A-2)"
+    },
+    "REQ-104": {
+      "hash": "4813d7785c103594fde30c2f348b7e43623a1fef0ae9309a710c03c26c2d5b98",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Flow.tla - retention abstracted to a fair Retention action (A-1); the lengths matter for F-10"
+    },
+    "REQ-106": {
+      "hash": "cb771cbdadeff3105656f1add9867de2d774c1d5b4283659f40283df7145206f",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Throttle.tla - NodeLimit = 1 (Jobs.tla); cluster slot pool Slots (Jobs_Throttle.tla)"
+    },
+    "REQ-107": {
+      "hash": "4ca0488e33f2f8cd08c7854e97acb427f234f8ddb6b7d22a516a2f0f6f3636a0",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla - ActiveSt"
+    },
+    "REQ-108": {
+      "hash": "afa16c47edd86f2b400bb69561ecd65d180574382a5bda347b17852e20dcaaf9",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla - priority 0 by default; the captured-log part is not state"
+    },
+    "REQ-120": {
+      "hash": "58b4a142edefb981badbcc97b9279f3ce92c5762ce6f7e9ed01a1944be9dccbc",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-121": {
+      "hash": "a3d6983adb619c8ac132a650bb417aefed70a902c7bbe69de8c2d1a1f06cd56c",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-122": {
+      "hash": "0fc1826e1c10aaebb775e5932842324598fc64121ae616f43af1af732af1a824",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-123": {
+      "hash": "cae261d04c8febb80b14cb7faf591b89b18de08521561d68ab4876c02038ae35",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-124": {
+      "hash": "157d994df2f6cdffda88e11d7fff6affc7689f68a180754490ee03e00ee76e4e",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-125": {
+      "hash": "6a2807f81376975f35106671453c493fcb0dbbd33967944de19d7128a3942522",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-126": {
+      "hash": "db6a692378904bc1d01021c1498b3460cbe6c15647e30e68bfbd0bcdcdbb4276",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-127": {
+      "hash": "61f12c32d28e7022a05da4b24acfb71718618a20cfb0f30e3146e925c60a3506",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-128": {
+      "hash": "320d17224288e58bf9e4ee2ba00ab5553c57ff4c62726cb22f8a6af0d634c15d",
+      "reviewed": false,
+      "note": "Jobs.tla - same action as REQ-127; result storage is not state"
+    },
+    "REQ-129": {
+      "hash": "2638820a0d3fc7df13d07e274fa5071f388608b660eeec1f26db793e2d72596c",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-130": {
+      "hash": "236d986fbc94d0053d615cfe899a4bfdd12a3f3fc89bdf2b8d79a261b18345b2",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-131": {
+      "hash": "f5ad2c4724b7148f6a35456476da00d1b8319ddba45db309790a87a658db51f3",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-132": {
+      "hash": "f54c645f7a0047bfa1a7fbe40ec8876a4da384443e18365cc8dce9e5798d3584",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-133": {
+      "hash": "e6f8ee5c1231e65f3e234da1a0890ce2bc241b210c4f98f3ec434458432296c4",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-134": {
+      "hash": "d8333d22f0cf40ac51097842ee7bb55eb9c9bbd0fcb3a3ff055ff53405924605",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Flow.tla"
+    },
+    "REQ-135": {
+      "hash": "6e2cf17dd5437e8689b48e62aa2d271b2781e6efad42fe4545c495bb473aface",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-136": {
+      "hash": "bbe29226eed995274c48f3d258e5c8f2099429493a81d7276dfca253a9d87fa6",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-137": {
+      "hash": "825d12ccb1aa6fa7cb0db80b9c9e52a1a444dbc6053c6e4c677a807081678d77",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-138": {
+      "hash": "a6c4f89f6428d9a220d028dd0af4ad125e5e804ab7f0f8428e978ad7b3754d50",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-139": {
+      "hash": "1de9300b84fdee35b00e4c08d23e1b73847f97add78227f80342a77322d3a500",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-140": {
+      "hash": "2d3a23f1365fa4a7e5c49485495b11381221471840f1f01205647a10f54e50da",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-141": {
+      "hash": "6d4d4ef84b7cd7dd0465376c0a5b055d902f473e91b4d1515e9d5ef86b3c2928",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Unique.tla"
+    },
+    "REQ-142": {
+      "hash": "e57ee21788c8f042d086a0e270a7fb90fada9e826a8fd44b0d089be4b80bf1bc",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Unique.tla"
+    },
+    "REQ-143": {
+      "hash": "1c188d770f4984ee459f6d257ad4167ed4865c824af3bb15ccd4ff5682830aa9",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Unique.tla"
+    },
+    "REQ-144": {
+      "hash": "863586d79e8889e385f55099a69648f9e98cecafcbee8a3116829c2e6952fcc4",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Flow.tla"
+    },
+    "REQ-145": {
+      "hash": "94bdefe3c234e9bfa48887434cc05c0f9a3122a02c7f0b29917dc777d77144e2",
+      "reviewed": false,
+      "note": "Jobs.tla, Jobs_Flow.tla"
+    },
+    "REQ-147": {
+      "hash": "63eae862cab274b7a1b4d97a589168d61d91f163d15c2cccd1dd1f91c7d673b4",
+      "reviewed": false,
+      "note": "Jobs.tla - stored like REQ-120; the warning is not state"
+    },
+    "REQ-150": {
+      "hash": "f74fb62088886303a4af8da05313ad9164b89736b13426a580ac8920502e956e",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla"
+    },
+    "REQ-151": {
+      "hash": "aafd1db4a953786b5e679aa0ed0537c55faad998e2b8ead98e8ecede523a4c5a",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla"
+    },
+    "REQ-152": {
+      "hash": "398fb8264b93efd26f69b60c7bd55370e87299d730562156b615f8bdfbfd0d6a",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla"
+    },
+    "REQ-156": {
+      "hash": "72cd54f829934d5552c63f7ebed7a76049397d06228cf2b5e4f0a59f58ccfa2b",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "REQ-158": {
+      "hash": "4b292ee62aa3a34abe27378d365ba7a487566d7218fac89ffcc6cf0cd092374f",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla"
+    },
+    "REQ-160": {
+      "hash": "0f7449642cf5e4cf66b9120259bf956214b724da0517b7e77acbd271e138c320",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-161": {
+      "hash": "8e5e7dcf8473fb20dab61876245a7c1fd96b527af55e303242d2424c3fba646b",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-162": {
+      "hash": "e059b38e04b8f65226338d8b6a648774aa39e76b8cc4b406f1e038b9bda64cc9",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-163": {
+      "hash": "742e485febfeb842d6bfa3d60f0095f98d1dad558dfb428d07b469820da5d9ea",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-170": {
+      "hash": "08a0d8e7ad014e740e6ce16927e1a3ea6f6ba9cc56975d109c35a2814f0d3bce",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-171": {
+      "hash": "57d3d8d661d4aed3dbaa25933dde487c22d65166e59755f0c13bf9aed9fc1f8e",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-172": {
+      "hash": "66dae7dbfcc944337689635691418ee16f86194cd9cb3d3bce7856649879123b",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-173": {
+      "hash": "a25fe1bece110c45fbef5cf9940bcc84f0c6e45e21ba9a1e707fafd088de1fdb",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-174": {
+      "hash": "6b9fb25746eea3f7d124ba18213b1f97d7a4ef0120dd2c54caa5f30cfbcc623a",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-175": {
+      "hash": "fe5286694a78da38b1e5ff14dbc34a787e7ab5267a6bd0776fe5082ad26f7c58",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-176": {
+      "hash": "077398ef64e3e04b6dc1b7ad04926ca46caeb570b6afe02bf8ccb1f94fbf1d2a",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-177": {
+      "hash": "e118c7b8124a3c992b7140c9a68d24e50f51f9b9be90ab7eb9d64023ae84467c",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-179": {
+      "hash": "91eeb272e82b4fe34dadc221591b8fab196326fdc4c8eba54dcc3657174487b2",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-180": {
+      "hash": "a45fcfa6b8b78082d81af9c12b498855b264522cdae068ce80d95606c3094f96",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-181": {
+      "hash": "d5d60c995dc7423dc51d4cd19070df01358a28a215ae11f82c9fdadbfe512197",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-182": {
+      "hash": "38429ba7ef5b17350452f2c77117d393dd9d46ff3f8e48cbed2f9e80d14976ed",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-183": {
+      "hash": "5e763839d8874777b3ae98d4b8e40fe0884e30cd6ae2d0431fe5541aeb29b7ab",
+      "reviewed": false,
+      "note": "Jobs.tla - abstracted to the WaitPasses flag"
+    },
+    "REQ-184": {
+      "hash": "2e6534e28ad03ee915960041d88e9555532e93d6fa01780896a7774c670b6117",
+      "reviewed": false,
+      "note": "Jobs.tla - same action as REQ-127; result storage is not state"
+    },
+    "REQ-185": {
+      "hash": "e600be5c589c60b0624b7c0e5925c43c68f287d2a48881bd1749473caf58fef9",
+      "reviewed": false,
+      "note": "Jobs.tla - absorbed: result size is not state"
+    },
+    "REQ-186": {
+      "hash": "640874174441f0dc4f0af3568a79a21ad090247323403d9103d377b88c6195df",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "REQ-187": {
+      "hash": "e6d268510a263b99d436d185dfe1223b4d5a1b20c3591e58cabca7be3af2a01f",
+      "reviewed": false,
+      "note": "Jobs.tla - abstracted to the GracePasses flag"
+    },
+    "REQ-188": {
+      "hash": "2b86ba3f06b050e764eaa7bcdb1e46f2d662c5871156bcd413c8ab8e423a1aae",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "REQ-189": {
+      "hash": "6b9d0da09bbb6fca39162e67eaa32acb35613e007b88a474d46693933701f1c9",
+      "reviewed": false,
+      "note": "Jobs.tla - every run gets SignalTimeout"
+    },
+    "SCN-100": {
+      "hash": "dfbf6fc367ccbb9e9e608ad513163ad75905206777fa6769062f4a50836d3223",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-101": {
+      "hash": "fa0f19811420bcb7773fc40d7b81d97784af17f0c28fd03d7962d2fd748a03ac",
+      "reviewed": false,
+      "note": "Jobs.tla - maxAttempts = 2 = MaxAttempts"
+    },
+    "SCN-102": {
+      "hash": "622ae32f7a3c71d773681be19f506cf7290b84802f7a4c3e223a1bd51e9a1d9b",
+      "reviewed": false,
+      "note": "Jobs.tla - the trap does not check which node ran which attempt"
+    },
+    "SCN-103": {
+      "hash": "7990b13f40ddf5b3b63f4facdb628304ec74ee82fbbd69d1bcb5bb1af4f9d143",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-104": {
+      "hash": "83e2ce631f7d3fe309f43f1d5f2a8d846b6ebde5ce570b07d70b51c744b33618",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-105": {
+      "hash": "9c7e93386da4f4fc3a77fe98b7776ceb5b17f0dcd36b9e6c6521778d3cd0e1b1",
+      "reviewed": false,
+      "note": "Jobs_Unique.tla"
+    },
+    "SCN-107": {
+      "hash": "79da855a4259c27d0573c9dbd21eb60436a689c5a20b38d9015b24a1bf997eb1",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-108": {
+      "hash": "38376a5a63f20b9cea42086f86499a47cfa0eca0b9f464ce7f9a13df99fb24fc",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "SCN-109": {
+      "hash": "008d29fcb0a857498f85819341396bfece0ff51d8431b49036d922c56d3c20f0",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "SCN-110": {
+      "hash": "cc323107dca85f31cd967c07c1a2d7bac90a5a22e34e075219a6ec734e15fe07",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-111": {
+      "hash": "02a1ddbc79298da7316872e2cea00c56b96f366f5e0e2f0017384ee35044f455",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-112": {
+      "hash": "d3b0c709847fad53f6fa324d64c8db72b1d8776f7bc2ed54b29fc6118a6e657d",
+      "reviewed": false,
+      "note": "Jobs.tla - dead-lettered after MaxAttempts = 2, not 5"
+    },
+    "SCN-114": {
+      "hash": "d0e6ce1fbb73d1449f0c1dd7eff3aa97e414ed8b57bd9f130247a9d179d23626",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "SCN-115": {
+      "hash": "be6208b6014b51a90904a224f3c875f2730b77dab2bd0279b1cd96f4aa6be694",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-117": {
+      "hash": "816300fd92119c080ed4ac0975fcd1d44a4709b4fda283bb8a1561bf1ed05844",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    },
+    "SCN-118": {
+      "hash": "49cbdfc03240957734d2deb91400c286a53653d83282c6851a8d253d07f0c852",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "SCN-119": {
+      "hash": "23bfe9e3f38e88f6a550dfc65fb574f3199fadfad53a3b4457a55c3e27b3d8e2",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla"
+    },
+    "SCN-120": {
+      "hash": "5978fdbe12a6e16aee328716703699a79c48500fc887970fb4731186a688b863",
+      "reviewed": false,
+      "note": "Jobs.tla"
+    }
+  },
+  "skipped": {
+    "INV-101": "could not encode: application transactions are not modeled",
+    "INV-102": "one atomic call: no interleaving to check at this abstraction",
+    "INV-105": "absorbed: the model has no clocks (A-1)",
+    "INV-112": "not modeled separately: same shape as INV-107, see F-2",
+    "INV-116": "data (state history content)",
+    "INV-117": "data (exception details)",
+    "INV-119": "data (history lifetime)",
+    "INV-120": "data (deserialization)",
+    "INV-121": "data (payload compatibility)",
+    "INV-122": "DI scope lifetime, not state",
+    "INV-123": "configuration precedence, not state",
+    "INV-124": "data masking",
+    "INV-125": "single namespace in the model",
+    "INV-126": "data (captured logs)",
+    "INV-127": "data (correlation id)",
+    "INV-131": "could not encode: Inline mode",
+    "INV-132": "could not encode: Inline mode",
+    "INV-133": "could not encode: Inline mode",
+    "INV-134": "could not encode: Inline mode",
+    "INV-136": "observer calls, not state",
+    "INV-137": "could not encode: Inline mode",
+    "REQ-103": "no effect on state: polling interval (timing)",
+    "REQ-105": "payload size is data, not state (REQ-147/REQ-148)",
+    "REQ-109": "no effect on state: cleanup batch size",
+    "REQ-146": "could not encode: Inline mode is call-stack/thread semantics",
+    "REQ-148": "rejection with no state change; payload size is data",
+    "REQ-153": "rejection with no state change; store capability is not modeled",
+    "REQ-154": "data (parentId / trace context of child jobs)",
+    "REQ-155": "client wait API; no job state change",
+    "REQ-157": "strength may",
+    "REQ-159": "strength may",
+    "REQ-164": "strength may",
+    "REQ-165": "data (captured logs)",
+    "REQ-166": "data (progress value)",
+    "REQ-167": "data (tags)",
+    "REQ-168": "data (correlation id)",
+    "REQ-169": "observer calls, not state",
+    "REQ-178": "retired",
+    "SCN-106": "not encoded as its own negative scenario; the Max guard it tests is checked by Inv_KeyMax (Jobs_Throttle.tla)",
+    "SCN-113": "could not encode: application transactions are not modeled (INV-101)",
+    "SCN-116": "payload size is data (REQ-148)"
+  }
+}

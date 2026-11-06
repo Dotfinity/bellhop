@@ -1,0 +1,437 @@
+------------------------------- MODULE Jobs -------------------------------
+\* Generated from specs/jobs.json — edit the requirements, not this file.
+\* Scope: FEAT-101 execution, leases and recovery · FEAT-102 retries and dead letters ·
+\*        FEAT-105 cancellation, requeue and deletion · queue pause / maintenance (FEAT-104 part) ·
+\*        routing (REQ-124, REQ-125) · retention (REQ-145).
+\* Uniqueness is in Jobs_Unique.tla, throttling/priority in Jobs_Throttle.tla,
+\* continuations/chains/batches in Jobs_Flow.tla.
+EXTENDS Naturals, FiniteSets
+
+CONSTANTS Jobs,         \* Job slots (entity.bound = 3; 2 here, see cfg)
+          Nodes,        \* hosting.Node instances (bound = 2)
+          WorkerNodes,  \* nodes with the worker registered (hosting REQ-20)
+          MaxAttempts,  \* @req REQ-100 (5 by default; 2 in the model)
+          NodeLimit,    \* @req REQ-106 (2 x ProcessorCount; 1 in the model)
+          MaxToken,     \* modeling artefact: bound on lease tokens per job slot (CONSTRAINT)
+          QueueOps,     \* whether operators pause queues / maintenance in this run (keeps runs < 120 s)
+          NULL
+
+ASSUME MaxAttempts \in Nat \ {0}                 \* @req REQ-100
+ASSUME NodeLimit \in Nat \ {0}                   \* @req REQ-106
+ASSUME WorkerNodes \subseteq Nodes
+
+VARIABLES job, runs, node, queue, maint
+vars == <<job, runs, node, queue, maint>>
+
+Status == {"none", "Scheduled", "Enqueued", "Processing", "Succeeded", "Failed",
+           "DeadLettered", "Cancelled", "Unroutable"}
+Finished == {"Succeeded", "Cancelled", "DeadLettered"}
+\* history tags (history variable only, never read by an action)
+Hist == {"Failed", "DeadLettered", "Interrupted", "Released", "Timeout", "Unroutable",
+         "Requeued", "ShutdownFailure"}
+
+JobRec == [status: Status, attempt: 0..MaxAttempts, token: Nat, owner: Nodes \cup {NULL},
+           due: BOOLEAN,          \* scheduledAt / retryAt has passed (A-1)
+           leaseExpired: BOOLEAN, \* leaseExpiresAt has passed (A-1)
+           longWait: BOOLEAN,     \* enqueued for longer than UnroutableAfter (A-1, REQ-183)
+           cancelReq: BOOLEAN, cancelTok: Nat, hist: SUBSET Hist]
+RunRec == [node: Nodes, job: Jobs, token: Nat, mode: {"running", "abandoned", "released"},
+           cSig: BOOLEAN, tSig: BOOLEAN, graceOver: BOOLEAN, sSig: BOOLEAN]
+NodeRec == [st: {"Running", "Draining", "Stopped"}, handler: BOOLEAN, shutdownPassed: BOOLEAN]
+
+TypeInv ==
+  /\ job \in [Jobs -> JobRec]
+  /\ runs \subseteq RunRec
+  /\ node \in [Nodes -> NodeRec]
+  /\ queue \in {"Active", "Paused"}
+  /\ maint \in {"Off", "On"}
+
+Init ==
+  /\ job = [j \in Jobs |-> [status |-> "none", attempt |-> 0, token |-> 0, owner |-> NULL,
+                            due |-> FALSE, leaseExpired |-> FALSE, longWait |-> FALSE,
+                            cancelReq |-> FALSE, cancelTok |-> 0, hist |-> {}]]
+  /\ runs = {}
+  /\ node = [n \in Nodes |-> [st |-> "Running", handler |-> TRUE, shutdownPassed |-> FALSE]]
+     \* other node states (stopped, no handler) are reached by Crash / NodeStart
+  /\ queue = "Active"
+  /\ maint = "Off"
+
+RunsOn(n)   == {r \in runs : r.node = n}
+Busy(n)     == Cardinality({r \in RunsOn(n) : r.mode = "running"})
+Current(r)  == job[r.job].status = "Processing" /\ job[r.job].token = r.token
+WorkerUp    == \E n \in WorkerNodes : node[n].st = "Running"
+HandlerUp   == \E n \in WorkerNodes : node[n].st = "Running" /\ node[n].handler
+SetJob(j, f) == job' = [job EXCEPT ![j] = f]
+
+\* ---------------------------------------------------------------- creation
+\* @req REQ-120  enqueue -> Enqueued.  @req REQ-182  schedule for a time not in the future -> Enqueued at once.
+\* @req REQ-147  payload between soft and hard limit is stored too (the warning is not state).
+Enqueue(j) ==
+  /\ job[j].status = "none"
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.attempt = 0, !.owner = NULL, !.due = FALSE,
+                 !.leaseExpired = FALSE, !.longWait = FALSE, !.cancelReq = FALSE, !.hist = {}])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-121  schedule for a future time -> Scheduled.
+Schedule(j) ==
+  /\ job[j].status = "none"
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Scheduled", !.attempt = 0, !.owner = NULL, !.due = FALSE,
+                 !.leaseExpired = FALSE, !.longWait = FALSE, !.cancelReq = FALSE, !.hist = {}])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* ---------------------------------------------------------------- time (A-1: no clocks)
+\* modeling artefact: scheduledAt / retryAt passes.
+DuePasses(j) ==
+  /\ job[j].status \in {"Scheduled", "Failed"} /\ ~job[j].due
+  /\ SetJob(j, [job[j] EXCEPT !.due = TRUE])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* modeling artefact: UnroutableAfter (REQ-183) passes for an unclaimed job.
+WaitPasses(j) ==
+  /\ job[j].status = "Enqueued" /\ ~job[j].longWait
+  /\ SetJob(j, [job[j] EXCEPT !.longWait = TRUE])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* modeling artefact: a heartbeat did not reach the store in time (crash, partition, pause) — A-2.
+LeaseExpires(j) ==
+  /\ job[j].status = "Processing" /\ ~job[j].leaseExpired
+  /\ SetJob(j, [job[j] EXCEPT !.leaseExpired = TRUE])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* ---------------------------------------------------------------- scheduler
+\* @req REQ-122  (INV-115: promotion is one atomic step, so it happens once)
+Promote(j) ==
+  /\ job[j].status = "Scheduled" /\ job[j].due
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.due = FALSE, !.longWait = FALSE])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-130
+RetryDue(j) ==
+  /\ job[j].status = "Failed" /\ job[j].due
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.due = FALSE, !.longWait = FALSE])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-123  claim: active queue, maintenance off, running worker node with the handler and a
+\*               free slot; new leaseToken, attempt + 1, fresh lease.  (INV-113, INV-114, hosting REQ-20)
+\*               Concurrency keys / rate limits / priority order: Jobs_Throttle.tla.
+Claim(n, j) ==
+  /\ job[j].status = "Enqueued"
+  /\ queue = "Active" /\ maint = "Off"
+  /\ n \in WorkerNodes /\ node[n].st = "Running" /\ node[n].handler
+  /\ Busy(n) < NodeLimit                                   \* "free worker slot" (A-4)
+  /\ LET t == job[j].token + 1 IN
+       /\ SetJob(j, [job[j] EXCEPT !.status = "Processing", !.owner = n, !.token = t,
+                      !.attempt = @ + 1, !.leaseExpired = FALSE, !.longWait = FALSE])
+       /\ runs' = runs \cup {[node |-> n, job |-> j, token |-> t, mode |-> "running",
+                              cSig |-> FALSE, tSig |-> FALSE, graceOver |-> FALSE, sSig |-> FALSE]}
+  /\ UNCHANGED <<node, queue, maint>>
+
+\* @req REQ-124  sweep (run by a running worker node, hosting REQ-40)
+MarkUnroutable(j) ==
+  /\ job[j].status = "Enqueued" /\ job[j].longWait
+  /\ WorkerUp /\ ~HandlerUp
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Unroutable", !.hist = @ \cup {"Unroutable"}])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* ---------------------------------------------------------------- lease
+\* @req REQ-126  heartbeat renews the lease of the run that holds the current token (INV-128 fences it).
+\*               An on-time renewal is a no-op in the abstraction; this is the late one (A-2).
+Renew(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ node[r.node].st # "Stopped"
+  /\ Current(r) /\ job[r.job].leaseExpired
+  /\ SetJob(r.job, [job[r.job] EXCEPT !.leaseExpired = FALSE])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-132 REQ-133  lease expired: any running worker node recovers (one event, complementary guards).
+Recover(n, j) ==
+  /\ n \in WorkerNodes /\ node[n].st = "Running"
+  /\ job[j].status = "Processing" /\ job[j].leaseExpired
+  /\ IF job[j].attempt < MaxAttempts
+       THEN SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.owner = NULL, !.leaseExpired = FALSE,
+                        !.longWait = FALSE, !.hist = @ \cup {"Interrupted"}])
+       ELSE SetJob(j, [job[j] EXCEPT !.status = "DeadLettered", !.owner = NULL, !.leaseExpired = FALSE,
+                        !.hist = @ \cup {"Interrupted", "DeadLettered"}])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* ---------------------------------------------------------------- handler outcomes (actor: Handler)
+SetRun(r, f) == runs' = (runs \ {r}) \cup {f}
+
+\* @req REQ-127 REQ-128 REQ-184  handler returns: Succeeded (result stored or dropped for size: not state).
+\* @req INV-128  a run whose token is not current cannot write.
+SucceedByRun(r) == Current(r)
+HandlerReturns(r) ==
+  /\ r \in runs
+  /\ runs' = runs \ {r}
+  /\ IF SucceedByRun(r)
+       THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Succeeded", !.owner = NULL])
+       ELSE UNCHANGED job                     \* INV-128 refused, or job no longer Processing (no rule)
+  /\ UNCHANGED <<node, queue, maint>>
+
+\* Which requirement decides a throw.  A-5: OperationCanceledException is only thrown after the token
+\* was signalled, and the specific OCE rules (REQ-136, REQ-138/186) take precedence over REQ-129/131
+\* (REQ-136 notes).  Both specific rules can apply at once: see Chk_CancelTimeoutOverlap.
+CancelRule(r, e)  == e = "oce" /\ job[r.job].cancelReq                       \* REQ-136
+TimeoutRule(r, e) == e = "oce" /\ r.tSig /\ ~r.graceOver                     \* REQ-138 / REQ-186
+Outcomes(r, e) ==
+  LET a == job[r.job].attempt IN
+  (IF CancelRule(r, e) THEN {"Cancelled"} ELSE {})
+  \cup (IF TimeoutRule(r, e) THEN (IF a < MaxAttempts THEN {"Failed", "DeadLettered"} ELSE {"DeadLettered"}) ELSE {})
+  \cup (IF ~CancelRule(r, e) /\ ~TimeoutRule(r, e)
+          THEN (IF a < MaxAttempts /\ e # "permanent" THEN {"Failed"} ELSE {"DeadLettered"})   \* REQ-129 / REQ-131
+          ELSE {})
+
+\* @req REQ-129 REQ-131 REQ-136 REQ-138 REQ-186   handler throws e
+\*   e = "retryable": retry policy allows · "permanent": policy declines or PermanentJobFailureException · "oce"
+HandlerThrows(r, e) ==
+  /\ r \in runs
+  /\ e = "oce" => (r.cSig \/ r.tSig \/ r.sSig)
+  /\ runs' = runs \ {r}
+  /\ IF Current(r)
+       THEN \E o \in Outcomes(r, e) :
+              LET generic == ~CancelRule(r, e) /\ ~TimeoutRule(r, e)
+                  tags == (IF o = "Failed" THEN {"Failed"} ELSE {})
+                          \cup (IF o = "DeadLettered" THEN {"DeadLettered"} ELSE {})
+                          \cup (IF TimeoutRule(r, e) /\ ~CancelRule(r, e) THEN {"Timeout"} ELSE {})
+                          \cup (IF generic /\ e = "oce" /\ r.sSig /\ ~r.cSig /\ ~r.tSig THEN {"ShutdownFailure"} ELSE {})
+              IN SetJob(r.job, [job[r.job] EXCEPT !.status = o, !.owner = NULL, !.due = FALSE,
+                                 !.hist = @ \cup tags])
+       ELSE UNCHANGED job                     \* INV-128 refused, or job no longer Processing
+  /\ UNCHANGED <<node, queue, maint>>
+
+\* ---------------------------------------------------------------- timeout
+\* @req REQ-137 REQ-189  every job has a timeout; it passes (A-1) and the token is signalled.
+SignalTimeout(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ Current(r) /\ ~r.tSig
+  /\ SetRun(r, [r EXCEPT !.tSig = TRUE])
+  /\ UNCHANGED <<job, node, queue, maint>>
+
+\* modeling artefact: TimeoutGracePeriod (REQ-187) passes.
+GracePasses(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ r.tSig /\ ~r.graceOver
+  /\ SetRun(r, [r EXCEPT !.graceOver = TRUE])
+  /\ UNCHANGED <<job, node, queue, maint>>
+
+\* @req REQ-138 REQ-186  still running after the grace period: abandon the handler (it keeps running
+\*                       in the process, REQ-138 notes), Failed with retry or DeadLettered.
+AbandonOnTimeout(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ r.tSig /\ r.graceOver /\ Current(r)
+  /\ \E allow \in BOOLEAN :
+       IF job[r.job].attempt < MaxAttempts /\ allow
+         THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Failed", !.owner = NULL, !.due = FALSE,
+                              !.hist = @ \cup {"Timeout", "Failed"}])
+         ELSE SetJob(r.job, [job[r.job] EXCEPT !.status = "DeadLettered", !.owner = NULL,
+                              !.hist = @ \cup {"Timeout", "DeadLettered"}])
+  /\ SetRun(r, [r EXCEPT !.mode = "abandoned"])
+  /\ UNCHANGED <<node, queue, maint>>
+
+\* ---------------------------------------------------------------- cancellation (actor: Application/Operator)
+\* @req REQ-134
+CancelPending(j) ==
+  /\ job[j].status \in {"Scheduled", "Enqueued", "Failed", "Unroutable"}   \* Awaiting: Jobs_Flow.tla
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Cancelled"])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-135  record the request and signal the token of the run holding the job.
+CancelProcessing(j) ==
+  /\ job[j].status = "Processing" /\ ~job[j].cancelReq
+  /\ SetJob(j, [job[j] EXCEPT !.cancelReq = TRUE, !.cancelTok = job[j].token])
+  /\ runs' = {IF r.job = j /\ r.token = job[j].token THEN [r EXCEPT !.cSig = TRUE] ELSE r : r \in runs}
+  /\ UNCHANGED <<node, queue, maint>>
+
+\* ---------------------------------------------------------------- shutdown (hosting Node lifecycle)
+\* hosting REQ-27: the host stops a running node.
+NodeDrain(n) ==
+  /\ node[n].st = "Running"
+  /\ node' = [node EXCEPT ![n].st = "Draining"]
+  /\ UNCHANGED <<job, runs, queue, maint>>
+
+\* modeling artefact: ShutdownTimeout passes.
+ShutdownPasses(n) ==
+  /\ node[n].st = "Draining" /\ ~node[n].shutdownPassed
+  /\ node' = [node EXCEPT ![n].shutdownPassed = TRUE]
+  /\ UNCHANGED <<job, runs, queue, maint>>
+
+\* @req REQ-139
+SignalShutdown(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ ~r.sSig
+  /\ node[r.node].st = "Draining" /\ node[r.node].shutdownPassed
+  /\ SetRun(r, [r EXCEPT !.sSig = TRUE])
+  /\ UNCHANGED <<job, node, queue, maint>>
+
+\* @req REQ-140  handler still running: release the lease, take back the attempt.
+ReleaseOnShutdown(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r)
+  /\ node[r.node].st = "Draining"
+  /\ SetJob(r.job, [job[r.job] EXCEPT !.status = "Enqueued", !.owner = NULL, !.attempt = @ - 1,
+                     !.leaseExpired = FALSE, !.longWait = FALSE, !.hist = @ \cup {"Released"}])
+  /\ SetRun(r, [r EXCEPT !.mode = "released"])
+  /\ UNCHANGED <<node, queue, maint>>
+
+\* hosting REQ-29: stop when nothing in flight holds the job, or after ShutdownTimeout and release.
+NodeStop(n) ==
+  /\ node[n].st = "Draining"
+  /\ \/ RunsOn(n) = {}
+     \/ node[n].shutdownPassed /\ \A r \in RunsOn(n) : ~(r.mode = "running" /\ Current(r))
+  /\ node' = [node EXCEPT ![n].st = "Stopped", ![n].shutdownPassed = FALSE]
+  /\ runs' = runs \ RunsOn(n)
+  /\ UNCHANGED <<job, queue, maint>>
+
+\* modeling artefact A-3: a process dies; its handlers die with it, its leases will expire.
+Crash(n) ==
+  /\ node[n].st # "Stopped"
+  /\ node' = [node EXCEPT ![n].st = "Stopped", ![n].shutdownPassed = FALSE]
+  /\ runs' = runs \ RunsOn(n)
+  /\ UNCHANGED <<job, queue, maint>>
+
+\* hosting REQ-12/REQ-18: a node starts, possibly with a handler for the job's name (rolling deploy).
+\* @req REQ-125  a running worker node registers a handler -> Unroutable jobs return to Enqueued.
+NodeStart(n) ==
+  /\ node[n].st = "Stopped"
+  /\ \E h \in BOOLEAN :
+       /\ node' = [node EXCEPT ![n] = [st |-> "Running", handler |-> h, shutdownPassed |-> FALSE]]
+       /\ IF h /\ n \in WorkerNodes
+            THEN job' = [j \in Jobs |-> IF job[j].status = "Unroutable"
+                                           THEN [job[j] EXCEPT !.status = "Enqueued", !.longWait = FALSE]
+                                           ELSE job[j]]
+            ELSE UNCHANGED job
+  /\ UNCHANGED <<runs, queue, maint>>
+
+\* ---------------------------------------------------------------- requeue / delete / retention
+\* @req REQ-141 REQ-142  dead letter -> Enqueued, attempt 0 (bulk = per job, one atomic step each).
+\* @req REQ-143          succeeded / cancelled -> Enqueued, attempt 0, history kept.
+\* @req INV-129          any other state is refused (guard).  Unique-key part: Jobs_Unique.tla.
+Requeue(j) ==
+  /\ job[j].status \in Finished
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.attempt = 0, !.owner = NULL,
+                 !.longWait = FALSE, !.due = FALSE, !.hist = @ \cup {"Requeued"}])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-144  any state but Processing (INV-130 refuses Processing: guard).
+Delete(j) ==
+  /\ job[j].status \notin {"none", "Processing"}
+  /\ SetJob(j, [job[j] EXCEPT !.status = "none"])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* @req REQ-145  retention passed (A-1) -> removed.
+Retention(j) ==
+  /\ job[j].status \in Finished
+  /\ SetJob(j, [job[j] EXCEPT !.status = "none"])
+  /\ UNCHANGED <<runs, node, queue, maint>>
+
+\* ---------------------------------------------------------------- queue / maintenance (actor: Operator)
+\* @req REQ-160
+PauseQueue  == QueueOps /\ queue = "Active" /\ queue' = "Paused" /\ UNCHANGED <<job, runs, node, maint>>
+\* @req REQ-161
+ResumeQueue == QueueOps /\ queue = "Paused" /\ queue' = "Active" /\ UNCHANGED <<job, runs, node, maint>>
+\* @req REQ-162
+MaintOn     == QueueOps /\ maint = "Off" /\ maint' = "On" /\ UNCHANGED <<job, runs, node, queue>>
+\* @req REQ-163
+MaintOff    == QueueOps /\ maint = "On" /\ maint' = "Off" /\ UNCHANGED <<job, runs, node, queue>>
+
+Next ==
+  \/ \E j \in Jobs : \/ Enqueue(j) \/ Schedule(j) \/ DuePasses(j) \/ WaitPasses(j) \/ LeaseExpires(j)
+                     \/ Promote(j) \/ RetryDue(j) \/ MarkUnroutable(j) \/ CancelPending(j)
+                     \/ CancelProcessing(j) \/ Requeue(j) \/ Delete(j) \/ Retention(j)
+  \/ \E n \in Nodes, j \in Jobs : Claim(n, j) \/ Recover(n, j)
+  \/ \E r \in runs : \/ Renew(r) \/ HandlerReturns(r) \/ SignalTimeout(r) \/ GracePasses(r)
+                     \/ AbandonOnTimeout(r) \/ SignalShutdown(r) \/ ReleaseOnShutdown(r)
+                     \/ \E e \in {"retryable", "permanent", "oce"} : HandlerThrows(r, e)
+  \/ \E n \in Nodes : NodeDrain(n) \/ ShutdownPasses(n) \/ NodeStop(n) \/ Crash(n) \/ NodeStart(n)
+  \/ PauseQueue \/ ResumeQueue \/ MaintOn \/ MaintOff
+
+\* Fairness only for actor: system and for the passing of time.
+Fairness ==
+  /\ \A j \in Jobs : /\ WF_vars(Promote(j)) /\ WF_vars(RetryDue(j)) /\ WF_vars(MarkUnroutable(j))
+                     /\ WF_vars(Retention(j)) /\ WF_vars(DuePasses(j)) /\ WF_vars(WaitPasses(j))
+                     /\ WF_vars(\E n \in Nodes : Claim(n, j)) /\ WF_vars(\E n \in Nodes : Recover(n, j))
+  /\ \A n \in Nodes : WF_vars(ShutdownPasses(n)) /\ WF_vars(NodeStop(n))
+  /\ \A j \in Jobs :
+       /\ WF_vars(\E r \in runs : r.job = j /\ SignalTimeout(r))
+       /\ WF_vars(\E r \in runs : r.job = j /\ GracePasses(r))
+       /\ WF_vars(\E r \in runs : r.job = j /\ AbandonOnTimeout(r))
+       /\ WF_vars(\E r \in runs : r.job = j /\ SignalShutdown(r))
+       /\ WF_vars(\E r \in runs : r.job = j /\ ReleaseOnShutdown(r))
+       /\ WF_vars(\E r \in runs : r.job = j /\ Renew(r))
+
+Spec == Init /\ [][Next]_vars /\ Fairness
+
+StateBound == \A j \in Jobs : job[j].token <= MaxToken     \* CONSTRAINT (modeling artefact)
+
+\* ======================================================================== properties
+\* @req INV-103  never more than one worker holds an unexpired claim on a job.
+Inv_SingleClaim ==
+  \A j \in Jobs : Cardinality({r \in runs : r.job = j /\ r.mode = "running" /\ Current(r)
+                                            /\ ~job[j].leaseExpired}) <= 1
+
+\* @req INV-106  never more jobs running at once on a node than its limit.  "Running" = a handler is
+\*               executing in that node's process, including one abandoned after a timeout (A-4).
+Inv_NodeConcurrency ==
+  \A n \in Nodes : Cardinality({r \in RunsOn(n) : node[n].st # "Stopped"}) <= NodeLimit
+
+\* @req INV-130  a processing job cannot be deleted.
+Inv_NoDeleteProcessing == \A j \in Jobs : job[j].status = "Processing" => ~ENABLED Delete(j)
+
+\* @req INV-129  only finished jobs can be requeued.
+Inv_RequeueOnlyFinished == \A j \in Jobs : job[j].status \notin Finished => ~ENABLED Requeue(j)
+
+\* @req SCN-103 INV-104  a processing job whose lease has not passed is never recovered.
+Scn_HealthyNotRecovered ==
+  \A j \in Jobs, n \in Nodes : (job[j].status = "Processing" /\ ~job[j].leaseExpired) => ~ENABLED Recover(n, j)
+
+\* @req SCN-104  a claimed job cannot be claimed again.
+Scn_NoSecondClaim == \A j \in Jobs, n \in Nodes : job[j].status = "Processing" => ~ENABLED Claim(n, j)
+
+\* @req SCN-107  a cancelled scheduled job is never promoted.
+Scn_CancelledNotPromoted == \A j \in Jobs : job[j].status = "Cancelled" => ~ENABLED Promote(j)
+
+\* @req SCN-110 INV-113  a paused queue is not drained.  @req INV-114  nor during maintenance.
+Scn_PausedNotDrained ==
+  \A j \in Jobs, n \in Nodes : (queue = "Paused" \/ maint = "On") => ~ENABLED Claim(n, j)
+
+\* @req SCN-117 INV-128  a stale run cannot complete a job.
+Scn_StaleCannotComplete ==
+  \A r \in runs : job[r.job].token # r.token => ~ENABLED (SucceedByRun(r) /\ HandlerReturns(r))
+
+\* @req SCN-120 hosting REQ-20  a process without the worker never claims.
+Scn_NoWorkerNoClaim == \A j \in Jobs, n \in Nodes \ WorkerNodes : ~ENABLED Claim(n, j)
+
+\* Same-trigger check (validate warning REQ-129/REQ-131 + REQ-136/REQ-138): a run that may throw
+\* OperationCanceledException while both REQ-136 and REQ-138 apply.  Violation = two rules, two outcomes.
+Chk_CancelTimeoutOverlap ==
+  \A r \in runs : ~(Current(r) /\ CancelRule(r, "oce") /\ TimeoutRule(r, "oce"))
+
+\* @req LIV-101  while processing with an expired lease and a worker node running, the job is
+\*               eventually returned or dead-lettered (or the condition stops holding, A-6).
+Liv_LeaseRecovered ==
+  \A j \in Jobs : (job[j].status = "Processing" /\ job[j].leaseExpired /\ WorkerUp)
+                  ~> (job[j].status \in {"Enqueued", "DeadLettered"}
+                      \/ ~(job[j].status = "Processing" /\ job[j].leaseExpired) \/ ~WorkerUp)
+
+\* ---------------------------------------------------------------- positive scenario traps (expected VIOLATED)
+\* @req SCN-100
+Scn100_NotReached == ~\E j \in Jobs : job[j].status = "Succeeded" /\ job[j].attempt = 1 /\ job[j].hist = {}
+\* @req SCN-101  (maxAttempts = 2 = MaxAttempts)
+Scn101_NotReached == ~\E j \in Jobs : job[j].status = "DeadLettered" /\ job[j].attempt = 2
+                        /\ job[j].hist = {"Failed", "DeadLettered"}
+\* @req SCN-102
+Scn102_NotReached == ~\E j \in Jobs : job[j].status = "Succeeded" /\ job[j].attempt = 2
+                        /\ job[j].hist = {"Interrupted"}
+\* @req SCN-111
+Scn111_NotReached == ~\E j \in Jobs : job[j].status = "Succeeded" /\ "Unroutable" \in job[j].hist
+                        /\ job[j].hist \cap {"Failed", "DeadLettered"} = {}
+\* @req SCN-112  (dead-lettered after MaxAttempts, requeued, claimed: attempt 1)
+Scn112_NotReached == ~\E j \in Jobs : job[j].status = "Processing" /\ job[j].attempt = 1
+                        /\ {"DeadLettered", "Requeued"} \subseteq job[j].hist
+\* @req SCN-115
+Scn115_NotReached == ~\E j \in Jobs : job[j].status = "Processing" /\ job[j].attempt = 1
+                        /\ "Released" \in job[j].hist
+                        /\ \E r \in runs : r.job = j /\ r.mode = "released" /\ r.node # job[j].owner
+
+\* ---------------------------------------------------------------- gap probes (finding evidence; expected VIOLATED)
+\* A job whose cancellation was requested is claimed and runs again without anyone requeuing it.
+Gap_CancelRequestLost ==
+  ~\E j \in Jobs : job[j].cancelReq /\ job[j].status = "Processing" /\ job[j].token > job[j].cancelTok
+                   /\ "Requeued" \notin job[j].hist
+\* A handler that honours the shutdown token gets a counted, failed attempt.
+Gap_CooperativeShutdownCounted == ~\E j \in Jobs : "ShutdownFailure" \in job[j].hist
+=============================================================================
