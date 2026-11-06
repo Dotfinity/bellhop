@@ -15,13 +15,13 @@
       "states": ["Starting", "Running", "Draining", "Stopped", "StartupFailed"],
       "initial": ["Starting"],
       "final": ["Stopped", "StartupFailed"],
-      "attributes": ["hasClient", "hasWorker", "hasDashboard", "environment", "concurrencyLimit", "clockSkew", "inFlightJobs"],
+      "attributes": ["hasClient", "hasWorker", "hasAlerts", "hasDashboard", "environment", "concurrencyLimit", "clockSkew", "inFlightJobs"],
       "bound": 2
     },
     {
       "name": "Store",
       "description": "The configured job store as seen by a node.",
-      "attributes": ["kind", "schemaVersion", "expectedSchemaVersion", "autoMigrate", "capabilities", "reachable"]
+      "attributes": ["kind", "schemaVersion", "expectedSchemaVersion", "autoMigrate", "capabilities", "reachable", "migrationLockHolder"]
     },
     {
       "name": "Options",
@@ -32,7 +32,7 @@
       "name": "Health",
       "description": "The result reported by the Bellhop health check on a node.",
       "states": ["Healthy", "Degraded", "Unhealthy"],
-      "initial": ["Healthy"],
+      "initial": ["Unhealthy"],
       "attributes": ["schedulingLag", "deadLetterGrowth", "failuresInWindow", "nodesAlive", "consecutivePasses"]
     }
   ],
@@ -86,8 +86,9 @@
     {
       "id": "REQ-9", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "an option fails validation", "shall": "stop the node from starting and report a message that names the option and the fix" },
+      "ears": { "while": "a node is starting", "if": "an option fails validation", "shall": "fail the host's start with a message that names the option and the fix" },
       "mentions": ["Options.valid"],
+      "notes": "Decided by the owner on 2026-11-06 (refiner-model F-10, recommended option): StartupFailed fails the host's start, the .NET convention for options validation. Process exit also releases a held migration lock (REQ-56, TECH-126).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-3", "quote": "Options MUST be validated at startup (ValidateOnStart) with messages that name the option and the fix." }]
     },
     {
@@ -107,8 +108,10 @@
     {
       "id": "REQ-12", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "to": ["Starting"],
-      "ears": { "when": "the host starts", "shall": "start the Bellhop node and only then connect to the store and check the schema, and, where the worker is registered, reconcile code-defined recurring jobs" },
-      "mentions": ["Store.reachable", "Store.schemaVersion", "Node.hasWorker"],
+      "ears": { "when": "the host starts", "shall": "start the Bellhop node, validate the options, and only then connect to the store and check the schema (failing under REQ-23 or REQ-43, or migrating under REQ-22), and, where the worker is registered and the schema version is accepted with no migration pending, reconcile code-defined recurring jobs" },
+      "mentions": ["Store.reachable", "Store.schemaVersion", "Node.hasWorker", "Options.valid"],
+      "dependsOn": ["REQ-9", "REQ-22", "REQ-23", "REQ-43"],
+      "notes": "Step order fixed by refiner-model 2026-11-06 F-4 (recommended option): a node that is about to fail validation must not migrate or write to the shared store first, and recurring definitions are reconciled only into a schema the node accepts.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5", "quote": "Database connectivity, schema checks and job reconciliation happen in the hosted service, after the host starts." }]
     },
     {
@@ -133,9 +136,10 @@
     {
       "id": "REQ-16", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
-      "ears": { "while": "a node is starting", "if": "no store is configured and the environment is not Development", "shall": "log a warning that the in-memory store is in use" },
+      "ears": { "when": "a node starts", "if": "no store is configured and the environment is not Development", "shall": "log a warning that the in-memory store is in use, once, before the node is marked running" },
       "mentions": ["Store.kind", "Node.environment"],
       "dependsOn": ["REQ-15"],
+      "notes": "Event-driven and once, before running (refiner-model 2026-11-06 F-7, recommended option), so SCN-1's 'exactly one warning' is guaranteed. Same startup event as REQ-53 and REQ-54, with a different consequence.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-2" }]
     },
     {
@@ -148,17 +152,18 @@
     {
       "id": "REQ-18", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
-      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "mark the node running and, where the worker is registered, start the worker and its background duties" },
-      "mentions": ["Node.hasWorker", "Store.reachable", "Store.schemaVersion"],
-      "dependsOn": ["REQ-52"],
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43), no migration is pending under REQ-22 and all startup checks have passed, including option validation (REQ-9) and the dashboard checks (dashboard REQ-301, REQ-334)", "shall": "mark the node running and, where the worker is registered, start the worker and its background duties" },
+      "mentions": ["Node.hasWorker", "Store.reachable", "Store.schemaVersion", "Store.autoMigrate", "Options.valid"],
+      "dependsOn": ["REQ-52", "REQ-22", "REQ-9"],
+      "notes": "refiner-model 2026-11-06: 'no migration is pending' (F-2, recommended option) means that with AutoMigrate on the schema must equal the expected version, so REQ-22 always runs first and the migration releases its own lock; the accepted one-older version applies with AutoMigrate off (rolling deploys). The startup checks are named (dashboard findings F-5, recommended option) so the dashboard checks precede 'running' by definition.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-5, SET-7; §4.5 EXE-10" }]
     },
     {
       "id": "REQ-19", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Running"],
-      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43) and all startup checks have passed", "shall": "log a one-screen summary with the store and schema version, which of the client, worker and dashboard are registered, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
-      "mentions": ["Store.schemaVersion", "Node.hasClient", "Node.hasWorker", "Node.hasDashboard", "Node.concurrencyLimit"],
-      "notes": "Same event as REQ-18 with a second consequence; the agent should model one action. The Redis store adds the server family to the summary (REQ-500). Secrets never appear in it (NFR-41).",
+      "ears": { "while": "a node is starting", "when": "the store is reachable, the stored schema version is accepted (REQ-23, REQ-43), no migration is pending under REQ-22 and all startup checks have passed, including option validation (REQ-9) and the dashboard checks (dashboard REQ-301, REQ-334)", "shall": "log a one-screen summary with the store and schema version, which of the client, worker, alerts and dashboard are registered, queues and concurrency, the registered job count, recurring jobs with their next run, and the dashboard path and auth mode" },
+      "mentions": ["Store.schemaVersion", "Node.hasClient", "Node.hasWorker", "Node.hasAlerts", "Node.hasDashboard", "Node.concurrencyLimit"],
+      "notes": "Same event as REQ-18 with a second consequence; the agent should model one action, and the `when` text must stay identical to REQ-18's. The Redis store adds the server family to the summary (REQ-500). Secrets never appear in it (NFR-41).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-8" }]
     },
     {
@@ -189,9 +194,9 @@
     {
       "id": "REQ-23", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "AutoMigrate is off and the stored schema version is more than one version older than the expected version", "shall": "stop the node from starting with a message that includes the path of the migration script" },
+      "ears": { "while": "a node is starting", "if": "AutoMigrate is off and the stored schema version is more than one version older than the expected version", "shall": "fail the host's start with a message that includes the path of the migration script" },
       "mentions": ["Store.autoMigrate", "Store.schemaVersion", "Store.expectedSchemaVersion"],
-      "notes": "Decided by the owner on 2026-11-06: a node accepts the schema version it expects or one version older, so library N+1 runs on schema N as STO-5 and NFR-18 require. A newer schema is REQ-43. Migrations therefore stay additive within a major version (TECH-127).",
+      "notes": "Decided by the owner on 2026-11-06: a node accepts the schema version it expects or one version older, so library N+1 runs on schema N as STO-5 and NFR-18 require. A newer schema is REQ-43. Migrations therefore stay additive within a major version (TECH-127). StartupFailed fails the host's start (refiner-model 2026-11-06 F-10, owner's choice of the recommended option).",
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3", "quote": "a version mismatch MUST fail fast at startup with the script path in the message" }]
     },
     {
@@ -232,16 +237,17 @@
     {
       "id": "REQ-29", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Draining"], "to": ["Stopped"],
-      "ears": { "while": "a node is draining", "when": "every in-flight job has finished, or ShutdownTimeout has passed and the remaining jobs' tokens were cancelled and their leases released", "shall": "stop the node" },
+      "ears": { "while": "a node is draining", "when": "every in-flight job has finished, or ShutdownTimeout has passed, the remaining jobs' tokens were cancelled and the release of their leases was attempted", "shall": "stop the node" },
       "mentions": ["Node.inFlightJobs", "jobs.Job.Processing"],
       "dependsOn": ["REQ-28"],
-      "notes": "The job side (cancel token, release lease, job returns to Enqueued) is REQ-140 in the jobs module.",
+      "notes": "The job side (cancel token, release lease, job returns to Enqueued) is REQ-140 in the jobs module. The release is best-effort (refiner-model 2026-11-06 F-5, recommended option): a release that fails because the store is down is covered by lease expiry (jobs REQ-132), and that attempt then counts, so a store outage never blocks shutdown.",
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6" }]
     },
     {
       "id": "REQ-30", "kind": "transition", "status": "approved",
       "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
-      "ears": { "if": "an internal error stalls processing (store error, scheduler error, serialization error or recovery error)", "shall": "report the node Unhealthy" },
+      "ears": { "when": "the health check runs", "if": "an internal error (store error, scheduler error, serialization error or recovery error) is stalling processing", "shall": "report the node Unhealthy" },
+      "notes": "Turned into a health check (refiner-model 2026-11-06 F-3, recommended option) so that REQ-35's 'every check has passed' covers it and the node cannot report Healthy while the stall lasts. Same health-check event as REQ-31 to REQ-35, REQ-44 and REQ-58.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-3", "quote": "An error that would stall processing MUST also flip the health check." }]
     },
     {
@@ -269,20 +275,20 @@
     },
     {
       "id": "REQ-34", "kind": "transition", "status": "approved",
-      "entity": "Health", "actor": "system", "from": ["Healthy", "Unhealthy"], "to": ["Degraded"],
+      "entity": "Health", "actor": "system", "from": ["Healthy"], "to": ["Degraded"],
       "ears": { "when": "the health check runs", "if": "no check that reports Unhealthy fails, and scheduling lag exceeds SchedulingLagThreshold, dead-letter growth exceeds DeadLetterGrowthThreshold or failures in the window exceed FailureThreshold", "shall": "report the node Degraded" },
       "mentions": ["Health.schedulingLag", "Health.deadLetterGrowth", "Health.failuresInWindow"],
       "dependsOn": ["REQ-46", "REQ-47", "REQ-48"],
-      "notes": "Decided by the owner on 2026-11-06: backlog and failure checks give Degraded; MinNodesAlive gives Unhealthy (REQ-44). From Unhealthy as well, so a node whose store comes back but still has a backlog drops to Degraded instead of staying Unhealthy until the backlog clears.",
+      "notes": "Decided by the owner on 2026-11-06: backlog and failure checks give Degraded; MinNodesAlive gives Unhealthy (REQ-44). Recovery from Unhealthy now always goes through Degraded by REQ-58, backlog or not (refiner-model 2026-11-06 F-8, recommended option), so this rule no longer needs `from: Unhealthy`.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5; §4.15 BLT-5" }]
     },
     {
       "id": "REQ-35", "kind": "transition", "status": "approved",
-      "entity": "Health", "actor": "system", "from": ["Degraded", "Unhealthy"], "to": ["Healthy"],
+      "entity": "Health", "actor": "system", "from": ["Degraded"], "to": ["Healthy"],
       "ears": { "when": "the health check runs", "if": "every check has passed on the last HealthyAfterPasses runs in a row", "shall": "report the node Healthy" },
       "mentions": ["Health.consecutivePasses"],
       "dependsOn": ["REQ-50"],
-      "notes": "Decided by the owner on 2026-11-06: recovery needs consecutive passes so the status does not flap near a threshold. The source only implies recovery.",
+      "notes": "Decided by the owner on 2026-11-06: recovery needs consecutive passes so the status does not flap near a threshold. The source only implies recovery. Only from Degraded: an Unhealthy node first drops to Degraded by REQ-58 (refiner-model 2026-11-06 F-8). Health starts Unhealthy (entity `initial`, refiner-model 2026-11-06 F-11, recommended option), so this rule is the only route to Healthy and readiness waits HealthyAfterPasses check intervals after startup.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5 (implied)" }]
     },
     {
@@ -311,10 +317,10 @@
     {
       "id": "REQ-40", "kind": "invariant", "status": "approved",
       "entity": "Node",
-      "ears": { "while": "a node has no worker registered", "shall": "run no background duty on that node: no promotion of scheduled or retry jobs, recurring triggers, lease recovery, retention cleanup, outbox relay, Unroutable or orphan sweep, Redis recurring reconciliation or notification check" },
+      "ears": { "while": "a node has no worker registered", "shall": "run no background duty on that node: no promotion of scheduled or retry jobs, recurring triggers, lease recovery, retention cleanup, outbox relay, Unroutable or orphan sweep, Redis recurring reconciliation, dashboard node-sample pruning or dashboard rollup computation" },
       "mentions": ["Node.hasWorker"],
       "dependsOn": ["REQ-52"],
-      "notes": "Decided by the owner on 2026-11-06: every background duty is part of the worker. Many workers share them safely through store-side atomic operations and leases; a process without AddWorker does none of them.",
+      "notes": "Decided by the owner on 2026-11-06: every background duty is part of the worker. Many workers share them safely through store-side atomic operations and leases; a process without AddWorker does none of them. Two changes from refiner-model 2026-11-06: notification checks moved to the alerts registration (REQ-59, owner's decision on integrations F-6), and dashboard sample pruning and rollups were added to the list (dashboard F-8, recommended option). A node taking a metrics sample of itself is not a background duty in this sense (dashboard REQ-314).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
@@ -339,19 +345,25 @@
     {
       "id": "REQ-43", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "the stored schema version is newer than the expected version", "shall": "stop the node from starting with a message that names both versions and says the library is older than the schema" },
+      "ears": { "while": "a node is starting", "if": "the stored schema version is newer than the expected version", "shall": "fail the host's start with a message that names both versions and says the library is older than the schema" },
       "mentions": ["Store.schemaVersion", "Store.expectedSchemaVersion"],
-      "notes": "Decided by the owner on 2026-11-06: a node accepts its expected schema or one version older, never a newer one, whether AutoMigrate is on or off. During a rolling deploy a node on N that restarts after an N+1 node migrated fails here; that is acceptable because it is being replaced.",
+      "notes": "Decided by the owner on 2026-11-06: a node accepts its expected schema or one version older, never a newer one, whether AutoMigrate is on or off. During a rolling deploy a node on N that restarts after an N+1 node migrated fails here; that is acceptable because it is being replaced. Failing the host's start (refiner-model 2026-11-06 F-10, owner's choice) means that restart takes the whole process down, HTTP endpoints included, until the pod is replaced.",
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-3, STO-5" }]
     },
     {
       "id": "REQ-44", "kind": "transition", "status": "approved",
       "entity": "Health", "actor": "system", "from": ["Healthy", "Degraded"], "to": ["Unhealthy"],
-      "ears": { "when": "the health check runs", "if": "fewer than MinNodesAlive nodes are alive", "shall": "report the node Unhealthy" },
-      "mentions": ["Health.nodesAlive"],
-      "dependsOn": ["REQ-49"],
-      "notes": "Decided by the owner on 2026-11-06. Every node reports this at the same moment, so an orchestrator that restarts on Unhealthy restarts the whole cluster together; the docs should say so.",
+      "ears": { "where": "the worker is registered", "when": "the health check runs", "if": "fewer than MinNodesAlive nodes with the worker registered have sent a heartbeat within NodeLostAfter", "shall": "report the node Unhealthy" },
+      "mentions": ["Health.nodesAlive", "Node.hasWorker"],
+      "dependsOn": ["REQ-49", "REQ-60"],
+      "notes": "Decided by the owner on 2026-11-06. Every node reports this at the same moment, so an orchestrator that restarts on Unhealthy restarts the whole cluster together; the docs should say so. 'Alive' is defined as in the dashboard's no-worker banner (refiner-model 2026-11-06 F-9, recommended option); NodeLostAfter is defined in REQ-60. Client-only processes do not evaluate it, so a down worker never takes a web API out of readiness; they get the dashboard banner instead.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5; §4.15 BLT-5" }]
+    },
+    {
+      "id": "REQ-60", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "treat a node as lost after NodeLostAfter without a heartbeat, 5 minutes by default (NodeLostAfter)" },
+      "notes": "Decided by the owner on 2026-11-06 (originally integrations REQ-411). refiner-model 2026-11-06 follow-up to dashboard F-13 and hosting F-9: NodeLostAfter is used by hosting REQ-44, dashboard REQ-341 and integrations REQ-404, and heartbeats belong to hosting, so the constant moved here from integrations REQ-411, which is retired.",
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
     {
       "id": "REQ-45", "kind": "assumption", "status": "approved",
@@ -380,7 +392,7 @@
     {
       "id": "REQ-49", "kind": "assumption", "status": "approved",
       "ears": { "shall": "default MinNodesAlive to 1 (MinNodesAlive)" },
-      "notes": "Decided by the owner on 2026-11-06. The reporting node is itself alive, so the default never fires; applications opt in by raising it.",
+      "notes": "Decided by the owner on 2026-11-06. Only worker nodes evaluate REQ-44 and a reporting worker node is itself alive, so the default never fires; applications opt in by raising it.",
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-5" }]
     },
     {
@@ -399,28 +411,70 @@
     },
     {
       "id": "REQ-52", "kind": "assumption", "status": "approved",
-      "ears": { "shall": "let a process configure the store with AddBellhop and then register the client (AddClient), the worker (AddWorker), both or neither, and map the dashboard independently, where registering the worker also makes the client available because handlers enqueue jobs" },
-      "mentions": ["Node.hasClient", "Node.hasWorker", "Node.hasDashboard"],
-      "notes": "Decided by the owner on 2026-11-06, replacing the node modes of SET-7 (REQ-11 retired). Like Hangfire's AddHangfire / AddHangfireServer split: a web API registers the client and maps the dashboard; a worker service registers the worker. The pieces interact only through the store.",
+      "ears": { "shall": "let a process configure the store with AddBellhop and then register the client (AddClient), the worker (AddWorker) and the alerts registration in any combination, including none, and map the dashboard independently, where registering the worker also makes the client available because handlers enqueue jobs" },
+      "mentions": ["Node.hasClient", "Node.hasWorker", "Node.hasAlerts", "Node.hasDashboard"],
+      "notes": "Decided by the owner on 2026-11-06, replacing the node modes of SET-7 (REQ-11 retired). Like Hangfire's AddHangfire / AddHangfireServer split: a web API registers the client and maps the dashboard; a worker service registers the worker. The pieces interact only through the store. The alerts registration was added by the owner on 2026-11-06 (refiner-model, integrations F-6): alerting runs on a worker node, a client or dashboard node, or a node that only does alerts, so a node-lost alert can fire when no worker is alive. Its API name is a TECH matter.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
       "id": "REQ-53", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
-      "ears": { "while": "a node is starting", "if": "code-defined recurring jobs are declared and the worker is not registered", "shall": "log a warning that this node will not create, update or keep those recurring jobs alive" },
+      "ears": { "when": "a node starts", "if": "code-defined recurring jobs are declared and the worker is not registered", "shall": "log a warning that this node will not create, update or keep those recurring jobs alive, once, before the node is marked running" },
       "mentions": ["Node.hasWorker"],
       "dependsOn": ["REQ-52"],
-      "notes": "Decided by the owner on 2026-11-06: recurring definitions belong to worker processes (recurring REQ-203 to REQ-207).",
+      "notes": "Decided by the owner on 2026-11-06: recurring definitions belong to worker processes (recurring REQ-203 to REQ-207). Event-driven and once, before running (refiner-model 2026-11-06 F-7); same startup event as REQ-16 and REQ-54.",
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3" }]
     },
     {
       "id": "REQ-54", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Starting"],
-      "ears": { "while": "a node is starting", "if": "Bellhop is configured but neither the client nor the worker is registered and the dashboard is not mapped", "shall": "log a warning that Bellhop will do nothing on this node" },
-      "mentions": ["Node.hasClient", "Node.hasWorker", "Node.hasDashboard"],
+      "ears": { "when": "a node starts", "if": "Bellhop is configured but none of the client, the worker and the alerts registration is registered and the dashboard is not mapped", "shall": "log a warning that Bellhop will do nothing on this node, once, before the node is marked running" },
+      "mentions": ["Node.hasClient", "Node.hasWorker", "Node.hasAlerts", "Node.hasDashboard"],
       "dependsOn": ["REQ-52"],
-      "notes": "Follows from the owner's decision of 2026-11-06 that the client and the worker are both opt-in; without it, a forgotten AddWorker fails silently (P6).",
+      "notes": "Follows from the owner's decision of 2026-11-06 that the client and the worker are both opt-in; without it, a forgotten AddWorker fails silently (P6). Event-driven and once, before running (refiner-model 2026-11-06 F-7); same startup event as REQ-16 and REQ-53.",
       "sources": [{ "document": "requirements.md", "section": "§2 P6" }]
+    },
+    {
+      "id": "REQ-55", "kind": "transition", "status": "approved",
+      "entity": "Node", "actor": "Host", "from": ["Starting"], "to": ["Stopped"],
+      "ears": { "while": "a node is starting", "when": "the host stops", "shall": "stop retrying the store connection and mark the node stopped without starting the worker or any background duty" },
+      "mentions": ["Node.hasWorker", "Store.reachable"],
+      "dependsOn": ["REQ-25", "REQ-27"],
+      "notes": "Added by refiner-model 2026-11-06 F-1 (recommended option): REQ-25 can keep a node Starting for as long as a database outage lasts, and without this rule a host stop in that window was followed by REQ-18 starting a worker that claims jobs. Same host-stop event as REQ-27, which covers a running node.",
+      "sources": [{ "document": "hosting.findings.md", "section": "F-1" }]
+    },
+    {
+      "id": "REQ-56", "kind": "invariant", "status": "approved",
+      "entity": "Store",
+      "ears": { "while": "a node holds the store's migration lock", "shall": "keep that node starting, and have a node that leaves starting for any reason release the lock first" },
+      "mentions": ["Store.migrationLockHolder", "Store.schemaVersion"],
+      "dependsOn": ["REQ-42", "REQ-22"],
+      "notes": "Added by refiner-model 2026-11-06 F-4 (recommended option): a node that failed startup while holding the lock left the other nodes waiting under REQ-42. With StartupFailed failing the host's start (REQ-9, F-10), process exit releases a store-native lock (TECH-126).",
+      "sources": [{ "document": "hosting.findings.md", "section": "F-4" }]
+    },
+    {
+      "id": "REQ-57", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "assume that build-time tooling (OpenAPI generation, EF Core design-time services) builds the host without starting it" },
+      "dependsOn": ["REQ-14"],
+      "notes": "Added by refiner-model 2026-11-06 F-6 (recommended option): REQ-14 follows from this and REQ-12, because neither REQ-12 nor REQ-18 checks for build tooling. The conformance tests check the assumption against the listed tools.",
+      "sources": [{ "document": "hosting.findings.md", "section": "F-6" }]
+    },
+    {
+      "id": "REQ-58", "kind": "transition", "status": "approved",
+      "entity": "Health", "actor": "system", "from": ["Unhealthy"], "to": ["Degraded"],
+      "ears": { "while": "the node is Unhealthy", "when": "the health check runs", "if": "no check that reports Unhealthy fails", "shall": "report the node Degraded" },
+      "dependsOn": ["REQ-34", "REQ-35"],
+      "notes": "Added by refiner-model 2026-11-06 F-8 (recommended option): recovery always goes Unhealthy → Degraded → Healthy after HealthyAfterPasses passes (REQ-35), so a recovering node with a backlog never reports better than one without. Same health-check event as REQ-30 to REQ-35 and REQ-44.",
+      "sources": [{ "document": "hosting.findings.md", "section": "F-8" }]
+    },
+    {
+      "id": "REQ-59", "kind": "invariant", "status": "approved",
+      "entity": "Node",
+      "ears": { "while": "a node does not have the alerts registration", "shall": "run no notification check on that node, whether or not the worker is registered" },
+      "mentions": ["Node.hasAlerts", "Node.hasWorker"],
+      "dependsOn": ["REQ-52"],
+      "notes": "Decided by the owner on 2026-11-06 (refiner-model, integrations F-6): alerting is a separate registration that can live on a worker node, a client or dashboard node, or a node that does only alerts, so the node-lost alert still fires when the last worker is down. The checks themselves, and how several alerts nodes share them, are in the integrations module.",
+      "sources": [{ "document": "integrations.findings.md", "section": "F-6" }]
     }
   ],
 
@@ -485,22 +539,25 @@
   ],
 
   "features": [
-    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-51", "REQ-52", "REQ-53", "REQ-54", "REQ-43", "REQ-45", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
-    { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35", "REQ-44", "REQ-46", "REQ-47", "REQ-48", "REQ-49", "REQ-50"] },
-    { "id": "FEAT-3", "name": "Graceful shutdown", "members": ["REQ-27", "REQ-28", "REQ-29", "SCN-4"] },
+    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-51", "REQ-52", "REQ-53", "REQ-54", "REQ-43", "REQ-45", "REQ-56", "REQ-57", "REQ-59", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
+    { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35", "REQ-44", "REQ-46", "REQ-47", "REQ-48", "REQ-49", "REQ-50", "REQ-58", "REQ-60"] },
+    { "id": "FEAT-3", "name": "Graceful shutdown", "members": ["REQ-27", "REQ-28", "REQ-29", "REQ-55", "SCN-4"] },
     { "id": "FEAT-4", "name": "Product context", "members": ["REQ-1", "REQ-2", "REQ-3", "REQ-4", "REQ-5", "REQ-6", "REQ-7", "REQ-8", "REQ-10", "REQ-36", "REQ-37", "REQ-38", "REQ-39"] }
   ],
 
   "glossary": {
     "client": "AddClient(): IJobClient for application code; included in the worker (REQ-52).",
-    "worker": "AddWorker(...): job execution plus every background duty (REQ-52, REQ-40).",
+    "worker": "AddWorker(...): job execution plus every background duty except notification checks (REQ-52, REQ-40).",
+    "alerts": "The alerts registration: runs the notification checks (integrations module) on a node, independently of the client and the worker; a node may do only alerts (REQ-52, REQ-59).",
+    "MigrationLock": "Store-side lock that serialises schema migrations across starting nodes; held only by a starting node (REQ-42, REQ-56, TECH-126).",
     "ShutdownTimeout": "Time in-flight jobs get to finish after the host stops; 30 s by default (REQ-28).",
     "AutoMigrate": "Whether a node applies embedded schema migrations at startup; true by default (REQ-21).",
     "ClockSkewThreshold": "Node-versus-database clock difference above which a warning is logged; 5 s by default (REQ-45).",
     "SchedulingLagThreshold": "Scheduling lag above which the node reports Degraded; 60 s by default (REQ-46).",
     "DeadLetterGrowthThreshold": "Dead-letter growth above which the node reports Degraded; 100 in 15 min by default (REQ-47).",
     "FailureThreshold": "Failed attempts in the window above which the node reports Degraded; 50 in 5 min by default (REQ-48).",
-    "MinNodesAlive": "Live nodes below which every node reports Unhealthy; 1 by default (REQ-49).",
+    "MinNodesAlive": "Worker nodes with a heartbeat within NodeLostAfter below which every worker node reports Unhealthy; 1 by default (REQ-49, REQ-44).",
+    "NodeLostAfter": "Time without a heartbeat after which a node is considered lost; 5 min by default (REQ-60).",
     "HealthyAfterPasses": "Consecutive passing health runs needed to return to Healthy; 3 by default (REQ-50).",
     "LeaseDuration": "How long a claim stays valid without a heartbeat; defined in the jobs module (REQ-102)."
   }

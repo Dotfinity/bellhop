@@ -47,8 +47,9 @@
     {
       "id": "REQ-401", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
-      "ears": { "where": "a rule watches repeated failures with threshold N", "when": "a job fails for the Nth time", "shall": "create a delivery for that rule with the job as subject" },
-      "mentions": ["NotificationRule.threshold", "jobs.Job.attempt"],
+      "ears": { "where": "a rule watches repeated failures with threshold N", "when": "an attempt of a job ends with an exception or a timeout and the job's attempt number is N, whether the job becomes failed or dead-lettered", "shall": "create a delivery for that rule with the job as subject" },
+      "mentions": ["NotificationRule.threshold", "jobs.Job.attempt", "jobs.Job.Failed", "jobs.Job.DeadLettered"],
+      "notes": "refiner-model 2026-11-06 F-5, option 1: failed attempts are counted, including the final one that dead-letters the job. A lease-expiry interruption (jobs REQ-132) is not a failure and does not count. The count is the job's attempt number, so an operator requeue (jobs REQ-141) starts it again.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11", "quote": "job failed N times" }]
     },
@@ -64,9 +65,10 @@
     {
       "id": "REQ-403", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
-      "ears": { "where": "a rule watches recurring jobs", "when": "a recurring job's occurrence is missed, or starts later than the rule's tolerance after its due time", "shall": "create a delivery for that rule with the recurring job as subject" },
+      "ears": { "where": "a rule watches recurring jobs", "when": "a recurring job's occurrence is missed, starts later than the rule's tolerance after its due time, or has not started when the rule's tolerance after its due time has passed", "shall": "create a delivery for that rule with the recurring job as subject" },
       "mentions": ["NotificationRule.tolerance", "recurring.RecurringJob.nextRunAt"],
-      "notes": "Missed occurrences come from REQ-220. 'Late' needs someone to notice an occurrence that never fired, for example when every node is down; who raises it then is open.",
+      "dependsOn": ["INV-411"],
+      "notes": "Missed occurrences come from recurring REQ-220. refiner-model 2026-11-06 F-6, decided by the owner: notification checks run on nodes with the alerts registration (INV-411), not on workers, so an occurrence that never fired because no worker is alive is still reported, from the stored nextRunAt, by the 'has not started' branch.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11; §4.15 BLT-5" }]
     },
@@ -74,9 +76,9 @@
       "id": "REQ-404", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
       "ears": { "where": "a rule watches nodes", "when": "a node has sent no heartbeat for NodeLostAfter", "shall": "create a delivery for that rule with the node as subject" },
-      "dependsOn": ["REQ-411"],
+      "dependsOn": ["INV-411"],
       "mentions": ["hosting.Node"],
-      "notes": "Decided by the owner on 2026-11-06: NodeLostAfter is 5 minutes (REQ-411), longer than the 60 s lease, so jobs of a lost node are recovered well before the alert; fewer false alarms during long pauses and deploys.",
+      "notes": "Decided by the owner on 2026-11-06: NodeLostAfter is 5 minutes (hosting REQ-60), longer than the 60 s lease, so jobs of a lost node are recovered well before the alert; fewer false alarms during long pauses and deploys. refiner-model 2026-11-06 F-6, decided by the owner (instead of accepting the gap): the check runs on a node with the alerts registration (INV-411, REQ-438), which can be a worker node, a client or dashboard node, or a node that only does alerts, so the last worker going down is still reported as long as an alerts node runs.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11", "quote": "node lost" }]
     },
@@ -100,11 +102,39 @@
     {
       "id": "INV-400", "kind": "invariant", "status": "approved",
       "entity": "Delivery",
-      "ears": { "shall": "never send more than one non-test delivery for the same rule and subject within the rule's cooldown; later ones within the cooldown are recorded as suppressed" },
+      "ears": { "shall": "never send more than one non-test delivery for the same rule and subject within one subject cooldown; later ones within the subject cooldown are recorded as suppressed" },
       "mentions": ["Delivery.rule", "Delivery.subject", "Delivery.isTest", "NotificationRule.cooldown"],
-      "notes": "The source says deliveries are 'rate-limited and deduplicated per rule and subject within a cooldown'. Decided by the owner on 2026-11-06: there is also a cap per rule across subjects (INV-407) with a digest at the end of the cooldown (REQ-414).",
+      "dependsOn": ["INV-409", "INV-410"],
+      "notes": "The source says deliveries are 'rate-limited and deduplicated per rule and subject within a cooldown'. Decided by the owner on 2026-11-06: there is also a cap per rule across subjects (INV-407) with a digest at the end of the rule cooldown (REQ-414). refiner-model 2026-11-06 F-1, F-2, F-4: enforced by deciding Pending or Suppressed at creation (INV-409) and keeping a cooldown open while a delivery created in it is still pending (INV-410); the model showed that combination makes INV-400 and INV-407 hold. A failed delivery closes its subject cooldown (REQ-433, F-3).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
+    },
+    {
+      "id": "INV-409", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "when": "a non-test, non-digest delivery is created for a rule and subject", "shall": "create it as suppressed if a subject cooldown for that rule and subject is open, or if MaxDeliveriesPerCooldown non-test, non-digest deliveries for the rule were created as pending within its open rule cooldown; otherwise create it as pending and open, for the rule's cooldown length, the subject cooldown and, if none is open, the rule cooldown" },
+      "mentions": ["Delivery.Pending", "Delivery.Suppressed", "Delivery.isTest", "Delivery.isDigest", "Delivery.rule", "Delivery.subject", "NotificationRule.cooldown"],
+      "dependsOn": ["INV-400", "INV-407", "REQ-413"],
+      "notes": "refiner-model 2026-11-06 F-1 option 1 (decide at creation, counting deliveries created as pending) and F-4 option 1 (two periods of the rule's cooldown length: one per rule and subject, one per rule). This is the decision rule for the to: [Pending, Suppressed] of REQ-400 to REQ-406. Counting sent deliveries instead fails: two deliveries created before either is sent both see nothing sent. When both the subject cooldown and the cap apply, the delivery counts as deduplicated, not as capped, so it is not in the digest (REQ-414).",
+      "tags": ["M2"]
+    },
+    {
+      "id": "INV-410", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "while": "a non-test, non-digest delivery created within a subject cooldown or a rule cooldown is pending", "shall": "keep that cooldown open" },
+      "mentions": ["Delivery.Pending", "Delivery.isTest", "Delivery.isDigest", "NotificationRule.cooldown"],
+      "dependsOn": ["INV-400", "INV-407", "REQ-408"],
+      "notes": "refiner-model 2026-11-06 F-2 option 1: retries (REQ-412: up to 5 attempts, backoff to 10 min) outlast a typical cooldown, and without this a delivery still retrying is sent alongside the next one. Trade-off accepted: a cooldown can last up to the full retry span, about 20 minutes with the defaults.",
+      "tags": ["M2"]
+    },
+    {
+      "id": "REQ-433", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "when": "a non-test, non-digest delivery is marked failed", "shall": "close the subject cooldown of its rule and subject, so that the next event for that subject creates a pending delivery" },
+      "mentions": ["Delivery.Failed", "Delivery.subject", "Delivery.isTest", "Delivery.isDigest", "NotificationRule.cooldown"],
+      "dependsOn": ["INV-400", "INV-409", "REQ-415"],
+      "notes": "refiner-model 2026-11-06 F-3 option 1: deduplication assumes the first delivery reached the channel; a failed first delivery must not silence the rest of the cooldown. The rule cooldown (cap) is not closed. Cost: a channel that stays down produces one Failed delivery per event, each logged by REQ-415.",
+      "tags": ["M2"]
     },
     {
       "id": "REQ-407", "kind": "transition", "status": "approved",
@@ -141,6 +171,24 @@
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
+    {
+      "id": "INV-411", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "shall": "evaluate notification rules, create their deliveries and send deliveries only on a running node that has the alerts registration and holds the notification lease, checking the lease in the same store write that creates or updates the delivery" },
+      "mentions": ["hosting.Node.hasAlerts", "Delivery.Pending", "Delivery.Sent"],
+      "dependsOn": ["REQ-438"],
+      "notes": "refiner-model 2026-11-06 F-6, decided by the owner: alerting is its own registration, independent of the client and the worker, so it can run on a worker node, a client or dashboard node, or a node that only does alerts; it keeps working when no worker is alive. The notification check is no longer a worker duty (hosting REQ-40). The lease, fenced in the store write, makes one node the detector, so two nodes noticing the same breach create one delivery (closes modeling assumption A-11). Test deliveries (REQ-409) can be requested from any dashboard node but are sent by the lease holder.",
+      "tags": ["M2"]
+    },
+    {
+      "id": "REQ-438", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "where": "notification rules are configured", "when": "no running node with the alerts registration holds an unexpired notification lease", "shall": "let one running node with the alerts registration take the notification lease for LeaseDuration and renew it every HeartbeatInterval while it runs" },
+      "mentions": ["hosting.Node.hasAlerts", "NotificationRule"],
+      "dependsOn": ["INV-411"],
+      "notes": "refiner-model 2026-11-06 F-6: the same kind of lease as the outbox relay (REQ-435) and the cleanup lease (jobs REQ-164), with the job lease's length and heartbeat (jobs REQ-102) so no new constant is needed.",
+      "tags": ["M2"]
+    },
 
     {
       "id": "REQ-420", "kind": "invariant", "status": "approved",
@@ -163,11 +211,20 @@
     {
       "id": "REQ-422", "kind": "transition", "status": "approved",
       "entity": "jobs.Job", "actor": "system", "from": ["Processing"], "to": ["Failed", "DeadLettered"],
-      "ears": { "while": "an HTTP job is processing", "if": "the response status is not accepted, the success predicate does not hold, or the request times out", "shall": "fail the attempt so the retry policy decides between Failed and DeadLettered, and store the response if there was one" },
+      "ears": { "while": "an HTTP job is processing", "if": "the response status is not accepted, the success predicate does not hold, the request times out, or no response arrives because the connection, name resolution or TLS handshake fails", "shall": "fail the attempt so the retry policy decides between Failed and DeadLettered, and store the response if there was one" },
       "mentions": ["HttpCall.status", "jobs.Job.result"],
-      "notes": "Reading confirmed by the owner on 2026-11-06: everything that is not an accepted response is an ordinary handler failure, so the retry policy decides between Failed and DeadLettered. With MaxRedirects 0 (REQ-416) a 3xx response is not followed and counts as not accepted unless listed.",
+      "notes": "Reading confirmed by the owner on 2026-11-06: everything that is not an accepted response is an ordinary handler failure, so the retry policy decides between Failed and DeadLettered. With MaxRedirects 0 (REQ-416) a 3xx response is not followed and counts as not accepted unless listed. refiner-model 2026-11-06 F-7 option 1: transport errors are now in the sentence; a destination refused by the security rules is not a failure to retry but REQ-434.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-12" }]
+    },
+    {
+      "id": "REQ-434", "kind": "transition", "status": "approved", "strength": "must",
+      "entity": "jobs.Job", "actor": "system", "from": ["Processing"], "to": ["DeadLettered"],
+      "ears": { "while": "an HTTP job is processing", "if": "its destination is refused by the destination allowlist, the private-address rule or the redirect rules", "shall": "move the job to dead-lettered at once, without sending the request, with a reason that names the rule that refused it" },
+      "mentions": ["HttpCall.host", "HttpCall.resolvedAddress", "HttpCall.redirects", "jobs.Job.result"],
+      "dependsOn": ["INV-401", "INV-402", "INV-403"],
+      "notes": "refiner-model 2026-11-06 F-7 option 1: retrying a host that is not allowed cannot succeed, so refusal is permanent. Before this, a refused job stayed Processing for ever because no requirement moved it on and the lease kept being renewed.",
+      "tags": ["M2"]
     },
     {
       "id": "INV-401", "kind": "invariant", "status": "approved",
@@ -180,9 +237,9 @@
     {
       "id": "INV-402", "kind": "invariant", "status": "approved",
       "entity": "HttpCall",
-      "ears": { "if": "the destination resolves to a private-network or loopback address that is not explicitly allowed", "shall": "refuse to send the request" },
-      "mentions": ["HttpCall.resolvedAddress"],
-      "notes": "Decided by the owner on 2026-11-06: the check is made on the host name and its resolution before the request, not on the address actually connected to. A name that resolves to a public address at check time and a private one at connect time (DNS rebinding) is therefore not caught; the allowlist (INV-401) is the main defence. Revisit if HTTP jobs ever take destinations from untrusted input.",
+      "ears": { "if": "the destination resolves to a private-network or loopback address and its host name is not itself an entry on the destination allowlist", "shall": "refuse to send the request" },
+      "mentions": ["HttpCall.resolvedAddress", "HttpCall.host"],
+      "notes": "refiner-model 2026-11-06 F-8 option 1: the allowlist entry for the exact host name is the explicit permission; no wildcard entry covers a private address. Decided by the owner on 2026-11-06: the check is made on the host name and its resolution before the request, not on the address actually connected to. A name that resolves to a public address at check time and a private one at connect time (DNS rebinding) is therefore not caught; the allowlist (INV-401) is the main defence. Revisit if HTTP jobs ever take destinations from untrusted input.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6" }]
     },
@@ -198,9 +255,9 @@
     {
       "id": "INV-404", "kind": "invariant", "status": "approved",
       "entity": "HttpCall",
-      "ears": { "shall": "take credentials for outbound calls only from named HttpClient registrations, never from job payloads or configuration templates" },
+      "ears": { "shall": "take Authorization, Proxy-Authorization and Cookie headers and URL user information for outbound calls only from named HttpClient registrations, never from job payloads or configuration templates" },
       "mentions": ["HttpCall.clientName", "HttpCall.headers"],
-      "notes": "Decided by the owner on 2026-11-06: enforced at enqueue by INV-408.",
+      "notes": "Decided by the owner on 2026-11-06: enforced at creation by INV-408. refiner-model 2026-11-06 F-10 option 1: the sentence now names exactly what is enforced. Other secrets (for example an X-Api-Key header) belong on named HttpClient registrations; the docs say so, but a payload header with another name is not detected.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6" }]
     },
@@ -232,11 +289,35 @@
     {
       "id": "REQ-432", "kind": "transition", "status": "approved", "strength": "should",
       "entity": "OutboxRow", "actor": "system", "from": ["Pending"],
-      "ears": { "while": "an outbox row is pending", "when": "the relay, running on one worker node that holds the relay lease, processes its next batch", "shall": "enqueue the row's job in the job store, keyed by the row's outboxId so a repeated relay creates no second job, and then delete the row" },
+      "ears": { "while": "an outbox row is pending", "when": "the relay, running on one worker node that holds the relay lease, processes its next batch", "shall": "enqueue the row's job in the job store with the row's outboxId as its job id, creating nothing if a job with that id is still stored in any state, and then delete the row" },
       "mentions": ["OutboxRow.job", "OutboxRow.outboxId", "jobs.Job.Enqueued"],
+      "dependsOn": ["REQ-435", "REQ-436"],
       "tags": ["M3"],
-      "notes": "Decided by the owner on 2026-11-06: the relay deletes relayed rows, so the outbox table stays small. The job store and the application database are different databases in outbox mode, so the two steps cannot share a transaction; idempotency by outboxId (INV-406) covers a crash between them.",
+      "notes": "Decided by the owner on 2026-11-06: the relay deletes relayed rows, so the outbox table stays small. The job store and the application database are different databases in outbox mode, so the two steps cannot share a transaction; idempotency by outboxId (INV-406) covers a crash between them. refiner-model 2026-11-06 F-11 option 1, decided by the owner: the outboxId is the job id and the insert checks every stored job, not only active ones. A unique key would not do, because it is released when the job finishes (jobs REQ-107) and the crash window can end after that. The remaining risk, retention removing the job before a crashed relay is replaced, is covered by assumption REQ-436.",
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-17" }]
+    },
+    {
+      "id": "REQ-435", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "OutboxRow",
+      "ears": { "where": "outbox mode is configured", "when": "no running worker node holds an unexpired relay lease", "shall": "let one running worker node take the relay lease for LeaseDuration and renew it every HeartbeatInterval while it runs" },
+      "mentions": ["OutboxRow.Pending", "hosting.Node.hasWorker"],
+      "dependsOn": ["REQ-432", "LIV-400"],
+      "notes": "refiner-model 2026-11-06 F-12 option 1: nothing obliged a node to take over a free relay lease, so a relay crash could leave rows pending for ever. The relay stays a worker duty (hosting REQ-40). Uses the job lease's length and heartbeat (jobs REQ-102) instead of a new RelayLeaseDuration constant.",
+      "tags": ["M3"]
+    },
+    {
+      "id": "REQ-436", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "assume that every finished-job retention (jobs REQ-104) is much longer than LeaseDuration, so a crashed relay is replaced while the job it created is still stored" },
+      "notes": "refiner-model 2026-11-06 F-11: with the defaults (7 to 30 days against 60 s) this holds by a wide margin. If an application sets a retention close to the lease length, a row can be relayed twice. The model cannot judge durations, so this is stated rather than checked.",
+      "tags": ["M3"]
+    },
+    {
+      "id": "REQ-437", "kind": "invariant", "status": "approved", "strength": "should",
+      "entity": "OutboxRow",
+      "ears": { "where": "the job store does not share the application's database and outbox mode is not configured", "when": "an application calls dbContext.EnqueueAsync", "shall": "reject the call with an error that names outbox mode, and enqueue nothing" },
+      "dependsOn": ["REQ-430", "REQ-431"],
+      "notes": "refiner-model 2026-11-06 F-13 option 1: fail closed. The API's name promises transactional enqueue, and enqueueing outside the transaction would lose atomicity silently.",
+      "tags": ["M3"]
     },
     {
       "id": "INV-406", "kind": "invariant", "status": "approved", "strength": "should",
@@ -249,16 +330,17 @@
     {
       "id": "LIV-400", "kind": "liveness", "status": "approved", "strength": "should",
       "entity": "OutboxRow",
-      "ears": { "while": "an outbox row is pending and at least one node can run the relay", "shall": "eventually enqueue its job and delete the row" },
-      "mentions": ["OutboxRow.Pending", "jobs.Job.Enqueued"],
-      "notes": "Decided by the owner on 2026-11-06: rows are deleted by the relay once their job is enqueued (REQ-432).",
+      "ears": { "while": "an outbox row is pending and at least one worker node is running", "shall": "eventually enqueue its job and delete the row" },
+      "mentions": ["OutboxRow.Pending", "jobs.Job.Enqueued", "hosting.Node.hasWorker"],
+      "dependsOn": ["REQ-432", "REQ-435"],
+      "notes": "Decided by the owner on 2026-11-06: rows are deleted by the relay once their job is enqueued (REQ-432). refiner-model 2026-11-06 F-12: provable once a running worker node is obliged to take a free relay lease (REQ-435).",
       "tags": ["M3"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-17 (implied)" }]
     },
     {
-      "id": "REQ-411", "kind": "assumption", "status": "approved",
+      "id": "REQ-411", "kind": "assumption", "status": "retired",
       "ears": { "shall": "treat a node as lost after NodeLostAfter without a heartbeat, 5 minutes by default (NodeLostAfter)" },
-      "notes": "Decided by the owner on 2026-11-06.",
+      "notes": "Decided by the owner on 2026-11-06. Retired: moved to hosting as REQ-60 (refiner-model 2026-11-06 follow-up to dashboard F-13 and hosting F-9: NodeLostAfter is used by hosting REQ-44, dashboard REQ-341 and integrations REQ-404, and heartbeats belong to hosting, so the constant now lives in hosting; supersededBy cannot name another module's id).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
@@ -279,9 +361,9 @@
     {
       "id": "REQ-414", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending"],
-      "ears": { "when": "a rule's cooldown ends and deliveries for it were suppressed by the per-rule cap during that cooldown", "shall": "create one digest delivery for the rule that says how many were suppressed and for which subjects" },
+      "ears": { "when": "a rule cooldown ends and deliveries for its rule were suppressed by the per-rule cap during that cooldown", "shall": "create one digest delivery for the rule that says how many were suppressed and for which subjects" },
       "mentions": ["Delivery.isDigest", "NotificationRule.cooldown"],
-      "dependsOn": ["INV-407"],
+      "dependsOn": ["INV-407", "INV-409"],
       "notes": "Decided by the owner on 2026-11-06: a flood produces up to 10 messages plus one digest, never silence.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
@@ -306,20 +388,20 @@
     {
       "id": "INV-407", "kind": "invariant", "status": "approved",
       "entity": "Delivery",
-      "ears": { "shall": "never send more than MaxDeliveriesPerCooldown non-test, non-digest deliveries for the same rule within its cooldown, whatever their subjects; later ones within the cooldown are recorded as suppressed" },
+      "ears": { "shall": "never send more than MaxDeliveriesPerCooldown non-test, non-digest deliveries for the same rule within one rule cooldown, whatever their subjects; later ones within the rule cooldown are recorded as suppressed" },
       "mentions": ["Delivery.rule", "Delivery.isTest", "Delivery.isDigest", "NotificationRule.cooldown"],
-      "dependsOn": ["REQ-413"],
-      "notes": "Decided by the owner on 2026-11-06.",
+      "dependsOn": ["REQ-413", "INV-409", "INV-410"],
+      "notes": "Decided by the owner on 2026-11-06. refiner-model 2026-11-06 F-4: the rule cooldown is its own period of the rule's cooldown length, opened by INV-409.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
     {
       "id": "INV-408", "kind": "invariant", "status": "approved",
       "entity": "HttpCall",
-      "ears": { "if": "an application enqueues an HTTP job whose payload sets an Authorization, Proxy-Authorization or Cookie header, or whose URL carries user information", "shall": "reject the enqueue with an error that points to named HttpClient registrations, and store nothing" },
-      "mentions": ["HttpCall.headers"],
+      "ears": { "if": "an HTTP job is enqueued, scheduled or defined as recurring, from code, from the launch page or from configuration, with a payload that sets an Authorization, Proxy-Authorization or Cookie header or a URL that carries user information", "shall": "reject it with an error that points to named HttpClient registrations, and store nothing; a recurring definition from configuration is rejected when it is loaded" },
+      "mentions": ["HttpCall.headers", "recurring.RecurringJob"],
       "dependsOn": ["INV-404"],
-      "notes": "Decided by the owner on 2026-11-06.",
+      "notes": "Decided by the owner on 2026-11-06. refiner-model 2026-11-06 F-9 option 1: the check covers every creation path listed in REQ-420's notes, not only application code; before this, a launch-page or configuration job could send an Authorization header from its payload.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6; §4.15 BLT-12" }]
     }
@@ -350,26 +432,52 @@
     },
     {
       "id": "SCN-403", "title": "Relay crash does not duplicate a job", "status": "approved",
-      "given": "Outbox row o1 is pending; the relay enqueues its job and crashes before marking o1 relayed; another node takes the relay lease.",
+      "given": "Outbox row o1 is pending; worker nodes A and B are running.",
       "steps": [
-        { "req": "REQ-432", "note": "first relay enqueues and crashes" },
-        { "req": "REQ-432", "note": "second relay processes o1 again" }
+        { "req": "REQ-435", "note": "B takes the relay lease" },
+        { "req": "REQ-432", "note": "B enqueues job o1 and crashes before deleting the row" },
+        { "req": "REQ-435", "note": "B's lease expires and A takes it" },
+        { "req": "REQ-432", "note": "A processes o1 again: job o1 is still stored, so nothing is created, and the row is deleted" }
       ],
-      "then": "Exactly one job exists for o1 and o1 is no longer in the outbox."
+      "then": "Exactly one job exists for o1, whether or not it has already finished, and o1 is no longer in the outbox."
+    },
+    {
+      "id": "SCN-404", "title": "Node-lost alert fires when the last worker is down", "status": "approved",
+      "given": "Rule R watches nodes. Worker node w1 is the only worker; web node c1 has the client and the alerts registration and no worker. w1 crashes and sends no heartbeat for NodeLostAfter.",
+      "steps": [
+        { "req": "REQ-438", "note": "c1 takes the notification lease" },
+        { "req": "REQ-404", "note": "c1 finds w1 lost and creates a delivery" },
+        { "req": "REQ-407", "note": "the channel accepts it" }
+      ],
+      "then": "One delivery for R with w1 as subject is Sent, although no worker node is running."
+    },
+    {
+      "id": "SCN-405", "title": "A node without the notification lease creates no delivery", "status": "approved",
+      "given": "Rule R watches dead-lettering. Nodes a1 and a2 both have the alerts registration; a1 holds the notification lease. A job is dead-lettered.",
+      "steps": [
+        { "req": "REQ-400", "note": "a1 creates the delivery" },
+        { "req": "REQ-400", "note": "a2 also tries to create a delivery for the same dead-letter" }
+      ],
+      "impossibleAt": 2
     }
   ],
 
   "features": [
-    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "SCN-400"] },
-    { "id": "FEAT-401", "name": "HTTP jobs and outbound security", "members": ["REQ-420", "REQ-421", "REQ-422", "INV-401", "INV-402", "INV-403", "INV-404", "INV-405", "REQ-416", "INV-408", "SCN-401", "SCN-402"] },
-    { "id": "FEAT-402", "name": "Outbox", "members": ["REQ-430", "REQ-431", "REQ-432", "INV-406", "LIV-400", "SCN-403"] }
+    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "INV-409", "INV-410", "REQ-433", "INV-411", "REQ-438", "SCN-400", "SCN-404", "SCN-405"] },
+    { "id": "FEAT-401", "name": "HTTP jobs and outbound security", "members": ["REQ-420", "REQ-421", "REQ-422", "REQ-434", "INV-401", "INV-402", "INV-403", "INV-404", "INV-405", "REQ-416", "INV-408", "SCN-401", "SCN-402"] },
+    { "id": "FEAT-402", "name": "Outbox", "members": ["REQ-430", "REQ-431", "REQ-432", "REQ-435", "REQ-436", "REQ-437", "INV-406", "LIV-400", "SCN-403"] }
   ],
 
   "glossary": {
-    "cooldown": "Per rule: the period in which repeated deliveries for the same subject are suppressed (INV-400).",
+    "cooldown": "Per rule, a length of time. Two periods of that length run independently: the subject cooldown (INV-400) and the rule cooldown (INV-407, REQ-414), both opened by INV-409 and held open by INV-410 while a delivery created in them is pending.",
+    "SubjectCooldown": "The period, per rule and subject, in which further non-test, non-digest deliveries are suppressed (INV-400); opened by the first pending delivery for the rule and subject, closed early when that delivery fails (REQ-433).",
+    "RuleCooldown": "The period, per rule, over which at most MaxDeliveriesPerCooldown deliveries are sent (INV-407) and at whose end the digest is created (REQ-414).",
+    "AlertsRegistration": "The registration that lets a node evaluate notification rules and send deliveries (INV-411); independent of the client and the worker, so it can run on any node.",
+    "NotificationLease": "Store lease that makes one node with the alerts registration the one that evaluates rules and sends deliveries (REQ-438).",
+    "RelayLease": "Store lease that makes one worker node the outbox relay (REQ-435).",
     "allowlist": "Destination hosts outbound calls may reach; empty by default (INV-401).",
     "MaxRedirects": "Redirect limit for outbound calls; 0 by default (REQ-416).",
-    "NodeLostAfter": "Time without a heartbeat after which a node is reported lost; 5 min by default (REQ-411).",
+    "NodeLostAfter": "Time without a heartbeat after which a node is reported lost; 5 min by default (hosting REQ-60).",
     "NotificationMaxAttempts": "Attempts per notification delivery before it is Failed; 5 by default (REQ-412).",
     "MaxDeliveriesPerCooldown": "Non-test deliveries per rule within one cooldown; 10 by default (REQ-413)."
   }

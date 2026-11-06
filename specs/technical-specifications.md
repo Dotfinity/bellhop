@@ -1202,3 +1202,16 @@ Format: refiner-tech/1
 - **Status:** approved
 - **Source:** requirements.md §4.1 SET-7
 - **Notes:** Decided by the owner on 2026-11-06, replacing the node modes. Worker options (queues and their order, concurrency, the LongRunning limit) move from the global options to AddWorker. The dashboard stays MapBellhopDashboard on the endpoint builder (TECH-88).
+
+## TECH-129 — Alerts registration
+
+- **Area:** framework
+- **Statement:** Bellhop shall offer an alerts registration, separate from AddClient() and AddWorker(), that can be combined with them and with MapBellhopDashboard on one node or used alone on an alerts-only node.
+- **Applies to:** hosting REQ-52, hosting REQ-59, integrations INV-411, integrations REQ-438, integrations REQ-403, integrations REQ-404
+- **Strength:** must
+- **Status:** approved
+- **Notes:** Decided by the owner on 2026-11-06 (integrations findings F-6): alerting must keep working when the last worker is down. The owner suggested the name app.UseBellhopAlerts(); the builder style of TECH-128 would give AddAlerts(). See open questions.
+
+## Open questions
+
+- TECH-129: exact API for the alerts registration: app.UseBellhopAlerts() as the owner suggested, or AddAlerts() on the AddBellhop builder like AddClient()/AddWorker() (TECH-128)? A hosted background duty is normally registered on the service collection. Owner to decide.
