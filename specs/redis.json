@@ -39,7 +39,7 @@
     {
       "id": "REQ-502", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node using the Redis store is starting", "if": "the server does not support EVAL", "shall": "stop the node from starting with a message that names the server flag that enables scripting, such as --lua on Garnet" },
+      "ears": { "while": "a node using the Redis store is starting", "if": "the server does not support EVAL", "shall": "fail the host's start with a message that names the server flag that enables scripting, such as --lua on Garnet" },
       "mentions": ["RedisStore.evalAvailable", "RedisStore.serverFamily"],
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-18; §4.9.2 RDV-3", "quote": "a missing EVAL is a startup failure with a message naming the server flag to enable it" }]
@@ -65,7 +65,7 @@
     {
       "id": "REQ-505", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node using the Redis store is starting", "if": "maxmemory-policy is anything other than noeviction", "shall": "stop the node from starting with a message that eviction can silently delete job data without any reset being detected, naming the maxmemory-policy setting" },
+      "ears": { "while": "a node using the Redis store is starting", "if": "maxmemory-policy is anything other than noeviction", "shall": "fail the host's start with a message that eviction can silently delete job data without any reset being detected, naming the maxmemory-policy setting" },
       "mentions": ["RedisStore.maxmemoryPolicy"],
       "notes": "refiner-model 2026-11-06 F-2 option 1 (owner's decision on 2026-11-06: full protection): was a warning. Eviction removes keys one at a time and leaves the generation marker in place, so it can lose outcomes and recurring definitions with no reset ever detected. Cost: servers whose eviction policy cannot be changed are refused. A failover to a server with another policy is reported by REQ-531.",
       "tags": ["M2"],

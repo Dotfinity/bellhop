@@ -56,7 +56,7 @@
     {
       "id": "REQ-301", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth, AllowAnonymous() was not called and the environment is not Development", "shall": "stop the node from starting with a message that says how to add authorization or opt in to anonymous access" },
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth, AllowAnonymous() was not called and the environment is not Development", "shall": "fail the host's start with a message that says how to add authorization or opt in to anonymous access" },
       "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardEndpoint.allowAnonymous"],
       "notes": "refiner-model 2026-11-06 F-10 (option 1): the authorization requirements are listed by name; a dashboard protected only by RequireApiKey() still needs one of them or AllowAnonymous() outside Development. F-5: hosting REQ-18/REQ-19 name this check as a startup check, so it always runs before the node is marked running.",
       "tags": ["M1"],
@@ -383,7 +383,7 @@
     {
       "id": "REQ-334", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "basic authentication is enabled and a configured password is not a supported salted hash", "shall": "stop the node from starting with a message that names the user and shows how to produce the hash" },
+      "ears": { "while": "a node is starting", "if": "basic authentication is enabled and a configured password is not a supported salted hash", "shall": "fail the host's start with a message that names the user and shows how to produce the hash" },
       "notes": "Decided by the owner on 2026-11-06. refiner-model 2026-11-06 F-5: hosting REQ-18/REQ-19 name this check as a startup check, so it always runs before the node is marked running.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2; §4.14 SEC-1" }]

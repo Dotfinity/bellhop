@@ -121,7 +121,7 @@
     {
       "id": "REQ-210", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "a code-defined or configuration-defined recurring job has an invalid schedule expression, or its time mode is Local without a valid IANA time zone", "shall": "stop the node from starting with a message that names the job and the problem" },
+      "ears": { "while": "a node is starting", "if": "a code-defined or configuration-defined recurring job has an invalid schedule expression, or its time mode is Local without a valid IANA time zone", "shall": "fail the host's start with a message that names the job and the problem" },
       "mentions": ["RecurringJob.schedule", "RecurringJob.origin", "RecurringJob.timeMode", "RecurringJob.timeZone"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-2", "quote": "Invalid expressions MUST fail at startup (code-defined)" }]
@@ -392,7 +392,7 @@
     {
       "id": "REQ-236", "kind": "transition", "status": "approved", "strength": "must",
       "entity": "hosting.Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "a code-defined or configuration-defined recurring job has the name of a stored runtime-defined recurring job", "shall": "stop the node from starting with a message that names the job and says it is already defined at runtime" },
+      "ears": { "while": "a node is starting", "if": "a code-defined or configuration-defined recurring job has the name of a stored runtime-defined recurring job", "shall": "fail the host's start with a message that names the job and says it is already defined at runtime" },
       "mentions": ["RecurringJob.name", "RecurringJob.origin"],
       "notes": "refiner-model 2026-11-06 F-6, decided by the owner on 2026-11-06: recurring job names are unique across origins, and a collision is an error on both sides (INV-211 for the API). Like REQ-210."
     },
