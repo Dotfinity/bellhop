@@ -13,7 +13,7 @@
       "description": "The Redis store as seen by one node.",
       "states": ["Connecting", "Ready", "Reconciling"],
       "initial": ["Connecting"],
-      "attributes": ["serverFamily", "serverVersion", "evalAvailable", "aofEnabled", "replication", "maxmemoryPolicy", "usedMemory", "maxMemory", "generationMarker", "lastSeenMarker", "markerReconciling", "resetAcknowledged", "rememberedReset", "topology", "shardMode", "reachable"]
+      "attributes": ["serverFamily", "serverVersion", "evalAvailable", "aofEnabled", "replication", "maxmemoryPolicy", "usedMemory", "maxMemory", "generationMarker", "lastSeenMarker", "markerReconciling", "markerLastReset", "resetAcknowledged", "rememberedReset", "topology", "shardMode", "reachable"]
     }
   ],
 
@@ -83,27 +83,27 @@
     {
       "id": "REQ-507", "kind": "transition", "status": "approved",
       "entity": "RedisStore", "actor": "system", "from": ["Ready", "Reconciling"], "to": ["Reconciling"],
-      "ears": { "where": "the worker is registered", "while": "the store is ready or reconciling", "when": "the generation marker is found missing, or with a value older than the last value this node saw", "if": "this node has seen a generation marker since it started", "shall": "replace the marker, by compare-and-set against what it found, with a value later than any this node has seen and flagged as reconciling, log the ERROR event StoreWasReset if its own write succeeded, and in either case start re-seeding the code-defined recurring jobs, the queue registry and this node's registration" },
-      "mentions": ["RedisStore.generationMarker", "RedisStore.lastSeenMarker", "RedisStore.markerReconciling", "recurring.RecurringJob.origin", "hosting.Node.hasWorker"],
-      "notes": "Causes: FLUSHALL, a restore from an old snapshot, a failover to a lagging replica (both bring back an older marker). Partial eviction is excluded by REQ-505. A run whose job record vanished re-creates it at its next heartbeat (REQ-522) or completion (REQ-521). Runtime-defined recurring jobs cannot be re-seeded; the loss is reported and health stays Degraded until an operator acknowledges it (REQ-523 to REQ-525). refiner-model 2026-11-06: F-2 option 1 (owner's decision: full protection) adds the 'older' test, with the marker advanced every RecurringReconcileInterval (REQ-527); a rollback to a state less than one interval old is not detected. F-3 (recommended): only a node that has seen a marker reports a reset; a new server is initialised by REQ-528. F-4 (recommended): detection and reconciliation are worker duties, matching hosting REQ-40. F-8 (recommended): the reconciling marker is written at detection, so a second flush during reconciliation removes it and is detected again. F-9 (recommended): the compare-and-set makes exactly one node report each reset; the others reconcile silently. F-13 (recommended): the node registration is re-seeded too, so the orphan sweep (recurring REQ-205, REQ-207) does not act on the re-seeded jobs.",
+      "ears": { "where": "the worker is registered", "while": "the store is ready or reconciling", "when": "the generation marker is found missing, or with a value older than the last value this node saw, whether or not it is flagged as reconciling", "if": "this node has seen a generation marker since it started", "shall": "replace the marker, by compare-and-set against what it found, with the Redis server's current time as both its value and its last-reset value, flagged as reconciling, log the ERROR event StoreWasReset if its own write succeeded, and in either case start re-seeding the code-defined recurring jobs, the queue registry and this node's registration" },
+      "mentions": ["RedisStore.generationMarker", "RedisStore.lastSeenMarker", "RedisStore.markerReconciling", "RedisStore.markerLastReset", "recurring.RecurringJob.origin", "hosting.Node.hasWorker"],
+      "notes": "Causes: FLUSHALL, a restore from an old snapshot, a failover to a lagging replica (both bring back an older marker). Partial eviction is excluded by REQ-505. A run whose job record vanished re-creates it at its next heartbeat (REQ-522) or completion (REQ-521). Runtime-defined recurring jobs cannot be re-seeded; the loss is reported and health stays Degraded until an operator acknowledges it (REQ-523 to REQ-525). refiner-model 2026-11-06: F-2 option 1 (owner's decision: full protection) adds the 'older' test, with the marker advanced every RecurringReconcileInterval (REQ-527); a rollback to a state less than one interval old is not detected. F-3 (recommended): only a node that has seen a marker reports a reset; a new server is initialised by REQ-528. F-4 (recommended): detection and reconciliation are worker duties, matching hosting REQ-40. F-8 (recommended): the reconciling marker is written at detection, so a second flush during reconciliation removes it and is detected again. F-9 (recommended): the compare-and-set makes exactly one node report each reset; the others reconcile silently. F-13 (recommended): the node registration is re-seeded too, so the orphan sweep (recurring REQ-205, REQ-207) does not act on the re-seeded jobs. Run 2: F-1 (recommended), a flagged marker is judged too, so the lowest-value first marker a late node writes after a flush (REQ-528) is still found older and reported. F-6 (recommended), values come from the server clock, which keeps moving across a flush, so no two nodes pick values that go backwards relative to each other and report a phantom reset; a failover to a server whose clock is behind looks like a rollback and is reported as a reset (NFR-31). F-5 (option 2, accepted): after a rollback to older data, jobs claimed since that copy may run again and their outcomes may be lost until a node detects it; this is at-least-once, like a lost lease, and is reported. Closing it fully is impossible, since a rollback within one RecurringReconcileInterval is not detected at all.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
     {
       "id": "REQ-508", "kind": "transition", "status": "approved",
       "entity": "hosting.Health", "actor": "system", "from": ["Healthy", "Unhealthy"], "to": ["Degraded"],
-      "ears": { "while": "the Redis store is reconciling after a reset", "if": "no check that reports Unhealthy fails", "shall": "report the node Degraded" },
+      "ears": { "while": "the Redis store is reconciling", "if": "no check that reports Unhealthy fails", "shall": "report the node Degraded" },
       "mentions": ["RedisStore.Reconciling"],
-      "notes": "refiner-model 2026-11-06 F-5 and F-6 (recommended option): the guard gives Unhealthy precedence on the same health-check run, as hosting REQ-34 does, and from Unhealthy lets a node whose store came back drop to Degraded instead of staying Unhealthy.",
+      "notes": "refiner-model 2026-11-06 F-5 and F-6 (recommended option): the guard gives Unhealthy precedence on the same health-check run, as hosting REQ-34 does, and from Unhealthy lets a node whose store came back drop to Degraded instead of staying Unhealthy. Run 2: since F-1 a new server is reconciled too (REQ-528), and claims are paused either way, so the node reports Degraded during any reconciliation; Degraded does not fail a readiness probe.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8", "quote": "the health check turns degraded until reconciliation completes" }]
     },
     {
       "id": "REQ-509", "kind": "transition", "status": "approved",
       "entity": "RedisStore", "actor": "system", "from": ["Reconciling"], "to": ["Ready"],
-      "ears": { "while": "the store is reconciling", "when": "this node has re-seeded the code-defined recurring jobs, the queue registry and its registration, and HeartbeatInterval has passed since the reconciling marker was written", "shall": "clear the reconciling flag on the generation marker if it is still set on the value written at detection, and mark the store ready" },
+      "ears": { "while": "the store is reconciling", "when": "this node has re-seeded the code-defined recurring jobs, the queue registry and its registration, and LeaseDuration has passed since its store became reconciling", "shall": "clear the reconciling flag on the generation marker if it is still set on the value this reconciliation is for, and mark the store ready" },
       "mentions": ["RedisStore.generationMarker", "RedisStore.markerReconciling"],
-      "notes": "refiner-model 2026-11-06: F-8 (recommended) moves writing the new marker to detection (REQ-507), so this only clears the flag. F-1 option 1 (owner's decision: full protection): waiting HeartbeatInterval gives every live run one heartbeat to re-create its record and concurrency-key hold (REQ-522) before claims resume (REQ-526). Cost: claims pause for about 20 s after a reset.",
+      "notes": "refiner-model 2026-11-06: F-8 (recommended) moves writing the new marker to detection (REQ-507), so this only clears the flag. F-1 option 1 (owner's decision: full protection): waiting HeartbeatInterval gives every live run one heartbeat to re-create its record and concurrency-key hold (REQ-522) before claims resume (REQ-526). Cost: claims pause for about 20 s after a reset. Run 2 F-3 (recommended option): the wait is a full LeaseDuration, measured from when this node's store became reconciling, which a reconnection restarts (REQ-529, REQ-530). The rule is that a detected flush ends every lease: the flag is never cleared less than one lease after it was set, so a run that could not re-assert its record in that time would have lost its lease without any reset (jobs REQ-132) and is treated the same way. Cost: claims pause for about 60 s after a reset, and for the same time when the first worker starts on a new server (REQ-528).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
@@ -235,16 +235,16 @@
       "entity": "RedisStore",
       "ears": { "when": "a run completes or fails, its job's record no longer exists and the store was reset since the claim", "shall": "write a minimal job record with the job's id, name, outcome and node, marked as recreated after a store reset, and log a warning" },
       "mentions": ["RedisStore.generationMarker", "RedisStore.lastSeenMarker", "jobs.Job.Succeeded", "jobs.Job.DeadLettered"],
-      "notes": "Decided by the owner on 2026-11-06 so the outcome is not lost from history. This is not a stale token in the sense of jobs INV-128: there is no current record to protect. A record missing for any other reason is still refused. refiner-model 2026-11-06 F-2 option 1 (owner's decision: full protection): 'the store was reset since the claim' is defined in the glossary (resetSinceClaim) and now also covers a marker older than at the claim and a reset detected in between, so a second flush or a rollback no longer loses the outcome. Runs that heartbeat before completing have already re-created their record (REQ-522).",
+      "notes": "Decided by the owner on 2026-11-06 so the outcome is not lost from history. This is not a stale token in the sense of jobs INV-128: there is no current record to protect. A record missing for any other reason is still refused. refiner-model 2026-11-06 F-2 option 1 (owner's decision: full protection): 'the store was reset since the claim' is defined in the glossary (resetSinceClaim) and now also covers a marker older than at the claim and a reset detected in between, so a second flush or a rollback no longer loses the outcome. Runs that heartbeat before completing have already re-created their record (REQ-522). Run 2 F-3: the marker's last-reset value (REQ-507) also covers a run on a node that missed the whole reconciliation, for example behind an outage, so its outcome is recorded rather than lost.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
     {
       "id": "REQ-522", "kind": "invariant", "status": "approved",
       "entity": "RedisStore",
-      "ears": { "if": "a heartbeat or progress write finds its job's record missing and the store was reset since the claim", "shall": "re-create the job's record as processing with the run's claiming node, leaseToken, leaseExpiresAt, queue, concurrency key and recurring occurrence, so that queue limits, concurrency keys and recurring overlap count the run again, and let the run continue" },
-      "mentions": ["RedisStore.generationMarker", "jobs.Job.Processing", "jobs.Job.leaseOwner", "jobs.Job.leaseToken", "jobs.Job.leaseExpiresAt", "jobs.Job.queue", "jobs.Job.concurrencyKey"],
-      "notes": "Decided by the owner on 2026-11-06 that the run continues; the result is recorded at completion (REQ-521). refiner-model 2026-11-06 F-1 option 1 (owner's decision: full protection): the heartbeat re-creates the record instead of being ignored, so a second job with the same concurrency key, queue limit or recurring job is not admitted beside the old run (jobs INV-107, INV-108, recurring INV-204). Claims stay paused until every live run has had one heartbeat (REQ-509, REQ-526).",
+      "ears": { "while": "the generation marker is missing or flagged as reconciling", "if": "a heartbeat or progress write finds its job's record missing and the store was reset since the claim", "shall": "re-create the job's record as processing with the run's claiming node, leaseToken, leaseExpiresAt, queue, concurrency key, unique key and recurring occurrence, so that queue limits, concurrency keys, unique keys and recurring overlap count the run again, and let the run continue" },
+      "mentions": ["RedisStore.generationMarker", "RedisStore.markerReconciling", "jobs.Job.Processing", "jobs.Job.leaseOwner", "jobs.Job.leaseToken", "jobs.Job.leaseExpiresAt", "jobs.Job.queue", "jobs.Job.concurrencyKey", "jobs.Job.uniqueKey"],
+      "notes": "Decided by the owner on 2026-11-06 that the run continues; the result is recorded at completion (REQ-521). refiner-model 2026-11-06 F-1 option 1 (owner's decision: full protection): the heartbeat re-creates the record instead of being ignored, so a second job with the same concurrency key, queue limit or recurring job is not admitted beside the old run (jobs INV-107, INV-108, recurring INV-204). Claims stay paused until every live run has had one heartbeat (REQ-509, REQ-526). Run 2: F-2, the unique key is re-created too, and a job that took it during the pause is cancelled (REQ-534). F-3, the record is re-created only while the reconciliation lasts. After it, a run that never re-asserted is treated like any run whose lease expired: its heartbeat re-creates nothing, so it never becomes a second holder beside a job claimed after the pause, and its outcome is still recorded when it finishes (REQ-521).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
@@ -279,32 +279,32 @@
     {
       "id": "REQ-526", "kind": "invariant", "status": "approved",
       "entity": "RedisStore",
-      "ears": { "while": "the generation marker is missing or flagged as reconciling", "shall": "claim no job" },
-      "mentions": ["RedisStore.generationMarker", "RedisStore.markerReconciling", "jobs.Job.Processing"],
+      "ears": { "while": "the generation marker is missing or flagged as reconciling", "shall": "claim no job and create no recurring occurrence" },
+      "mentions": ["RedisStore.generationMarker", "RedisStore.markerReconciling", "jobs.Job.Processing", "recurring.Occurrence"],
       "dependsOn": ["REQ-507", "REQ-509"],
       "rationale": "Holds erased by a flush must be re-asserted (REQ-522) before new holders are admitted, or two jobs run under a Max = 1 concurrency key (jobs INV-107, INV-108, recurring INV-204).",
-      "notes": "refiner-model 2026-11-06 F-1 option 1 (owner's decision on 2026-11-06: full protection). The claim script checks the marker itself, so claims stop the moment a flush removes it, before any node has detected the reset. A new server claims nothing until a worker node writes the first marker (REQ-528). A rollback that brings back an older marker is caught only when a node detects it (REQ-507).",
+      "notes": "refiner-model 2026-11-06 F-1 option 1 (owner's decision on 2026-11-06: full protection). The claim script checks the marker itself, so claims stop the moment a flush removes it, before any node has detected the reset. A new server claims nothing until a worker node writes the first marker (REQ-528). A rollback that brings back an older marker is caught only when a node detects it (REQ-507). Run 2 F-2 (recommended in part): the scheduler creates no occurrence during the pause, because recurring overlap (INV-204) decides by looking for an unfinished job that the flush erased; instants that fall due meanwhile are handled by the misfire policy when the pause ends (recurring REQ-217 to REQ-219). Enqueues are not held, not even with a unique key; REQ-534 resolves a unique-key collision instead. A continuation added to a running job during the pause can be refused as having no parent (jobs INV-138) until the job re-asserts its record. F-5 (option 2, accepted): until a node detects a rollback, claims go on against the restored data, so jobs claimed since that copy may run again (NFR-31).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
     {
       "id": "REQ-527", "kind": "transition", "status": "approved",
       "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Ready"],
-      "ears": { "where": "the worker is registered", "while": "the store is ready", "when": "RecurringReconcileInterval has passed since the generation marker was last advanced", "shall": "advance the generation marker to a later value by compare-and-set, unless another node already did, and remember the value" },
+      "ears": { "where": "the worker is registered", "while": "the store is ready", "when": "RecurringReconcileInterval has passed since the generation marker was last advanced", "shall": "advance the unflagged generation marker to the Redis server's current time by compare-and-set, unless another node already did, and remember the value" },
       "mentions": ["RedisStore.generationMarker", "RedisStore.lastSeenMarker"],
       "dependsOn": ["REQ-510"],
       "rationale": "A restore or failover brings back an older marker; only a marker that moves forward reveals the rollback (REQ-507).",
-      "notes": "refiner-model 2026-11-06 F-2 option 1 (owner's decision on 2026-11-06: full protection). Part of the Redis recurring reconciliation duty, so worker nodes only (hosting REQ-40). Every node remembers the latest marker value it reads (lastSeenMarker). Cost: one write per interval.",
+      "notes": "refiner-model 2026-11-06 F-2 option 1 (owner's decision on 2026-11-06: full protection). Part of the Redis recurring reconciliation duty, so worker nodes only (hosting REQ-40). Every node remembers the latest marker value it reads (lastSeenMarker). Cost: one write per interval. Run 2 F-6 (recommended option): the server clock, not the node's memory, makes every new value later than any written before; the last-reset value is left as it is.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
     {
       "id": "REQ-528", "kind": "transition", "status": "approved",
-      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Ready"],
-      "ears": { "where": "the worker is registered", "while": "the store is ready", "when": "the generation marker is found missing", "if": "this node has not seen a generation marker since it started", "shall": "write the first generation marker at the lowest value, only if none exists yet, and log at INFO that it initialised the store" },
+      "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Reconciling"],
+      "ears": { "where": "the worker is registered", "while": "the store is ready", "when": "the generation marker is found missing", "if": "this node has not seen a generation marker since it started", "shall": "write the first generation marker at the lowest value, flagged as reconciling, only if none exists yet, log at INFO that it initialised the store and that claims start when the reconciliation ends, and start re-seeding the code-defined recurring jobs, the queue registry and this node's registration without recording a reset" },
       "mentions": ["RedisStore.generationMarker", "RedisStore.lastSeenMarker", "hosting.Node.hasWorker"],
       "rationale": "An empty server and a flushed one look the same; a new installation must not be reported as a reset.",
-      "notes": "refiner-model 2026-11-06 F-3 (recommended option). Same event as REQ-507 for a node that has not seen a marker. A flush that happens while every worker is down is still reported if a node that saw the old marker comes back: it finds this lowest-value marker older than the one it saw (REQ-507). It goes unreported only if no running node saw a marker before.",
+      "notes": "refiner-model 2026-11-06 F-3 (recommended option). Same event as REQ-507 for a node that has not seen a marker. A flush that happens while every worker is down is still reported if a node that saw the old marker comes back: it finds this lowest-value marker older than the one it saw (REQ-507). It goes unreported only if no running node saw a marker before. Run 2 F-1 (recommended option): a flushed server looks exactly like a new one, and the first node to look may be one that started moments after the flush while another node is still running a job. The first marker is therefore flagged and reconciled (REQ-509): claims stay paused for one lease, running jobs re-assert their holds, and a node that saw an earlier marker still finds this one older and reports the reset (REQ-507). Cost: on a new server the first claim waits one LeaseDuration (60 s); tests against a fresh Redis can lower LeaseDuration (NFR-31). If another node replaces the marker meanwhile, this node finishes its wait, then joins the new value through REQ-530.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
@@ -314,18 +314,18 @@
       "ears": { "when": "the connection to the server is lost or the server's role changes", "shall": "mark the store connecting and repeat server detection when it reconnects" },
       "mentions": ["RedisStore.reachable", "RedisStore.topology"],
       "rationale": "After a failover the new primary's family, persistence and eviction settings must be checked again (REQ-500 to REQ-504, REQ-531).",
-      "notes": "refiner-model 2026-11-06 F-12 (recommended option). A node that was reconciling resumes through REQ-530 after reconnecting, because the marker is still flagged.",
+      "notes": "refiner-model 2026-11-06 F-12 (recommended option). A node that was reconciling resumes through REQ-530 after reconnecting, because the marker is still flagged. Run 2 F-3/F-4: it rejoins even if it had already re-seeded for that value, and its wait in REQ-509 starts again from the reconnection.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-9, RED-18" }]
     },
     {
       "id": "REQ-530", "kind": "transition", "status": "approved",
       "entity": "RedisStore", "actor": "system", "from": ["Ready"], "to": ["Reconciling"],
-      "ears": { "where": "the worker is registered", "while": "the store is ready", "when": "the generation marker is found flagged as reconciling with a value for which this node has not yet re-seeded", "shall": "start re-seeding the code-defined recurring jobs, the queue registry and this node's registration without logging StoreWasReset, and remember the value" },
+      "ears": { "where": "the worker is registered", "while": "the store is ready", "when": "the generation marker is found flagged as reconciling with a value whose reconciliation this node has not finished", "shall": "start re-seeding the code-defined recurring jobs, the queue registry and this node's registration without logging StoreWasReset, and remember the value" },
       "mentions": ["RedisStore.generationMarker", "RedisStore.markerReconciling", "RedisStore.lastSeenMarker"],
       "dependsOn": ["REQ-507"],
       "rationale": "Every worker re-seeds what its own code declares and its own registration; only the node that detected the reset reports it.",
-      "notes": "refiner-model 2026-11-06 F-9 and F-13 (recommended options): the nodes that lose the compare-and-set in REQ-507, or check the marker after it was written, reconcile silently. Also resumes a reconciliation interrupted by a reconnection (REQ-529, F-12).",
+      "notes": "refiner-model 2026-11-06 F-9 and F-13 (recommended options): the nodes that lose the compare-and-set in REQ-507, or check the marker after it was written, reconcile silently. Also resumes a reconciliation interrupted by a reconnection (REQ-529, F-12). Run 2 F-4 (recommended option): a node has finished a value's reconciliation once it cleared the flag on it (REQ-509) or found the marker no longer flagged with it. Before, a reconnection after re-seeding but before the clear left the flag set for good and blocked every claim; re-seeding again is idempotent and costs little.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-8" }]
     },
@@ -357,6 +357,15 @@
       "notes": "refiner-model 2026-11-06 F-14 (recommended option). HeartbeatInterval is jobs REQ-102 (20 s). The owner may prefer another value; note that jobs REQ-124 and recurring REQ-205 act on a node as soon as its registration is gone, while integrations NodeLostAfter (5 minutes) is longer.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-11" }]
+    },
+    {
+      "id": "REQ-534", "kind": "transition", "status": "approved", "strength": "must",
+      "entity": "jobs.Job", "actor": "system", "from": ["Scheduled", "Enqueued", "Awaiting", "Unroutable"], "to": ["Cancelled"],
+      "ears": { "when": "a run's job record is re-created after a store reset (REQ-522) with a unique key that another active job holds", "shall": "cancel that other job with reason DuplicateAfterReset in the same write that re-creates the record" },
+      "mentions": ["jobs.Job.uniqueKey", "jobs.Job.Cancelled"],
+      "dependsOn": ["REQ-522", "REQ-526"],
+      "rationale": "A flush erases a running job's unique-key lock, so an enqueue with the same key succeeds before the run's next heartbeat re-creates its record, leaving two active jobs with one key (jobs INV-100).",
+      "notes": "refiner-model 2026-11-06 run 2 F-2, chosen instead of the recommended hold on unique-key enqueues. Holding would make every enqueue with a unique key block for up to a lease and then fail during a reset, and on a new server with no worker running yet, where nothing can collide. Before the flush the key belonged to the running job, so the other holder was created during the pause, and claims are paused (REQ-526), so it has never run. Cancelling it gives the state the store would have had without the flush; the caller was told the job was enqueued, and its cancel reason says why."
     }
   ],
 
@@ -368,7 +377,7 @@
         { "req": "REQ-507", "note": "marker missing; n1 writes the reconciling marker and logs StoreWasReset" },
         { "req": "REQ-523", "note": "ERROR listing what may have been lost; reset recorded as unacknowledged" },
         { "req": "REQ-508", "note": "health Degraded" },
-        { "req": "REQ-509", "note": "re-seeded; after HeartbeatInterval the reconciling flag is cleared" }
+        { "req": "REQ-509", "note": "re-seeded; after LeaseDuration the reconciling flag is cleared" }
       ],
       "then": "nightly-cleanup exists again, the generation marker is present without the reconciling flag, the store is Ready, one ERROR StoreWasReset event and one ERROR listing what may have been lost were logged, no job was claimed while the marker was missing or flagged, and health stays Degraded until an operator acknowledges the reset."
     },
@@ -394,9 +403,10 @@
       "given": "Worker node n1 starts against an empty Redis server; no node has seen a generation marker.",
       "steps": [
         { "req": "REQ-500", "note": "store ready" },
-        { "req": "REQ-528", "note": "first marker written, INFO logged" }
+        { "req": "REQ-528", "note": "first marker written flagged as reconciling, INFO logged" },
+        { "req": "REQ-509", "note": "re-seeded; after LeaseDuration the reconciling flag is cleared" }
       ],
-      "then": "A generation marker exists, no StoreWasReset event or reset ERROR was logged, no reset is recorded as unacknowledged, and claims are allowed."
+      "then": "A generation marker exists without the reconciling flag, no StoreWasReset event or reset ERROR was logged, no reset is recorded as unacknowledged, and claims are allowed."
     },
     {
       "id": "SCN-504", "title": "A run keeps its concurrency-key hold across a flush", "status": "approved",
@@ -404,7 +414,7 @@
       "steps": [
         { "req": "REQ-507", "note": "n2 detects the missing marker and writes the reconciling marker" },
         { "req": "REQ-522", "note": "j1's next heartbeat re-creates its record as Processing with its hold on tenant:42" },
-        { "req": "REQ-509", "note": "after HeartbeatInterval the reconciling flag is cleared" }
+        { "req": "REQ-509", "note": "after LeaseDuration the reconciling flag is cleared" }
       ],
       "then": "j1 is Processing and holds tenant:42, j2 has not been claimed, and no job was claimed while the marker was missing or flagged."
     },
@@ -423,21 +433,44 @@
         { "req": "REQ-507", "note": "n2 finds the marker missing" }
       ],
       "impossibleAt": 1
+    },
+    {
+      "id": "SCN-507", "title": "A node that first looks after a flush does not end the pause", "status": "approved",
+      "given": "Worker node n1 has seen the generation marker and is processing j1 with concurrency key tenant:42 (Max = 1). Worker node n2 has started but has not read the marker yet. Someone runs FLUSHALL.",
+      "steps": [
+        { "req": "REQ-528", "note": "n2 finds the marker missing, has never seen one, and writes the lowest value flagged as reconciling" },
+        { "req": "REQ-507", "note": "n1 finds the lowest value older than the one it saw, writes a new flagged value and logs StoreWasReset" },
+        { "req": "REQ-522", "note": "j1's next heartbeat re-creates its record as Processing with its hold on tenant:42" },
+        { "req": "REQ-509", "note": "after LeaseDuration the reconciling flag is cleared" }
+      ],
+      "then": "One StoreWasReset event was logged, j1 is Processing and holds tenant:42, and no job was claimed while the marker was missing or flagged.",
+      "notes": "refiner-model 2026-11-06 run 2 F-1 regression."
+    },
+    {
+      "id": "SCN-508", "title": "A unique-key duplicate created during the pause is cancelled", "status": "approved",
+      "given": "Worker node n1 is processing j1 with unique key invoice:7. Someone runs FLUSHALL, and the application then enqueues j2 with unique key invoice:7, which the store accepts because the lock is gone.",
+      "steps": [
+        { "req": "REQ-507", "note": "n1 detects the reset and writes the reconciling marker" },
+        { "req": "REQ-522", "note": "j1's next heartbeat re-creates its record as Processing with invoice:7" },
+        { "req": "REQ-534", "note": "j2 is cancelled with reason DuplicateAfterReset in the same write" }
+      ],
+      "then": "j1 is Processing and holds invoice:7, j2 is Cancelled with reason DuplicateAfterReset and was never claimed, and at no moment did two active jobs hold invoice:7.",
+      "notes": "refiner-model 2026-11-06 run 2 F-2 regression."
     }
   ],
 
   "features": [
     { "id": "FEAT-500", "name": "Server detection and durability disclosure", "members": ["REQ-500", "REQ-501", "REQ-502", "REQ-503", "REQ-504", "REQ-505", "REQ-506", "REQ-511", "REQ-512", "REQ-513", "REQ-514", "REQ-515", "REQ-518", "REQ-519", "REQ-520", "REQ-529", "REQ-531", "REQ-533", "SCN-501", "SCN-506"] },
-    { "id": "FEAT-501", "name": "Flush and eviction resilience", "members": ["REQ-507", "REQ-508", "REQ-509", "REQ-510", "LIV-500", "REQ-521", "REQ-522", "REQ-523", "REQ-524", "REQ-525", "REQ-526", "REQ-527", "REQ-528", "REQ-530", "REQ-532", "LIV-501", "SCN-500", "SCN-503", "SCN-504", "SCN-505"] },
+    { "id": "FEAT-501", "name": "Flush and eviction resilience", "members": ["REQ-507", "REQ-508", "REQ-509", "REQ-510", "LIV-500", "REQ-521", "REQ-522", "REQ-523", "REQ-524", "REQ-525", "REQ-526", "REQ-527", "REQ-528", "REQ-530", "REQ-532", "LIV-501", "SCN-500", "SCN-503", "SCN-504", "SCN-505", "REQ-534", "SCN-507", "SCN-508"] },
     { "id": "FEAT-502", "name": "ShardByQueue and hybrid notifications", "members": ["INV-500", "REQ-516", "REQ-517", "INV-501", "SCN-502"] }
   ],
 
   "glossary": {
-    "generationMarker": "A key holding a value that only moves forward and a reconciling flag. A worker node writes the first one on a new server (REQ-528), advances it every RecurringReconcileInterval (REQ-527), and replaces it with a later, flagged value when it detects a reset (REQ-507); the flag is cleared when reconciliation ends (REQ-509). Every node remembers the last value it saw (lastSeenMarker).",
+    "generationMarker": "A key holding a value that only moves forward, a reconciling flag and the value of the last reset. A worker node writes the first one on a new server at the lowest value, flagged (REQ-528), advances it to the Redis server's current time every RecurringReconcileInterval (REQ-527), and replaces it with the server's current time, flagged and recorded as the last reset, when it detects a reset (REQ-507); the flag is cleared one LeaseDuration after reconciliation starts (REQ-509). Every node remembers the last value it saw (lastSeenMarker).",
     "RecurringReconcileInterval": "5 minutes by default (REQ-510).",
     "RedisMemoryDegradedShare": "Share of maxmemory above which health reports Degraded; 80% by default (REQ-520).",
     "ShardByQueue": "Opt-in Cluster mode with one hash tag per queue instead of per namespace (INV-500).",
     "StaleNodeAge": "How long a node may go without a heartbeat before its registration is removed; 3 × HeartbeatInterval, 60 s by default (REQ-533).",
-    "resetSinceClaim": "The store was reset since a job was claimed: the generation marker is missing, flagged as reconciling, or older than the value read when the job was claimed, or this node has detected or learned of a reset since the claim (REQ-507, REQ-530). Used by REQ-521 and REQ-522 as 'the store was reset since the claim'."
+    "resetSinceClaim": "The store was reset since a job was claimed: the generation marker is missing, flagged as reconciling, or older than the value read when the job was claimed, or the marker's last-reset value is later than the value read when the job was claimed, or this node has detected or learned of a reset since the claim (REQ-507, REQ-530). Used by REQ-521 and REQ-522 as 'the store was reset since the claim'."
   }
 }

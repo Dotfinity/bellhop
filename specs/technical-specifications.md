@@ -518,7 +518,7 @@ Format: refiner-tech/1
 ## TECH-56 — Redis data model
 
 - **Area:** datastore
-- **Statement:** The Redis store shall keep each job as a hash, per-queue ready and working lists, scheduled, retry and lease sorted sets scored by time, index sorted sets per state, queue and name, tag index sets, recurring definitions as hashes with a sorted set scored by NextRunAt, a node registry sorted set scored by heartbeat, unique keys as SET NX PX and concurrency counters as integers maintained inside scripts, in a documented and versioned key layout, plus a generation marker with a forward-only value and a reconciling flag in every hash tag the claim scripts use, and an unacknowledged-reset record.
+- **Statement:** The Redis store shall keep each job as a hash, per-queue ready and working lists, scheduled, retry and lease sorted sets scored by time, index sorted sets per state, queue and name, tag index sets, recurring definitions as hashes with a sorted set scored by NextRunAt, a node registry sorted set scored by heartbeat, unique keys as SET NX PX and concurrency counters as integers maintained inside scripts, in a documented and versioned key layout, plus a generation marker with a forward-only value taken from the server clock, a reconciling flag and the last-reset value in every hash tag the claim scripts use, and an unacknowledged-reset record.
 - **Applies to:** TECH-70, REQ-507, REQ-526, REQ-527, REQ-532
 - **Strength:** must
 - **Status:** approved
@@ -1215,11 +1215,11 @@ Format: refiner-tech/1
 ## TECH-130 — Redis reset safety in the claim and heartbeat scripts
 
 - **Area:** datastore
-- **Statement:** The Redis claim script shall refuse to claim while the generation marker is missing or flagged as reconciling, and the heartbeat script shall re-create a missing job record as Processing with its lease and concurrency-key hold when the store was reset since the claim.
-- **Applies to:** redis REQ-522, redis REQ-526, TECH-56, TECH-62
+- **Statement:** The Redis claim script and the recurring trigger script shall refuse to claim or create an occurrence while the generation marker is missing or flagged as reconciling, the heartbeat script shall, while it is missing or flagged, re-create a missing job record as Processing with its lease, concurrency-key hold and unique-key lock and cancel in the same script a pending job that took the unique key, and new generation marker values shall be read from the server's TIME.
+- **Applies to:** redis REQ-507, redis REQ-522, redis REQ-526, redis REQ-527, redis REQ-534, TECH-56, TECH-62
 - **Strength:** must
 - **Status:** approved
-- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy; see open questions.
+- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy; see open questions. Redis run 2 (F-2, F-6): unique-key locks are re-created with the record, and marker values come from TIME.
 
 ## Open questions
 
