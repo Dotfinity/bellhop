@@ -1,0 +1,70 @@
+"""Writes the Redis*.cfg files of run 2. Each cfg = BASE constants + overrides + checks.
+Run from specs/model/redis:  python gen_cfgs.py"""
+BASE = dict(Nodes="{n1, n2}", WorkerNodes="{n1, n2}", Jobs="{j1, j2}", QueueA="{j1}", KeyMax="1",
+            UniqueKeys="FALSE", Recurring="FALSE", ShardByQueue="FALSE", FreshStore="FALSE",
+            LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE", OptGlobalValues="FALSE", OptResumeFlag="FALSE",
+            TimelyHeartbeats="TRUE", MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
+            CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", NULL="NULL")
+CFGS = {
+  "Redis": ("Main run: two workers, one concurrency key (Max 1), FLUSHALL up to twice, no late joiner, no outage (redis F-1, F-8, F-9).",
+            dict(MaxLosses="2"),
+            ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_UnackedUntilOperator",
+             "Inv_ConcurrencyKeyMax", "Inv_SingleClaim"], []),
+  "Redis_Outage": ("As main with one flush and one server outage (A-18: the interval passes during the outage).",
+            dict(MaxOutages="1"), ["Inv_ConcurrencyKeyMax", "Inv_NoLostOutcome", "Inv_SingleClaim", "Scn_NoClaimWhileFlagged"], []),
+  "Redis_LateJoin": ("As main with one flush, and a node may read the marker for the first time after the flush (REQ-528).",
+            dict(LateJoin="TRUE"), ["Inv_ConcurrencyKeyMax", "Inv_NoLostOutcome", "Inv_NoFalseReset"], []),
+  "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit.",
+            dict(UniqueKeys="TRUE", KeyMax="2"), ["Inv_UniqueKey"], []),
+  "Redis_Shard": ("ShardByQueue on, no data loss: jobs INV-100 as amended (per queue) vs INV-500 (redis F-10).",
+            dict(UniqueKeys="TRUE", ShardByQueue="TRUE", KeyMax="2", LossKinds="{}", MaxLosses="0"), ["Inv_UniqueKey"], []),
+  "Redis_Recurring": ("Jobs are occurrences of one recurring job (overlap Skip), one flush; no concurrency limit.",
+            dict(Recurring="TRUE", KeyMax="2"), ["Inv_RecurringOverlap"], []),
+  "Redis_Restore": ("Restore / failover rollback to an older image, marker included; one advance possible.",
+            dict(LossKinds='{"restore"}'),
+            ["Inv_NoFalseReset", "Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
+  "Redis_RestoreOlder": ("Rollback to an image with an OLDER marker only (the detectable kind; ACTION_CONSTRAINT).",
+            dict(LossKinds='{"restore"}', MaxAdvances="2"),
+            ["Inv_NoFalseReset", "Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
+  "Redis_OptGlobal": ("OPTION CHECK for finding 'false reset': main run with globally later marker values.",
+            dict(MaxLosses="2", OptGlobalValues="TRUE"), ["Inv_NoFalseReset", "Inv_OneEventPerReset"], []),
+  "Redis_OptResume": ("OPTION CHECK for finding 'flag stuck after reconnect': LivOutage with REQ-530 resuming the flag.",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", MaxOutages="1", OptResumeFlag="TRUE"), [], ["Liv_Reseeded"]),
+  "Redis_Evict": ("The policy becomes evicting at runtime (REQ-531); evictions of job records (accepted: not detected).",
+            dict(LossKinds='{"evict"}', PolicyChange="TRUE"), ["Inv_ConcurrencyKeyMax", "Inv_NoLostOutcome"], []),
+  "Redis_Fresh": ("First start against an empty server; no data loss (redis F-3).",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", FreshStore="TRUE", LossKinds="{}", MaxLosses="0"),
+            ["Inv_NoFalseReset"], []),
+  "Redis_Health": ("Health: one node, one flush, one outage, memory threshold on (redis F-5, F-6).",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", CheckHealth="TRUE", MemToggle="TRUE", MaxOutages="1"),
+            ["Inv_UnreachableIsUnhealthy", "Inv_UnhealthyOnlyWithCause"], []),
+  "Redis_Liveness": ("Liveness: two workers, one job, one flush.",
+            dict(Jobs="{j1}"), [], ["Liv_Reseeded", "Liv_MarkerWritten", "Liv_LossReported", "Liv_UnackedRestored"]),
+  "Redis_LivFlush2": ("Liveness: two workers, one job, two flushes (a flush during reconciliation; redis F-8).",
+            dict(Jobs="{j1}", MaxLosses="2"), [], ["Liv_LossReported", "Liv_UnackedRestored", "Liv_Reseeded"]),
+  "Redis_LivRestore": ("Liveness: two workers, one job, one rollback.",
+            dict(Jobs="{j1}", LossKinds='{"restore"}'), [], ["Liv_LossReported", "Liv_Reseeded"]),
+  "Redis_LivOutage": ("Liveness: one worker, one job, one flush and one outage (REQ-529 reconnect during reconciliation).",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", MaxOutages="1"), [], ["Liv_Reseeded"]),
+  "Redis_ClientOnly": ("LIV-500 with one worker (n1) and one client-only node (n2); hosts may stop nodes (redis F-4, SCN-506).",
+            dict(WorkerNodes="{n1}", Jobs="{j1}", AllowStop="TRUE"), ["Scn_ClientNoDetect"], ["Liv_Reseeded"]),
+  "Redis_SCN500": ("Scenario SCN-500 (positive), --no-deadlock. Expected: trap VIOLATED (the trace is the example run).",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", CheckHealth="TRUE"), ["Scn_FlushRecovered_NotReached"], []),
+  "Redis_SCN501": ("Scenario SCN-501 (negative, impossibleAt 2): Scn_NoEvalNoReady must HOLD.",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", LossKinds="{}", MaxLosses="0"), ["TypeInv", "Scn_NoEvalNoReady"], []),
+  "Redis_SCN503": ("Scenario SCN-503 (positive): trap VIOLATED expected.",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", FreshStore="TRUE", LossKinds="{}", MaxLosses="0"), ["Scn_FreshInitialised_NotReached"], []),
+  "Redis_SCN504": ("Scenario SCN-504 (positive): trap VIOLATED expected.",
+            dict(MaxAdvances="0"), ["Scn_HoldKept_NotReached"], []),
+  "Redis_SCN505": ("Scenario SCN-505 (positive): trap VIOLATED expected.",
+            dict(Jobs="{j1}", LossKinds='{"restore"}'), ["Scn_RestoreDetected_NotReached"], []),
+}
+for name, (comment, over, invs, props) in CFGS.items():
+    c = dict(BASE, **over)
+    scen = "_SCN" in name
+    lines = ["\\* " + comment, "\\* Generated by gen_cfgs.py; run with run_all.py (one check per TLC run, --stop-at-first).",
+             "SPECIFICATION Spec", "CONSTANTS"] + [f"  {k} = {v}" for k, v in c.items()]
+    lines += ["INVARIANTS"] + [f"  {i}" for i in ([] if scen else ["TypeInv"]) + invs]
+    if props: lines += ["PROPERTIES"] + [f"  {p}" for p in props]
+    if name == "Redis_RestoreOlder": lines += ["ACTION_CONSTRAINT", "  ActC_OlderRollbackOnly"]
+    open(f"{name}.cfg", "w", newline="\n").write("\n".join(lines) + "\n")

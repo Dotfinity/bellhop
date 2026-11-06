@@ -1,11 +1,11 @@
-"""Run every Redis cfg the way the findings were produced.
+"""Run every Redis cfg the way the findings were produced (cfgs come from gen_cfgs.py).
 
 Each INVARIANT is checked on its own with --stop-at-first (one clean trace per property instead of
 thousands under -continue), each PROPERTY is checked on its own (TLC reports one liveness counter-example per run), and scenario
 cfgs run as written. Results: runs/<cfg>__<check>.json/.md and an index in run.json / run.md.
 Usage: python run_all.py [cfg ...]   (default: all *.cfg here)
 """
-import json, pathlib, re, subprocess, sys
+import json, os, pathlib, re, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUN_TLC = pathlib.Path.home() / ".claude-personal/skills/refiner-model/scripts/run_tlc.py"
@@ -19,10 +19,22 @@ def split(cfg_text):
         if s in ("INVARIANTS", "PROPERTIES"):
             sec = s
             continue
+        if s in ("ACTION_CONSTRAINT", "CONSTRAINT"):
+            sec = None   # constraint lines stay in the head of every per-check cfg
         if sec == "INVARIANTS" and s: inv.append(s)
         elif sec == "PROPERTIES" and s: props.append(s)
         else: head.append(line)
     return "\n".join(head), inv, props
+
+
+def kill_tlc(cfg_name):
+    if os.name == "nt":
+        ps = ("Get-CimInstance Win32_Process -Filter \"name='java.exe'\" | "
+              f"Where-Object {{ $_.CommandLine -like '*{cfg_name}*' }} | "
+              "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps])
+    else:
+        subprocess.run(["pkill", "-f", cfg_name])
 
 
 def run(cfg_path, label, text, no_deadlock):
@@ -30,11 +42,25 @@ def run(cfg_path, label, text, no_deadlock):
     tmp.write_text(text + "\n")
     out = HERE / "runs" / f"{cfg_path.stem}__{label}"
     cmd = [sys.executable, str(RUN_TLC), "Redis.tla", "--config", tmp.name, "--workers", "2",
-           "--stop-at-first", "--out", f"{out}.json", "--md", f"{out}.md"]
+           "--stop-at-first", "--timeout", "150", "--out", f"{out}.json", "--md", f"{out}.md"]
     if no_deadlock: cmd.append("--no-deadlock")
-    subprocess.run(cmd, cwd=HERE)
+    try:
+        # run_tlc.py's own --timeout does not stop TLC on Windows; enforce it here and stop only
+        # the java process that runs this check's temporary cfg.
+        subprocess.run(cmd, cwd=HERE, timeout=170)
+    except subprocess.TimeoutExpired:
+        kill_tlc(tmp.name)
+        pathlib.Path(f"{out}.json").write_text(json.dumps({"status": "timeout", "property": None,
+                                                           "stats": {}, "trace": []}))
+        pathlib.Path(f"{out}.md").write_text(f"### TLC result for `Redis.tla`: **timeout** (170 s)\n")
     tmp.unlink()
-    res = json.loads(pathlib.Path(f"{out}.json").read_text())
+    res_path = pathlib.Path(f"{out}.json")
+    if not res_path.exists():
+        return {"cfg": cfg_path.name, "check": label, "status": "no-result", "property": None,
+                "distinctStates": None, "seconds": None, "traceLength": 0, "file": None}
+    res = json.loads(res_path.read_text())
+    if "unexpected exception" in pathlib.Path(f"{out}.md").read_text().lower():
+        res["status"] = "tlc-exception"
     return {"cfg": cfg_path.name, "check": label, "status": res["status"], "property": res["property"],
             "distinctStates": res["stats"].get("distinctStates"), "seconds": res["stats"].get("seconds"),
             "traceLength": len(res["trace"]), "file": f"runs/{out.name}.json"}
