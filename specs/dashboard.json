@@ -447,6 +447,15 @@
       "notes": "Decided by the owner on 2026-11-06 (key lifecycle); counting it towards the address lockout follows from REQ-304.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-341", "kind": "invariant", "status": "approved",
+      "entity": "DashboardEndpoint",
+      "ears": { "while": "no node with the worker registered has sent a heartbeat within NodeLostAfter", "shall": "show a banner on every dashboard page saying that no worker is running, so enqueued and scheduled jobs will not run, with the time the last worker was seen" },
+      "mentions": ["hosting.Node.hasWorker", "hosting.Node.Running"],
+      "notes": "Decided by the owner on 2026-11-06. A cluster made only of client or dashboard processes otherwise accepts jobs that never run, silently (P6). NodeLostAfter (5 min, integrations REQ-411) keeps a rolling deploy from flashing the banner. The JSON API reports the same condition.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7; §2 P6" }]
     }
   ],
 
@@ -501,12 +510,21 @@
         { "req": "REQ-305", "note": "the CLI calls the JSON API with k" }
       ],
       "impossibleAt": 2
+    },
+    {
+      "id": "SCN-308", "title": "Dashboard warns when no worker is alive", "status": "approved",
+      "given": "A web API with the client and the dashboard is running; the only worker service stopped 10 minutes ago; three jobs are enqueued.",
+      "steps": [
+        { "req": "REQ-307", "note": "operator opens the overview" },
+        { "req": "REQ-341" }
+      ],
+      "then": "Every page shows the no-worker banner with the time the worker was last seen, and the three jobs are still Enqueued."
     }
   ],
 
   "features": [
     { "id": "FEAT-300", "name": "Access control", "members": ["REQ-300", "REQ-301", "INV-300", "INV-301", "INV-302", "REQ-302", "REQ-303", "REQ-304", "REQ-305", "REQ-306", "REQ-334", "REQ-335", "REQ-336", "REQ-337", "REQ-338", "REQ-339", "REQ-340", "INV-307", "INV-308", "SCN-300", "SCN-301", "SCN-303", "SCN-304", "SCN-306", "SCN-307"] },
-    { "id": "FEAT-301", "name": "Pages", "members": ["REQ-307", "REQ-308", "INV-303", "REQ-309", "REQ-310", "REQ-311", "REQ-312", "REQ-313", "REQ-315", "REQ-316", "REQ-317", "REQ-318", "REQ-325", "REQ-326", "REQ-327", "REQ-330", "REQ-331", "INV-306"] },
+    { "id": "FEAT-301", "name": "Pages", "members": ["REQ-307", "REQ-308", "REQ-341", "INV-303", "REQ-309", "REQ-310", "REQ-311", "REQ-312", "REQ-313", "REQ-315", "REQ-316", "REQ-317", "REQ-318", "REQ-325", "REQ-326", "REQ-327", "REQ-330", "REQ-331", "INV-306", "SCN-308"] },
     { "id": "FEAT-302", "name": "Launch page", "members": ["INV-304", "REQ-319", "REQ-320", "REQ-321", "REQ-322", "REQ-323", "REQ-324", "SCN-302", "SCN-305"] },
     { "id": "FEAT-303", "name": "Node metrics and insights", "members": ["REQ-314", "REQ-332", "INV-305", "REQ-333"] },
     { "id": "FEAT-304", "name": "Recurring management in the UI", "members": ["REQ-328", "REQ-329"] }
