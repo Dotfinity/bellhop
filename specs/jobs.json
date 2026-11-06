@@ -145,10 +145,10 @@
     {
       "id": "REQ-123", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Enqueued"], "to": ["Processing"],
-      "ears": { "while": "a job is enqueued in an active queue, the maintenance pause is off and its concurrency key and rate limit admit it", "when": "a running node with the worker registered and a handler for the job's name or one of its aliases has a free worker slot and the job is the next one by queue order and priority", "shall": "claim the job for that worker, record the claiming node, issue a new leaseToken, increment the attempt number and set leaseExpiresAt to the database time plus LeaseDuration" },
-      "mentions": ["Job.leaseOwner", "Job.leaseToken", "Job.leaseExpiresAt", "Job.attempt", "Job.name", "Queue.Active", "Maintenance.Off", "Throttle.holders", "hosting.Node.Running", "hosting.Node.hasWorker"],
+      "ears": { "while": "a job is enqueued in an active queue that is below its concurrency limit, the maintenance pause is off, its concurrency key and rate limit admit it and, for a job tagged LongRunning, the node is below its LongRunning limit", "when": "a running node with the worker registered and a handler for the job's name or one of its aliases has a free worker slot and the job is the next one by queue order and priority", "shall": "claim the job for that worker, record the claiming node, issue a new leaseToken, increment the attempt number and set leaseExpiresAt to the database time plus LeaseDuration" },
+      "mentions": ["Job.leaseOwner", "Job.leaseToken", "Job.leaseExpiresAt", "Job.attempt", "Job.name", "Queue.Active", "Queue.concurrencyLimit", "Job.longRunning", "Maintenance.Off", "Throttle.holders", "hosting.Node.Running", "hosting.Node.hasWorker"],
       "dependsOn": ["REQ-102"],
-      "notes": "The attempt number is counted at claim time; that is what makes EXE-4 'attempt counted' hold for interrupted runs. Decided by the owner on 2026-11-06: only nodes with the worker registered claim (hosting REQ-20), a node claims only jobs it has a handler for (REQ-124), and every claim gets a fresh lease token (INV-128).",
+      "notes": "The attempt number is counted at claim time; that is what makes EXE-4 'attempt counted' hold for interrupted runs. Decided by the owner on 2026-11-06: only nodes with the worker registered claim (hosting REQ-20), a node claims only jobs it has a handler for (REQ-124), and every claim gets a fresh lease token (INV-128). Resolved after refiner-model 2026-11-06 F-2 (recommended option): the queue limit (INV-107) and the LongRunning limit (INV-112) are claim conditions here, not only in INV-107's notes.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-2", "quote": "A job can be claimed by exactly one worker using store-native primitives. Claims carry a lease with an expiry." }]
     },
@@ -200,8 +200,9 @@
     {
       "id": "REQ-129", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Failed"],
-      "ears": { "while": "a job is processing", "when": "its handler throws an exception", "if": "the attempt number is below maxAttempts and the retry policy allows another attempt", "shall": "mark the job failed and set retryAt from the backoff" },
+      "ears": { "while": "a job is processing and its cancellation was not requested", "when": "its handler throws an exception", "if": "the exception is not an OperationCanceledException thrown after the job's token was cancelled for shutdown, and the attempt number is below maxAttempts and the retry policy allows another attempt", "shall": "mark the job failed and set retryAt from the backoff" },
       "mentions": ["Job.attempt", "Job.maxAttempts", "Job.retryAt"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-7: a job whose cancellation was requested is marked cancelled instead (REQ-190). F-8: an OperationCanceledException after the shutdown signal is REQ-140, not a failed attempt.",
       "dependsOn": ["REQ-100"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.6 RET-1, RET-2; §4.5 EXE-11" }]
@@ -217,18 +218,19 @@
     {
       "id": "REQ-131", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["DeadLettered"],
-      "ears": { "while": "a job is processing", "when": "its handler throws an exception", "if": "the attempt number has reached maxAttempts, the retry policy declines another attempt, or the exception is a PermanentJobFailureException", "shall": "move the job to dead-lettered" },
+      "ears": { "while": "a job is processing", "when": "its handler throws an exception", "if": "the exception is not an OperationCanceledException thrown after the job's token was cancelled for shutdown, and the attempt number has reached maxAttempts, the retry policy declines another attempt, or the exception is a PermanentJobFailureException", "shall": "move the job to dead-lettered" },
       "mentions": ["Job.attempt", "Job.maxAttempts"],
       "dependsOn": ["REQ-100"],
-      "notes": "Same event as REQ-129; the guards are complementary, so exactly one of the two applies. PermanentJobFailureException skips retries (RET-2).",
+      "notes": "Same event as REQ-129; the guards are complementary, so exactly one of the two applies. PermanentJobFailureException skips retries (RET-2). Resolved after refiner-model 2026-11-06 F-8: an OperationCanceledException after the shutdown signal is REQ-140, not a failure.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.6 RET-2, RET-3", "quote": "When attempts are exhausted the job MUST move to DeadLettered" }]
     },
     {
       "id": "REQ-132", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Enqueued"],
-      "ears": { "while": "a job is processing", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number is below maxAttempts", "shall": "let any running worker node return the job to enqueued with reason Interrupted, keeping the attempt counted" },
+      "ears": { "while": "a job is processing and its cancellation was not requested", "when": "its leaseExpiresAt has passed according to the database clock", "if": "the attempt number is below maxAttempts", "shall": "let any running worker node return the job to enqueued with reason Interrupted, keeping the attempt counted" },
       "mentions": ["Job.leaseExpiresAt", "Job.attempt", "Job.maxAttempts", "hosting.Node.Running"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-7: a job whose cancellation was requested is marked cancelled instead (REQ-190). REQ-133 is unchanged: a dead-lettered job does not run again.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-4", "quote": "When a lease expires (node crash, network partition) the job MUST be returned to Enqueued with the attempt counted and reason Interrupted, or dead-lettered if attempts are exhausted. Recovery is performed by any live node" }]
     },
@@ -262,7 +264,7 @@
       "entity": "Job", "actor": "Handler", "from": ["Processing"], "to": ["Cancelled"],
       "ears": { "while": "a job is processing and its cancellation was requested", "when": "its handler throws OperationCanceledException", "shall": "mark the job cancelled" },
       "mentions": ["Job.cancelRequested"],
-      "notes": "Decided by the owner on 2026-11-06: the outcome follows the handler. If it returns normally the job is Succeeded (REQ-127), because the work was done; any other exception takes the normal failure path (REQ-129, REQ-131); if it ignores the token it stays Processing until its timeout, if it has one.",
+      "notes": "Decided by the owner on 2026-11-06: the outcome follows the handler. If it returns normally the job is Succeeded (REQ-127), because the work was done; any other exception takes the normal failure path (REQ-129, REQ-131); if it ignores the token it stays Processing until its timeout, if it has one. Resolved after refiner-model 2026-11-06 F-6/F-7: a cancelled job is never retried. If the handler throws another exception, ignores the token past a timeout, loses its lease or is released at shutdown, REQ-190 marks it cancelled instead of returning it to enqueued or failed. A normal return still marks it succeeded (REQ-127).",
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6 (implied)" }]
     },
     {
@@ -278,10 +280,10 @@
     {
       "id": "REQ-138", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Failed"],
-      "ears": { "while": "a job is processing and its timeout token was signalled", "if": "the handler is still running TimeoutGracePeriod later or throws OperationCanceledException within it, and the attempt number is below maxAttempts and the retry policy allows another attempt", "shall": "abandon the handler if it is still running, mark the job failed with reason Timeout and set retryAt from the backoff" },
+      "ears": { "while": "a job is processing, its timeout token was signalled and its cancellation was not requested", "if": "the handler is still running TimeoutGracePeriod later or throws OperationCanceledException within it, and the attempt number is below maxAttempts and the retry policy allows another attempt", "shall": "abandon the handler if it is still running, mark the job failed with reason Timeout and set retryAt from the backoff" },
       "mentions": ["Job.timeout", "Job.attempt", "Job.maxAttempts", "Job.retryAt"],
       "dependsOn": ["REQ-137", "REQ-187", "REQ-100"],
-      "notes": "Decided by the owner on 2026-11-06: TimeoutGracePeriod is 30 s (REQ-187) and a timeout is an ordinary failed attempt: it is retried, or dead-lettered when attempts run out (REQ-186). An abandoned handler keeps running in the process; lease fencing (INV-128) makes its eventual result harmless.",
+      "notes": "Decided by the owner on 2026-11-06: TimeoutGracePeriod is 30 s (REQ-187) and a timeout is an ordinary failed attempt: it is retried, or dead-lettered when attempts run out (REQ-186). An abandoned handler keeps running in the process; lease fencing (INV-128) makes its eventual result harmless. Resolved after refiner-model 2026-11-06 F-6 (recommended option): a job whose cancellation was requested is never retried; REQ-136 or REQ-190 marks it cancelled.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7", "quote": "a handler that ignores cancellation is abandoned after a grace period and the job is marked Failed with reason Timeout" }]
     },
@@ -296,10 +298,10 @@
     {
       "id": "REQ-140", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "Host", "from": ["Processing"], "to": ["Enqueued"],
-      "ears": { "while": "the job's node is draining and the job's token was cancelled for shutdown", "if": "the handler is still running", "shall": "release the job's lease and take back the attempt it counted, so another node can claim it immediately and the interrupted run does not count towards maxAttempts" },
+      "ears": { "while": "the job's node is draining, the job's token was cancelled for shutdown and its cancellation was not requested", "if": "the handler is still running or throws OperationCanceledException", "shall": "release the job's lease and take back the attempt it counted, so another node can claim it immediately and the interrupted run does not count towards maxAttempts" },
       "mentions": ["hosting.Node.Draining", "Job.leaseOwner", "Job.leaseExpiresAt", "Job.attempt"],
       "dependsOn": ["REQ-139"],
-      "notes": "Decided by the owner on 2026-11-06: shutdown is not the job's fault, so the attempt is not counted; a crash (lease expiry, REQ-132) still counts. The lease is released as soon as ShutdownTimeout passes. The old handler may still run in the stopping process while another node claims the job; that is an expected at-least-once duplicate, and fencing (INV-128) refuses its result.",
+      "notes": "Decided by the owner on 2026-11-06: shutdown is not the job's fault, so the attempt is not counted; a crash (lease expiry, REQ-132) still counts. The lease is released as soon as ShutdownTimeout passes. The old handler may still run in the stopping process while another node claims the job; that is an expected at-least-once duplicate, and fencing (INV-128) refuses its result. Resolved after refiner-model 2026-11-06 F-8 (recommended option): a handler that honours the shutdown token by throwing OperationCanceledException is released the same way as one that ignores it, so cooperating never costs an attempt. F-7: a job whose cancellation was requested is marked cancelled instead (REQ-190).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6", "quote": "then any still-running jobs have their leases released so another node picks them up immediately" }]
     },
@@ -314,9 +316,10 @@
     {
       "id": "REQ-142", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "Operator", "from": ["DeadLettered"], "to": ["Enqueued"],
-      "ears": { "when": "an operator requeues dead-lettered jobs in bulk by name, queue, tag or time range", "shall": "enqueue each matching dead-lettered job again in its own atomic step with its attempt number reset to zero, and return how many were requeued and how many were skipped because their state changed meanwhile" },
+      "ears": { "when": "an operator requeues dead-lettered jobs in bulk by name, queue, tag or time range", "shall": "enqueue each matching dead-lettered job again in its own atomic step with its attempt number reset to zero, skip any job whose unique key is held by another active job, and return how many were requeued, how many were skipped because their state changed meanwhile and how many were skipped because their unique key is held" },
       "mentions": ["Job.attempt", "Job.name", "Job.queue", "Job.tags"],
-      "notes": "Decided by the owner on 2026-11-06: per job, not all-or-nothing, so a large set never holds one long transaction.",
+      "dependsOn": ["INV-100", "INV-129"],
+      "notes": "Decided by the owner on 2026-11-06: per job, not all-or-nothing, so a large set never holds one long transaction. Resolved after refiner-model 2026-11-06 F-4 (recommended option): the unique-key guard of INV-129 applies per job in bulk requeue, with its own count.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.6 RET-5" }]
     },
@@ -337,8 +340,9 @@
     {
       "id": "REQ-145", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Succeeded", "Cancelled", "DeadLettered"],
-      "ears": { "when": "a job has been succeeded, cancelled or dead-lettered for longer than that state's retention", "shall": "remove the job together with its state history, captured logs and parameters, in batches of at most CleanupBatchSize" },
-      "mentions": ["Job.stateHistory", "Job.capturedLogs", "Job.parameters"],
+      "ears": { "when": "a job has been succeeded, cancelled or dead-lettered for longer than that state's retention", "if": "the job is not a member of a batch that is open or completed", "shall": "remove the job together with its state history, captured logs and parameters, in batches of at most CleanupBatchSize" },
+      "mentions": ["Job.stateHistory", "Job.capturedLogs", "Job.parameters", "Job.batchId", "Batch.Open", "Batch.Completed"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-10 (recommended option): retention never removes a member of a batch that is not succeeded, so the batch can still complete (REQ-180) or be upgraded to succeeded (REQ-179, SCN-119).",
       "dependsOn": ["REQ-104", "REQ-109"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.9 STO-7", "quote": "state history and logs follow the job" }]
@@ -373,8 +377,9 @@
     {
       "id": "REQ-150", "kind": "invariant", "status": "approved",
       "entity": "Job",
-      "ears": { "when": "an application enqueues a job with a unique key while an active job with the same key exists", "if": "the duplicate policy is Ignore", "shall": "create no job and return the existing job's id with WasDuplicate set to true" },
+      "ears": { "when": "an application enqueues, schedules or otherwise creates a job (including a continuation, a chain step or a batch member) with a unique key while an active job with the same key exists", "if": "the duplicate policy is Ignore, or the policy is ReplaceSchedule and the call does not schedule a job", "shall": "create no job and return the existing job's id with WasDuplicate set to true" },
       "mentions": ["Job.uniqueKey", "Job.duplicatePolicy"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-3 (recommended option): the duplicate rules cover every call that creates a job, including recurring occurrences, so INV-100 cannot be bypassed by scheduling, by ReplaceSchedule on enqueue, or by a continuation, chain step or batch member. ReplaceSchedule on a call that does not schedule behaves like Ignore, as INV-135 does for a holder that is no longer scheduled. Same event as REQ-152 with complementary guards. Open for the owner: what a chain or batch does with the other steps when one step is ignored as a duplicate.",
       "dependsOn": ["REQ-107"],
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5" }]
@@ -392,8 +397,9 @@
     {
       "id": "REQ-152", "kind": "invariant", "status": "approved",
       "entity": "Job",
-      "ears": { "when": "an application enqueues a job with a unique key while an active job with the same key exists", "if": "the duplicate policy is Error", "shall": "reject the call with an error and create no job" },
+      "ears": { "when": "an application enqueues, schedules or otherwise creates a job (including a continuation, a chain step or a batch member) with a unique key while an active job with the same key exists", "if": "the duplicate policy is Error", "shall": "reject the call with an error and create no job" },
       "mentions": ["Job.uniqueKey", "Job.duplicatePolicy"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-3 (recommended option): covers every call that creates a job; for a chain or batch, rejecting the call creates none of its jobs (REQ-176, REQ-177 are one transaction).",
       "dependsOn": ["REQ-107"],
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5" }]
@@ -401,10 +407,10 @@
     {
       "id": "INV-100", "kind": "invariant", "status": "approved",
       "entity": "Job",
-      "ears": { "shall": "never hold two active jobs with the same unique key in the same namespace, even when the enqueues arrive concurrently on different nodes" },
+      "ears": { "shall": "never hold two active jobs with the same unique key in the same namespace or, where the Redis ShardByQueue mode is on (redis INV-500), in the same queue, even when the enqueues arrive concurrently on different nodes" },
       "mentions": ["Job.uniqueKey", "Job.namespace", "Job.Scheduled", "Job.Enqueued", "Job.Processing", "Job.Awaiting", "Job.Failed", "Job.Unroutable"],
       "dependsOn": ["REQ-107"],
-      "notes": "In the Redis ShardByQueue mode the scope is per queue instead (INV-500).",
+      "notes": "In the Redis ShardByQueue mode the scope is per queue instead (INV-500). Resolved after refiner-model 2026-11-06 redis F-10 (recommended option): the ShardByQueue scope is part of the sentence, not only of the notes. Every job-creating call is covered by REQ-150/REQ-152 (F-3) and bulk requeue by REQ-142 (F-4).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-5", "quote": "Uniqueness MUST be enforced by the store (unique index), not by read-then-write." }]
     },
@@ -473,8 +479,9 @@
     {
       "id": "INV-106", "kind": "invariant", "status": "approved",
       "entity": "Job",
-      "ears": { "shall": "never run more jobs at once on a node than the node's concurrency limit" },
+      "ears": { "shall": "never hold claims on more processing jobs at once on a node than the node's concurrency limit" },
       "mentions": ["hosting.Node.concurrencyLimit", "Job.Processing", "Job.leaseOwner"],
+      "notes": "Decided by the owner after refiner-model 2026-11-06 F-5: the limit counts claims, not handler code still executing. A handler abandoned after its timeout (REQ-138, REQ-186) or released at shutdown (REQ-140) keeps running in the process but no longer holds a claim, so it runs outside the limit; REQ-191 makes it visible.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-1; §4.7 CON-6" }]
     },
@@ -490,9 +497,9 @@
     {
       "id": "INV-108", "kind": "invariant", "status": "approved",
       "entity": "Throttle",
-      "ears": { "shall": "never let more jobs with the same concurrency key be processing at once, across all nodes, than that key's Max" },
+      "ears": { "shall": "never admit a claim that would make more jobs with the same concurrency key processing at once, across all nodes, than that key's Max at the time of the claim" },
       "mentions": ["Throttle.max", "Throttle.holders", "Job.concurrencyKey", "Job.Processing"],
-      "notes": "Max = 1 is a distributed mutex; Max = N a semaphore.",
+      "notes": "Max = 1 is a distributed mutex; Max = N a semaphore. Resolved after refiner-model 2026-11-06 F-1 (recommended option): a rule about claims, not a state invariant, because lowering Max at runtime (REQ-158) leaves the current holders running above the new Max.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.7 CON-3" }]
     },
@@ -516,9 +523,9 @@
     {
       "id": "INV-109", "kind": "invariant", "status": "approved",
       "entity": "Throttle",
-      "ears": { "where": "a rate limit of N executions per fixed or sliding window is set for a key", "shall": "never start more than N jobs with that key in any window, across all nodes, counting every start including retries and recovery restarts" },
+      "ears": { "where": "a rate limit of N executions per fixed or sliding window is set for a key", "shall": "never start a job with that key when N jobs with that key have already started in the current window, across all nodes, counting every start including retries and recovery restarts" },
       "mentions": ["Throttle.rateLimit", "Throttle.window", "Throttle.windowKind", "Job.rateLimitKey"],
-      "notes": "Decided by the owner on 2026-11-06: every start counts, because each one reaches the downstream system. Waiting is REQ-156.",
+      "notes": "Decided by the owner on 2026-11-06: every start counts, because each one reaches the downstream system. Waiting is REQ-156. Resolved after refiner-model 2026-11-06 F-1 (recommended option): a rule about starts, so lowering N at runtime (REQ-158) does not retroactively violate it for starts already made in the window.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.7 CON-4" }]
     },
@@ -631,7 +638,8 @@
       "entity": "Job",
       "ears": { "while": "a job is enqueued in an active queue, maintenance is off and at least one running worker node serves its queue", "shall": "eventually claim the job" },
       "mentions": ["Job.Enqueued", "Job.Processing", "Queue.Active", "Maintenance.Off", "hosting.Node.Running"],
-      "notes": "Not stated as such; follows from SCH-1 'runs as soon as a worker is free'. Expected to fail under strict queue priority (INV-110), under a permanently held concurrency key, or behind a stream of higher-priority jobs. That is the finding we want the model to report.",
+      "notes": "Not stated as such; follows from SCH-1 'runs as soon as a worker is free'. Expected to fail under strict queue priority (INV-110), under a permanently held concurrency key, or behind a stream of higher-priority jobs. That is the finding we want the model to report. Fails by design under strict queue priority (INV-110) and job priority (INV-111) when higher-ranked work arrives continuously; weighted round-robin (REQ-159) avoids it. Holds for one queue with equal priorities. Confirmed by the model 2026-11-06 (F-12); accepted by the owner.",
+      "tags": ["accepted-unprovable"],
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-1 (implied)" }]
     },
     {
@@ -822,9 +830,9 @@
     {
       "id": "REQ-174", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Cancelled"],
-      "ears": { "while": "a continuation is awaiting", "when": "its parent succeeds or is dead-lettered", "if": "the parent's outcome does not match the continuation's condition", "shall": "cancel the continuation with reason ConditionNotMet" },
+      "ears": { "while": "a continuation is awaiting", "when": "its parent succeeds", "if": "the condition is OnFailure", "shall": "cancel the continuation with reason ConditionNotMet" },
       "mentions": ["Job.continuationCondition"],
-      "notes": "Decided by the owner on 2026-11-06: a continuation whose condition does not match resolves to Cancelled; the reason tells it apart from an operator cancel.",
+      "notes": "Decided by the owner on 2026-11-06: a continuation whose condition does not match resolves to Cancelled; the reason tells it apart from an operator cancel. Resolved after refiner-model 2026-11-06 F-9 (recommended option 1): a continuation whose parent is dead-lettered and whose condition does not match stays awaiting, because the parent can still be requeued (REQ-141) and succeed, as batches already allow (REQ-179). It is cancelled when the parent is cancelled (REQ-173), deleted or removed by retention (REQ-188). Same event as REQ-171 with the complementary guard.",
       "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1" }]
     },
     {
@@ -836,11 +844,11 @@
       "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1 (implied)" }]
     },
     {
-      "id": "LIV-102", "kind": "liveness", "status": "approved",
+      "id": "LIV-102", "kind": "liveness", "status": "approved", "strength": "should",
       "entity": "Job",
       "ears": { "while": "a continuation is awaiting", "shall": "eventually enqueue or cancel it" },
       "mentions": ["Job.Awaiting", "Job.Enqueued", "Job.Cancelled"],
-      "notes": "Expected to fail as written when the parent stays Unroutable or Failed for ever, and for an OnBatchSucceeded continuation of a batch that stays Completed (REQ-181). Deleting a parent now cancels its continuations (REQ-188), and retention only removes finished parents, whose continuations were already resolved. These are the findings we want the model to report.",
+      "notes": "Expected to fail as written when the parent stays Unroutable or Failed for ever, and for an OnBatchSucceeded continuation of a batch that stays Completed (REQ-181). Deleting a parent now cancels its continuations (REQ-188), and retention only removes finished parents, whose continuations were already resolved. These are the findings we want the model to report. Confirmed by the model 2026-11-06 (F-13) behind an Unroutable parent and a Completed batch, and accepted; an operator can cancel the continuation (REQ-134). Since F-9 a continuation also waits behind a dead-lettered parent until it is requeued, cancelled, deleted or removed, so LIV-102 is a should.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1", "quote": "never hang in Awaiting forever" }]
     },
@@ -849,7 +857,7 @@
       "entity": "Job",
       "ears": { "when": "an application creates a chain of jobs", "shall": "store the first job as enqueued and each later job as an OnSuccess continuation of the one before it, all in one store transaction, so that either the whole chain exists or none of it does" },
       "mentions": ["Job.parentId", "Job.continuationCondition"],
-      "notes": "Decided by the owner on 2026-11-06 (reading confirmed): OnSuccess, so a dead-lettered step cancels the rest of the chain (REQ-174) and a cancelled step cancels it too (REQ-173).",
+      "notes": "Decided by the owner on 2026-11-06 (reading confirmed): OnSuccess, so a dead-lettered step cancels the rest of the chain (REQ-174) and a cancelled step cancels it too (REQ-173). Resolved after refiner-model 2026-11-06 F-9: a dead-lettered step now keeps the rest of the chain awaiting; requeuing the step and its success revives the chain (REQ-171). Cancelling, deleting or removing the step cancels the rest.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.8 WF-2" }]
     },
@@ -883,9 +891,9 @@
     {
       "id": "REQ-180", "kind": "transition", "status": "approved",
       "entity": "Batch", "actor": "system", "from": ["Open"], "to": ["Completed"],
-      "ears": { "while": "a batch is open", "when": "every member job is succeeded, dead-lettered or cancelled and at least one did not succeed", "shall": "mark the batch completed" },
+      "ears": { "while": "a batch is open", "when": "every member job is succeeded, dead-lettered, cancelled or deleted and at least one did not succeed", "shall": "mark the batch completed" },
       "mentions": ["Batch.members", "Job.DeadLettered", "Job.Cancelled"],
-      "notes": "Decided by the owner on 2026-11-06: Completed means every member finished and at least one did not succeed. It is not final: see REQ-179.",
+      "notes": "Decided by the owner on 2026-11-06: Completed means every member finished and at least one did not succeed. It is not final: see REQ-179. Resolved after refiner-model 2026-11-06 F-10 (recommended option): a member deleted explicitly (REQ-144) counts as finished and not succeeded, so the batch still completes.",
       "sources": [{ "document": "requirements.md", "section": "§4.8 WF-3" }]
     },
     {
@@ -933,10 +941,10 @@
     {
       "id": "REQ-186", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["DeadLettered"],
-      "ears": { "while": "a job is processing and its timeout token was signalled", "if": "the handler is still running TimeoutGracePeriod later or throws OperationCanceledException within it, and the attempt number has reached maxAttempts or the retry policy declines another attempt", "shall": "abandon the handler if it is still running and move the job to dead-lettered with reason Timeout" },
+      "ears": { "while": "a job is processing, its timeout token was signalled and its cancellation was not requested", "if": "the handler is still running TimeoutGracePeriod later or throws OperationCanceledException within it, and the attempt number has reached maxAttempts or the retry policy declines another attempt", "shall": "abandon the handler if it is still running and move the job to dead-lettered with reason Timeout" },
       "mentions": ["Job.timeout", "Job.attempt", "Job.maxAttempts"],
       "dependsOn": ["REQ-137", "REQ-187", "REQ-100"],
-      "notes": "Decided by the owner on 2026-11-06: a timeout is an ordinary failure, so exhausted attempts dead-letter it. Complementary guard to REQ-138.",
+      "notes": "Decided by the owner on 2026-11-06: a timeout is an ordinary failure, so exhausted attempts dead-letter it. Complementary guard to REQ-138. Resolved after refiner-model 2026-11-06 F-6 (recommended option): a job whose cancellation was requested is marked cancelled instead (REQ-136, REQ-190).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7; §4.6 RET-3" }]
     },
@@ -950,10 +958,10 @@
     {
       "id": "REQ-188", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Cancelled"],
-      "ears": { "while": "a continuation is awaiting", "when": "its parent is deleted", "shall": "cancel the continuation" },
+      "ears": { "while": "a continuation is awaiting", "when": "its parent is deleted or removed by retention", "shall": "cancel the continuation" },
       "mentions": ["Job.parentId"],
-      "dependsOn": ["REQ-144"],
-      "notes": "Decided by the owner on 2026-11-06, so a deleted parent never leaves a continuation hanging (LIV-102).",
+      "dependsOn": ["REQ-144", "REQ-145"],
+      "notes": "Decided by the owner on 2026-11-06, so a deleted parent never leaves a continuation hanging (LIV-102). Resolved after refiner-model 2026-11-06 F-9: removal by retention is included, because a dead-lettered parent now keeps its OnSuccess continuations awaiting until it is requeued or removed.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6; §4.8 WF-1" }]
     },
@@ -1057,6 +1065,30 @@
       "notes": "Decided by the owner on 2026-11-06. The source gave no default. A handler that ignores its token is abandoned TimeoutGracePeriod later (REQ-138, REQ-186). The docs must say so prominently, because a job that silently ran for an hour under another library will now time out.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7" }]
+    },
+    {
+      "id": "REQ-190", "kind": "transition", "status": "approved", "strength": "must",
+      "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Cancelled"],
+      "ears": { "while": "a job is processing and its cancellation was requested", "when": "its lease expires with attempts left, its node releases it at shutdown, its handler is still running TimeoutGracePeriod after its timeout token was signalled, or its handler throws an exception other than OperationCanceledException with attempts left", "shall": "abandon the handler if it is still running and mark the job cancelled instead of returning it to enqueued, marking it failed or dead-lettering it for the timeout" },
+      "mentions": ["Job.cancelRequested", "Job.attempt", "Job.timeout", "hosting.Node.Draining"],
+      "dependsOn": ["REQ-129", "REQ-132", "REQ-135", "REQ-138", "REQ-140", "REQ-186"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-7 (recommended option): a cancellation request recorded by REQ-135 is never lost when the job leaves processing some other way, so a cancelled job does not run again. The guards of REQ-129, REQ-132, REQ-138, REQ-140 and REQ-186 exclude a requested cancellation, so exactly one rule applies. Exhausted attempts on a handler exception or lease expiry still dead-letter (REQ-131, REQ-133), because a dead-lettered job does not run again."
+    },
+    {
+      "id": "REQ-191", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Job",
+      "ears": { "when": "the system abandons a handler that is still running, after a timeout (REQ-138, REQ-186, REQ-190) or a release at shutdown (REQ-140)", "shall": "log a warning naming the job, its attempt and the node, and record in that attempt that its handler was abandoned and is still running outside the node's concurrency limit" },
+      "mentions": ["Job.attempts", "hosting.Node.concurrencyLimit"],
+      "dependsOn": ["INV-106"],
+      "notes": "Decided by the owner after refiner-model 2026-11-06 F-5: abandoned handlers run outside the node's limit (INV-106) and are made visible rather than counted."
+    },
+    {
+      "id": "INV-138", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Job",
+      "ears": { "if": "an application adds a continuation to a parent job id that does not exist", "shall": "reject the call with an error that names the parent id, and store nothing" },
+      "mentions": ["Job.parentId"],
+      "dependsOn": ["REQ-170", "REQ-175"],
+      "notes": "Resolved after refiner-model 2026-11-06 F-11 (recommended option): a parent that was deleted or removed by retention falls between REQ-170, REQ-175 and REQ-188 and would leave the continuation awaiting for ever."
     }
   ],
 
@@ -1283,17 +1315,48 @@
         { "req": "REQ-123", "note": "the web API process tries to claim j" }
       ],
       "impossibleAt": 1
+    },
+    {
+      "id": "SCN-121", "title": "Requeuing a dead-lettered chain step revives the chain", "status": "approved",
+      "given": "A chain import then report; import has maxAttempts = 1 and its handler throws once, then succeeds.",
+      "steps": [
+        { "req": "REQ-176", "note": "chain created: import enqueued, report awaiting" },
+        { "req": "REQ-123", "note": "import claimed" },
+        { "req": "REQ-131", "note": "import throws and is dead-lettered; report stays awaiting" },
+        { "req": "REQ-141", "note": "operator requeues import" },
+        { "req": "REQ-123", "note": "import claimed again" },
+        { "req": "REQ-127", "note": "import succeeds" },
+        { "req": "REQ-171", "note": "report enqueued" }
+      ],
+      "then": "report is Enqueued and the chain continues without the operator touching report."
+    },
+    {
+      "id": "SCN-122", "title": "A cancellation survives lease expiry", "status": "approved",
+      "given": "Node A is processing j1 with attempts left and is cut off from the store; node B is running.",
+      "steps": [
+        { "req": "REQ-135", "note": "operator cancels j1; the request is recorded" },
+        { "req": "REQ-190", "note": "j1's lease expires" }
+      ],
+      "then": "j1 is Cancelled and is never claimed again."
+    },
+    {
+      "id": "SCN-123", "title": "A continuation of a missing parent is rejected", "status": "approved",
+      "given": "Job j1 succeeded and was removed by retention.",
+      "steps": [
+        { "req": "REQ-170", "note": "the app adds an OnSuccess continuation to j1's id" }
+      ],
+      "impossibleAt": 1
     }
   ],
 
   "features": [
     { "id": "FEAT-100", "name": "Enqueue and schedule", "members": ["REQ-105", "REQ-120", "REQ-121", "REQ-122", "REQ-146", "REQ-147", "REQ-148", "INV-101", "REQ-153", "INV-102", "REQ-154", "REQ-155", "INV-115", "REQ-182", "INV-131", "INV-132", "INV-133", "INV-134", "INV-137", "SCN-107", "SCN-113", "SCN-116"] },
-    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "REQ-189", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117"] },
+    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "REQ-189", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117", "REQ-191"] },
     { "id": "FEAT-102", "name": "Retries and dead letters", "members": ["REQ-100", "REQ-129", "REQ-130", "REQ-131", "REQ-141", "REQ-142", "INV-117", "INV-118", "SCN-101", "SCN-112"] },
     { "id": "FEAT-103", "name": "Uniqueness", "members": ["REQ-107", "REQ-150", "REQ-151", "REQ-152", "INV-100", "INV-135", "SCN-105"] },
     { "id": "FEAT-104", "name": "Queues, priority, concurrency and throttling", "members": ["REQ-106", "REQ-108", "INV-107", "INV-108", "REQ-156", "REQ-157", "INV-109", "REQ-158", "INV-110", "REQ-159", "INV-111", "INV-112", "REQ-160", "REQ-161", "INV-113", "REQ-162", "REQ-163", "INV-114", "LIV-100", "SCN-106", "SCN-110"] },
-    { "id": "FEAT-105", "name": "Cancellation, requeue and deletion", "members": ["REQ-134", "REQ-135", "REQ-136", "REQ-143", "REQ-144", "INV-129", "INV-130"] },
-    { "id": "FEAT-106", "name": "Continuations, chains and batches", "members": ["REQ-170", "REQ-171", "REQ-172", "REQ-173", "REQ-174", "REQ-175", "LIV-102", "REQ-176", "REQ-177", "REQ-178", "REQ-179", "REQ-180", "REQ-181", "REQ-188", "SCN-108", "SCN-109", "SCN-114", "SCN-118", "SCN-119"] },
+    { "id": "FEAT-105", "name": "Cancellation, requeue and deletion", "members": ["REQ-134", "REQ-135", "REQ-136", "REQ-143", "REQ-144", "INV-129", "INV-130", "REQ-190", "SCN-122"] },
+    { "id": "FEAT-106", "name": "Continuations, chains and batches", "members": ["REQ-170", "REQ-171", "REQ-172", "REQ-173", "REQ-174", "REQ-175", "LIV-102", "REQ-176", "REQ-177", "REQ-178", "REQ-179", "REQ-180", "REQ-181", "REQ-188", "SCN-108", "SCN-109", "SCN-114", "SCN-118", "SCN-119", "INV-138", "SCN-121", "SCN-123"] },
     { "id": "FEAT-107", "name": "Job identity, routing and payloads", "members": ["REQ-101", "REQ-124", "REQ-125", "INV-120", "INV-121", "INV-122", "INV-123", "INV-124", "INV-125", "REQ-183", "SCN-111", "SCN-120"] },
     { "id": "FEAT-108", "name": "Retention and cleanup", "members": ["REQ-104", "REQ-109", "REQ-145", "INV-119", "REQ-164"] },
     { "id": "FEAT-109", "name": "Captured logs, progress, tags, correlation and events", "members": ["REQ-165", "INV-126", "REQ-166", "REQ-167", "REQ-168", "INV-127", "REQ-169", "INV-136"] }
