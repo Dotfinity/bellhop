@@ -19,7 +19,7 @@
       "states": ["Pending", "Sent", "Suppressed", "Failed"],
       "initial": ["Pending", "Suppressed"],
       "final": ["Sent", "Suppressed", "Failed"],
-      "attributes": ["rule", "subject", "createdAt", "isTest"]
+      "attributes": ["rule", "subject", "createdAt", "isTest", "isDigest", "attempts"]
     },
     {
       "name": "HttpCall",
@@ -29,9 +29,8 @@
     {
       "name": "OutboxRow",
       "description": "A job written to the application's database by the outbox, waiting to be relayed to the job store.",
-      "states": ["Pending", "Relayed"],
+      "states": ["Pending"],
       "initial": ["Pending"],
-      "final": ["Relayed"],
       "attributes": ["outboxId", "job"]
     }
   ],
@@ -56,9 +55,9 @@
     {
       "id": "REQ-402", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
-      "ears": { "where": "a rule watches the failure rate", "when": "the failure rate in the rule's window rises above its threshold", "shall": "create a delivery for that rule" },
+      "ears": { "where": "a rule watches the failure rate", "when": "the failure rate of a job name in the rule's window rises above its threshold", "shall": "create a delivery for that rule with the job name as subject" },
       "mentions": ["NotificationRule.threshold", "NotificationRule.window"],
-      "notes": "Open question: the failure rate of what (job name, queue, everything) is the subject?",
+      "notes": "Decided by the owner on 2026-11-06: the rate is always computed per job name, and each job name is its own subject for the cooldown (INV-400).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
@@ -74,9 +73,10 @@
     {
       "id": "REQ-404", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
-      "ears": { "where": "a rule watches nodes", "when": "a node stops sending heartbeats", "shall": "create a delivery for that rule with the node as subject" },
+      "ears": { "where": "a rule watches nodes", "when": "a node has sent no heartbeat for NodeLostAfter", "shall": "create a delivery for that rule with the node as subject" },
+      "dependsOn": ["REQ-411"],
       "mentions": ["hosting.Node"],
-      "notes": "Open question: after how long without a heartbeat is a node 'lost'?",
+      "notes": "Decided by the owner on 2026-11-06: NodeLostAfter is 5 minutes (REQ-411), longer than the 60 s lease, so jobs of a lost node are recovered well before the alert; fewer false alarms during long pauses and deploys.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11", "quote": "node lost" }]
     },
@@ -93,7 +93,7 @@
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
       "ears": { "where": "a rule watches throttles", "when": "jobs have waited on a throttle key for longer than the rule's threshold", "shall": "create a delivery for that rule with the key as subject" },
       "mentions": ["NotificationRule.threshold", "jobs.Throttle.key"],
-      "notes": "'Throttle key starved' is not defined in the source; 'jobs waited longer than a threshold' is my reading.",
+      "notes": "Reading confirmed by the owner on 2026-11-06: 'throttle key starved' means jobs have waited on the key for longer than the rule's threshold.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11", "quote": "throttle key starved" }]
     },
@@ -102,7 +102,7 @@
       "entity": "Delivery",
       "ears": { "shall": "never send more than one non-test delivery for the same rule and subject within the rule's cooldown; later ones within the cooldown are recorded as suppressed" },
       "mentions": ["Delivery.rule", "Delivery.subject", "Delivery.isTest", "NotificationRule.cooldown"],
-      "notes": "The source says deliveries are 'rate-limited and deduplicated per rule and subject within a cooldown'. Open question: is there also a rate limit across subjects (for example 1,000 jobs dead-lettered at once means 1,000 subjects)?",
+      "notes": "The source says deliveries are 'rate-limited and deduplicated per rule and subject within a cooldown'. Decided by the owner on 2026-11-06: there is also a cap per rule across subjects (INV-407) with a digest at the end of the cooldown (REQ-414).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
@@ -116,10 +116,12 @@
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
     {
-      "id": "REQ-408", "kind": "transition", "status": "draft",
-      "entity": "Delivery", "actor": "system", "from": ["Pending"], "to": ["Pending", "Failed"],
-      "ears": { "while": "a delivery is pending", "if": "its channel rejects the message or cannot be reached", "shall": "TBD: retry with backoff up to a limit, then mark the delivery failed and log it" },
-      "notes": "Gap: delivery failure is not in the source. Without it Pending can last for ever and a broken webhook fails silently (against P6). Ask the owner.",
+      "id": "REQ-408", "kind": "transition", "status": "approved",
+      "entity": "Delivery", "actor": "system", "from": ["Pending"], "to": ["Pending"],
+      "ears": { "while": "a delivery is pending", "if": "its channel rejects the message or cannot be reached, and fewer than NotificationMaxAttempts attempts have been made", "shall": "retry the delivery with backoff" },
+      "mentions": ["Delivery.attempts"],
+      "dependsOn": ["REQ-412"],
+      "notes": "Decided by the owner on 2026-11-06: 5 attempts in total with backoff from about 10 s to 10 min, then Failed (REQ-415). Same event as REQ-415 with the complementary guard.",
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11 (implied); §2 P6" }]
     },
     {
@@ -127,15 +129,15 @@
       "entity": "Delivery", "actor": "Operator", "to": ["Pending"],
       "ears": { "when": "an operator presses 'send test' on a rule on the Notifications page", "shall": "create a test delivery for that rule, outside its cooldown" },
       "mentions": ["Delivery.isTest"],
-      "notes": "Bypassing the cooldown is my reading; otherwise a test right after a real alert would be suppressed.",
+      "notes": "Reading confirmed by the owner on 2026-11-06: a test delivery bypasses the cooldown, otherwise a test right after a real alert would be suppressed.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
     {
       "id": "REQ-410", "kind": "invariant", "status": "approved",
       "entity": "NotificationRule",
-      "ears": { "shall": "load rules from configuration and from code and list every rule on the Notifications page" },
-      "notes": "Open question: when a rule with the same name exists in both, which wins?",
+      "ears": { "shall": "load rules from configuration and from code, use the code definition when a rule with the same name exists in both, and list every rule on the Notifications page" },
+      "notes": "Decided by the owner on 2026-11-06: code wins, the same precedence as options (hosting REQ-17).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
     },
@@ -162,7 +164,7 @@
       "entity": "jobs.Job", "actor": "system", "from": ["Processing"], "to": ["Failed", "DeadLettered"],
       "ears": { "while": "an HTTP job is processing", "if": "the response status is not accepted, the success predicate does not hold, or the request times out", "shall": "fail the attempt so the retry policy decides between Failed and DeadLettered, and store the response if there was one" },
       "mentions": ["HttpCall.status", "jobs.Job.result"],
-      "notes": "The source gives the success rule only; treating everything else as an ordinary handler failure is my reading.",
+      "notes": "Reading confirmed by the owner on 2026-11-06: everything that is not an accepted response is an ordinary handler failure, so the retry policy decides between Failed and DeadLettered. With MaxRedirects 0 (REQ-416) a 3xx response is not followed and counts as not accepted unless listed.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-12" }]
     },
@@ -179,7 +181,7 @@
       "entity": "HttpCall",
       "ears": { "if": "the destination resolves to a private-network or loopback address that is not explicitly allowed", "shall": "refuse to send the request" },
       "mentions": ["HttpCall.resolvedAddress"],
-      "notes": "Open question: is the check made on the resolved address at connect time (which also stops DNS rebinding), or only on the host name?",
+      "notes": "Decided by the owner on 2026-11-06: the check is made on the host name and its resolution before the request, not on the address actually connected to. A name that resolves to a public address at check time and a private one at connect time (DNS rebinding) is therefore not caught; the allowlist (INV-401) is the main defence. Revisit if HTTP jobs ever take destinations from untrusted input.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6" }]
     },
@@ -188,7 +190,7 @@
       "entity": "HttpCall",
       "ears": { "shall": "never follow a redirect to a different host and never follow more than MaxRedirects redirects" },
       "mentions": ["HttpCall.redirects", "HttpCall.host"],
-      "notes": "MaxRedirects has no value in the source.",
+      "notes": "Decided by the owner on 2026-11-06: MaxRedirects is 0 by default (REQ-416), so redirects are not followed unless the application raises it, and then only to the same host.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6", "quote": "redirects limited and never across hosts" }]
     },
@@ -197,7 +199,7 @@
       "entity": "HttpCall",
       "ears": { "shall": "take credentials for outbound calls only from named HttpClient registrations, never from job payloads or configuration templates" },
       "mentions": ["HttpCall.clientName", "HttpCall.headers"],
-      "notes": "Open question: should an HTTP job whose payload carries an Authorization header be rejected at enqueue? The rule says credentials never live in payloads but not how that is enforced.",
+      "notes": "Decided by the owner on 2026-11-06: enforced at enqueue by INV-408.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6" }]
     },
@@ -228,16 +230,17 @@
     },
     {
       "id": "REQ-432", "kind": "transition", "status": "approved", "strength": "should",
-      "entity": "OutboxRow", "actor": "system", "from": ["Pending"], "to": ["Relayed"],
-      "ears": { "while": "an outbox row is pending", "when": "the relay, running on one node that holds the relay lease, processes its next batch", "shall": "enqueue the row's job in the job store and mark the row relayed" },
-      "mentions": ["OutboxRow.job", "jobs.Job.Enqueued"],
+      "entity": "OutboxRow", "actor": "system", "from": ["Pending"],
+      "ears": { "while": "an outbox row is pending", "when": "the relay, running on one node that holds the relay lease, processes its next batch", "shall": "enqueue the row's job in the job store, keyed by the row's outboxId so a repeated relay creates no second job, and then delete the row" },
+      "mentions": ["OutboxRow.job", "OutboxRow.outboxId", "jobs.Job.Enqueued"],
       "tags": ["M3"],
+      "notes": "Decided by the owner on 2026-11-06: the relay deletes relayed rows, so the outbox table stays small. The job store and the application database are different databases in outbox mode, so the two steps cannot share a transaction; idempotency by outboxId (INV-406) covers a crash between them.",
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-17" }]
     },
     {
       "id": "INV-406", "kind": "invariant", "status": "approved", "strength": "should",
       "entity": "OutboxRow",
-      "ears": { "shall": "never create more than one job from the same outbox row, even if the relay crashes between enqueueing the job and marking the row relayed" },
+      "ears": { "shall": "never create more than one job from the same outbox row, even if the relay crashes between enqueueing the job and deleting the row" },
       "mentions": ["OutboxRow.outboxId"],
       "tags": ["M3"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-17", "quote": "idempotent by outbox id" }]
@@ -245,11 +248,79 @@
     {
       "id": "LIV-400", "kind": "liveness", "status": "approved", "strength": "should",
       "entity": "OutboxRow",
-      "ears": { "while": "an outbox row is pending and at least one node can run the relay", "shall": "eventually relay it" },
-      "mentions": ["OutboxRow.Pending", "OutboxRow.Relayed"],
-      "notes": "Relayed rows are never cleaned up in the source. Open question: who deletes them and when?",
+      "ears": { "while": "an outbox row is pending and at least one node can run the relay", "shall": "eventually enqueue its job and delete the row" },
+      "mentions": ["OutboxRow.Pending", "jobs.Job.Enqueued"],
+      "notes": "Decided by the owner on 2026-11-06: rows are deleted by the relay once their job is enqueued (REQ-432).",
       "tags": ["M3"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-17 (implied)" }]
+    },
+    {
+      "id": "REQ-411", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "treat a node as lost after NodeLostAfter without a heartbeat, 5 minutes by default (NodeLostAfter)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
+    },
+    {
+      "id": "REQ-412", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "attempt each notification delivery at most NotificationMaxAttempts times, 5 by default, with backoff from about 10 seconds to 10 minutes between attempts (NotificationMaxAttempts)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11 (implied); §2 P6" }]
+    },
+    {
+      "id": "REQ-413", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "send at most MaxDeliveriesPerCooldown non-test deliveries per rule within its cooldown, 10 by default (MaxDeliveriesPerCooldown)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
+    },
+    {
+      "id": "REQ-414", "kind": "transition", "status": "approved",
+      "entity": "Delivery", "actor": "system", "to": ["Pending"],
+      "ears": { "when": "a rule's cooldown ends and deliveries for it were suppressed by the per-rule cap during that cooldown", "shall": "create one digest delivery for the rule that says how many were suppressed and for which subjects" },
+      "mentions": ["Delivery.isDigest", "NotificationRule.cooldown"],
+      "dependsOn": ["INV-407"],
+      "notes": "Decided by the owner on 2026-11-06: a flood produces up to 10 messages plus one digest, never silence.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
+    },
+    {
+      "id": "REQ-415", "kind": "transition", "status": "approved",
+      "entity": "Delivery", "actor": "system", "from": ["Pending"], "to": ["Failed"],
+      "ears": { "while": "a delivery is pending", "if": "its channel rejects the message or cannot be reached, and NotificationMaxAttempts attempts have been made", "shall": "mark the delivery failed, log an error that names the rule and the channel, and count it in a metric" },
+      "mentions": ["Delivery.attempts"],
+      "dependsOn": ["REQ-412"],
+      "notes": "Decided by the owner on 2026-11-06. Failed deliveries are listed on the Notifications page. Same event as REQ-408.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11 (implied); §2 P6" }]
+    },
+    {
+      "id": "REQ-416", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default MaxRedirects for outbound calls to 0 (MaxRedirects)" },
+      "notes": "Decided by the owner on 2026-11-06: redirects are not followed unless the application opts in.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6" }]
+    },
+    {
+      "id": "INV-407", "kind": "invariant", "status": "approved",
+      "entity": "Delivery",
+      "ears": { "shall": "never send more than MaxDeliveriesPerCooldown non-test, non-digest deliveries for the same rule within its cooldown, whatever their subjects; later ones within the cooldown are recorded as suppressed" },
+      "mentions": ["Delivery.rule", "Delivery.isTest", "Delivery.isDigest", "NotificationRule.cooldown"],
+      "dependsOn": ["REQ-413"],
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11" }]
+    },
+    {
+      "id": "INV-408", "kind": "invariant", "status": "approved",
+      "entity": "HttpCall",
+      "ears": { "if": "an application enqueues an HTTP job whose payload sets an Authorization, Proxy-Authorization or Cookie header, or whose URL carries user information", "shall": "reject the enqueue with an error that points to named HttpClient registrations, and store nothing" },
+      "mentions": ["HttpCall.headers"],
+      "dependsOn": ["INV-404"],
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.14 SEC-6; §4.15 BLT-12" }]
     }
   ],
 
@@ -283,19 +354,22 @@
         { "req": "REQ-432", "note": "first relay enqueues and crashes" },
         { "req": "REQ-432", "note": "second relay processes o1 again" }
       ],
-      "then": "Exactly one job exists for o1 and o1 is Relayed."
+      "then": "Exactly one job exists for o1 and o1 is no longer in the outbox."
     }
   ],
 
   "features": [
-    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "SCN-400"] },
-    { "id": "FEAT-401", "name": "HTTP jobs and outbound security", "members": ["REQ-420", "REQ-421", "REQ-422", "INV-401", "INV-402", "INV-403", "INV-404", "INV-405", "SCN-401", "SCN-402"] },
+    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "SCN-400"] },
+    { "id": "FEAT-401", "name": "HTTP jobs and outbound security", "members": ["REQ-420", "REQ-421", "REQ-422", "INV-401", "INV-402", "INV-403", "INV-404", "INV-405", "REQ-416", "INV-408", "SCN-401", "SCN-402"] },
     { "id": "FEAT-402", "name": "Outbox", "members": ["REQ-430", "REQ-431", "REQ-432", "INV-406", "LIV-400", "SCN-403"] }
   ],
 
   "glossary": {
     "cooldown": "Per rule: the period in which repeated deliveries for the same subject are suppressed (INV-400).",
     "allowlist": "Destination hosts outbound calls may reach; empty by default (INV-401).",
-    "MaxRedirects": "Redirect limit for outbound calls; no default yet (INV-403)."
+    "MaxRedirects": "Redirect limit for outbound calls; 0 by default (REQ-416).",
+    "NodeLostAfter": "Time without a heartbeat after which a node is reported lost; 5 min by default (REQ-411).",
+    "NotificationMaxAttempts": "Attempts per notification delivery before it is Failed; 5 by default (REQ-412).",
+    "MaxDeliveriesPerCooldown": "Non-test deliveries per rule within one cooldown; 10 by default (REQ-413)."
   }
 }
