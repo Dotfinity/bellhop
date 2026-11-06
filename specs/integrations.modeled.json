@@ -1,0 +1,183 @@
+{
+  "module": "integrations",
+  "specHash": "1ada134dcb356f92a1eca62c2b52dc8979b2c0929d6bc3e3b6cc105481ada548",
+  "generatedAt": "2026-11-06T17:30:00Z",
+  "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
+  "items": {
+    "REQ-400": {
+      "hash": "4b15ca75d0e530b27e0f177d58ebbd5c44d4fb886ca8014b8c714334e428f774",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-401": {
+      "hash": "bc8c147844b68b6ae9d5cd8bf7a0dfe0f3096985df712bb5e41754905e43eb1d",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-402": {
+      "hash": "e39de7723ebfdf511d1ebe317b703cb63464ec7e44d23dd8f0b96c12cac03dea",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-403": {
+      "hash": "c3f82123673b0fe00f33b4efcf10fa03c6d755cb32d6394bc9da13ce2a2d7fe3",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-404": {
+      "hash": "0f17a630e7ac6d25236f571389199866837222c0fdb2eaefe277b539157c4fd3",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-405": {
+      "hash": "5f24e07642e4d7f26e1f4fe5872d1d6f0e129e21ed680a6766f71d2ba12b8bcb",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-406": {
+      "hash": "0eaabf524168e29142469623c807faeef5f1523a2063689ac6748eafd685a3f0",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406; trigger abstracted A-1); Pending/Suppressed unspecified -> F-1"
+    },
+    "REQ-407": {
+      "hash": "f7e072f0aa8547b836590bfc9f622bc45c27a827422f10e0c5adbfdc1aefa343",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: ChannelAccepts"
+    },
+    "REQ-408": {
+      "hash": "39d1883f60e745ad3c3ccf9987913ae608aca9d7064c02c1a4e00c55e2eb235d",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: ChannelRejects (retry branch)"
+    },
+    "REQ-415": {
+      "hash": "b2b613f26277177f4d0d5e2a2a4a763bbc684112df445a8c4d453f69bbfa38ad",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: ChannelRejects (failed branch)"
+    },
+    "REQ-409": {
+      "hash": "b3251c30deeba2a29aa29a646efd1ba88c7997c1bb51778fcb67b3ebaa3d2e6c",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: SendTest"
+    },
+    "REQ-414": {
+      "hash": "66844c33e9a9f5dc72970f2cfd63825fbc23049ee43d9d592739427792a53e3f",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: RuleCooldownEnds (digest)"
+    },
+    "REQ-411": {
+      "hash": "1e26b0de16b87f6b87cead2d9604203ebdb9fa3c6586a31b67a5cf90439685e6",
+      "reviewed": false,
+      "note": "absorbed by trigger abstraction A-1 (no clock)"
+    },
+    "REQ-412": {
+      "hash": "edd5d575f50226a3ee80f66fee43b5dcff591bbbd1ae9ebede780c3a791a06a4",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: CONSTANT MaxAttempts = 2 (5 in policy)"
+    },
+    "REQ-413": {
+      "hash": "cddea21ae4f516ac78f053da17381cd9c35b299d3e1ecf46c0ccf5a74ff2d5b0",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: CONSTANT MaxPerCooldown = 1 (10 in policy)"
+    },
+    "REQ-416": {
+      "hash": "ac5d1e5aa210806cea40d98bbd4a5f09591b91f9dfe6522db819b6dd65919e4d",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: CONSTANT MaxRedirects = 0 (1 in _transport.cfg)"
+    },
+    "INV-400": {
+      "hash": "05303b4d6b8aa82ad5889d7f49c4ce54f0764efa56986848f579d83ca4369c60",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: Inv_OneSendPerSubjectCooldown \u2014 violated (F-1, F-2)"
+    },
+    "INV-407": {
+      "hash": "3ad436d69d2e7e4e0213718e8ade48c1e6b615f9bab53ce090ab1d3d6c35c2bf",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: Inv_RuleCap \u2014 violated (F-1, F-2)"
+    },
+    "REQ-420": {
+      "hash": "708d2ee907ce3e11d9d941b4f14aea4991429aa80c5f75b23756fef8da6d1422",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: SendRequest (guarded by INV-401/402, A-7); refusal has no outcome -> F-7"
+    },
+    "REQ-421": {
+      "hash": "6ca0b2b78826920e01dc94a94f57fa48fd7e556035fc53e147d87dab9c0f1991",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Respond accepted"
+    },
+    "REQ-422": {
+      "hash": "c61a92ea9117817279d0debab2c8d6c9708155f969d89d46452aa3f7402b9ba8",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Respond not accepted / predicate / timeout; transport error uncovered -> F-7"
+    },
+    "INV-401": {
+      "hash": "ba26ff7b178883ef87e3cb0718ece99f630b1672f2b8edd1ebb8af6be51888bf",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Inv_AllowlistOnly \u2014 holds (by construction A-7)"
+    },
+    "INV-402": {
+      "hash": "f3f3023fdf2f725372edb85d91f57bf782fcbb7fb3d89dd86b077cd7ec4211f0",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Inv_NoPrivate \u2014 holds; 'explicitly allowed' undefined -> F-8"
+    },
+    "INV-403": {
+      "hash": "43c7e7112c7e98d4e160b34b2f7b04acfec026badfe9f1cf3a876194703e6d99",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Inv_Redirects \u2014 holds"
+    },
+    "INV-404": {
+      "hash": "ec4c57206ef687da812f4fa78e99648404a0973d25c9793ed109c3cc6f32fb8f",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Inv_NoPayloadCredentials \u2014 violated (F-9, F-10)"
+    },
+    "INV-408": {
+      "hash": "4e2593da200ab919f0f0dcba3c985b8364b4a492f19e7756c4494d2139352fdf",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Enqueue guard (Inv408Scope) -> F-9"
+    },
+    "REQ-430": {
+      "hash": "2adb7b3fc58f3a666bf7d765d5989fde5d7742e498289ded623f4e1ed6aa1a75",
+      "reviewed": false,
+      "note": "IntegrationsOutbox.tla: AppWritesRow, AppEndsTransaction"
+    },
+    "REQ-432": {
+      "hash": "0d5ebf0fe3ce16d365fd4d37c4a43738b4dd6c53521f4ecafc013360fed98cf2",
+      "reviewed": false,
+      "note": "IntegrationsOutbox.tla: RelayEnqueues, RelayDeletes; key semantics -> F-11"
+    },
+    "INV-406": {
+      "hash": "882b6078e34afb099f69dbf873bebfc679c821b1f13729eb79b4c4ed9a11e6da",
+      "reviewed": false,
+      "note": "IntegrationsOutbox.tla: Inv_OneJobPerRow \u2014 violated (F-11)"
+    },
+    "LIV-400": {
+      "hash": "53cc135b5acb2f1c72b4176542985ca54bcad103b31e6a01cca0ee27d8a5b76e",
+      "reviewed": false,
+      "note": "IntegrationsOutbox.tla: Liv_RowRelayed \u2014 holds only with lease takeover A-9 (F-12)"
+    },
+    "SCN-400": {
+      "hash": "841437895a90520ce5093404ad640a9defa89b91e2adf7d896c4a58c301fcebb",
+      "reviewed": false,
+      "note": "IntegrationsNotifications.tla: Scn400_NotReached trap violated as expected (reachable)"
+    },
+    "SCN-401": {
+      "hash": "5d0f81519bf4d27c62cf442b7d95a3455257d564f3d15cc16218df7214b6ca79",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Scn401_RefusedOffAllowlist \u2014 holds"
+    },
+    "SCN-402": {
+      "hash": "3512cc5a307c48a8d042bd7e05b412d97eba0a05e4e314258541460822b79abf",
+      "reviewed": false,
+      "note": "IntegrationsHttp.tla: Scn402_NotReached trap violated as expected (reachable)"
+    },
+    "SCN-403": {
+      "hash": "e1f6ddd84a192efdc4dd03028d4625322dd57fbd0076d75cdd8a3e9881f9d2f1",
+      "reviewed": false,
+      "note": "IntegrationsOutbox.tla: Scn403_NotReached trap violated as expected (reachable, needs A-9)"
+    }
+  },
+  "skipped": {
+    "REQ-410": "could not encode: static merge of rule definitions and a page listing, no state change",
+    "INV-405": "could not encode: masking in dashboard and logs is presentation, not state",
+    "REQ-431": "configuration choice between enqueue paths, no interleaving to check; static finding F-13"
+  }
+}
