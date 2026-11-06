@@ -24,6 +24,14 @@
       "attributes": ["user", "failedCount", "lockedUntil"]
     },
     {
+      "name": "ApiKey",
+      "description": "An API key issued from the dashboard for scripts and the CLI.",
+      "states": ["Active", "Revoked", "Expired"],
+      "initial": ["Active"],
+      "final": ["Revoked", "Expired"],
+      "attributes": ["name", "scope", "hash", "createdBy", "expiresAt"]
+    },
+    {
       "name": "NodeSample",
       "description": "A node metrics sample kept in the store.",
       "attributes": ["node", "cpu", "workingSet", "gcHeap", "threadPoolQueue", "workerUtilisation", "inFlight", "takenAt"]
@@ -63,9 +71,9 @@
     {
       "id": "INV-301", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "shall": "serve a dashboard page, JSON API read or MCP read only to a request with view permission, and perform an operate action (retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change a limit) only for a request with operate permission" },
+      "ears": { "shall": "serve a dashboard page, JSON API read or MCP read only to a request with view or operate permission, and perform an operate action (retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change a limit, create or revoke an API key) only for a request with operate permission" },
       "mentions": ["DashboardRequest.hasView", "DashboardRequest.hasOperate", "DashboardRequest.isOperate"],
-      "notes": "Applies equally to every built-in page (DSH-13), the JSON API (DSH-9) and the MCP server (BLT-19). Open question: does operate imply view?",
+      "notes": "Applies equally to every built-in page (DSH-13), the JSON API (DSH-9) and the MCP server (BLT-19). Decided by the owner on 2026-11-06: operate includes view; the view policy alone gives read-only users.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-3, DSH-9, DSH-13; §4.15 BLT-19; §4.14 SEC-1" }]
     },
@@ -91,25 +99,26 @@
       "entity": "LoginAttempt",
       "ears": { "where": "basic authentication is enabled with RequireBasicAuth()", "shall": "accept only users from configuration whose passwords are stored as salted PBKDF2 or Argon2 hashes" },
       "mentions": ["LoginAttempt.user"],
-      "notes": "Open question: what happens at startup if the configuration contains a plain-text password? Failing startup is the safe reading. The hashing technology is TECH-94; constant-time comparison is NFR-43.",
+      "notes": "Decided by the owner on 2026-11-06: a plain-text password fails startup (REQ-334). The hashing technology is TECH-94; constant-time comparison is NFR-43.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2", "quote": "users from configuration as salted PBKDF2 or Argon2 hashes (never plain text" }]
     },
     {
       "id": "REQ-304", "kind": "invariant", "status": "approved",
       "entity": "LoginAttempt",
-      "ears": { "where": "basic authentication is enabled", "if": "a user has failed MaxFailedLogins times within the rate-limit window", "shall": "reject further attempts for that user until the window has passed, even with the right password" },
-      "mentions": ["LoginAttempt.failedCount", "LoginAttempt.lockedUntil"],
-      "notes": "The source asks for 'failed-attempt rate limiting' without numbers. MaxFailedLogins, the window and whether the limit is per user or per client address are open. Ask the owner.",
+      "ears": { "where": "basic authentication is enabled", "if": "a user, or a client address, has failed MaxFailedLogins times within LoginLockoutWindow", "shall": "reject further attempts for that user or from that address until the window has passed, even with the right password" },
+      "mentions": ["LoginAttempt.failedCount", "LoginAttempt.lockedUntil", "LoginAttempt.user"],
+      "dependsOn": ["REQ-335", "REQ-336"],
+      "notes": "Decided by the owner on 2026-11-06: 5 failures in 15 minutes, counted both per user and per client address, so one address cannot try many users and many addresses cannot hammer one user.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
     {
       "id": "REQ-305", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "where": "RequireApiKey() is enabled", "when": "a script or the CLI calls the JSON API with a valid API key", "shall": "authenticate it with the permission level assigned to that key" },
-      "mentions": ["DashboardRequest.principal"],
-      "notes": "Open question: how keys are issued, stored, scoped to view or operate, and rotated is not stated.",
+      "ears": { "where": "RequireApiKey() is enabled", "when": "a script or the CLI calls the JSON API with an active API key", "shall": "authenticate it with the scope assigned to that key" },
+      "mentions": ["DashboardRequest.principal", "ApiKey.Active", "ApiKey.scope"],
+      "notes": "Decided by the owner on 2026-11-06: keys are issued and revoked from the dashboard (REQ-337, REQ-338), stored hashed, scoped to view or operate, and expire after 90 days by default (REQ-340). Several keys can be active at once, which is how rotation works.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
@@ -223,10 +232,10 @@
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-11" }]
     },
     {
-      "id": "INV-304", "kind": "invariant", "status": "proposed",
+      "id": "INV-304", "kind": "invariant", "status": "approved",
       "entity": "DashboardRequest",
-      "ears": { "shall": "offer to launch only job types marked [Launchable], or every registered job type when the global 'all jobs launchable' switch is on" },
-      "notes": "Conflict: DSH-12 says 'any registered job can be enqueued or scheduled from the dashboard'; BLT-8 says jobs opt in with [Launchable] or a global switch; §9 question 9 proposes opt-in. Written as opt-in, proposed until the owner confirms.",
+      "ears": { "shall": "offer every registered job type for launch" },
+      "notes": "Decided by the owner on 2026-11-06: DSH-12 wins over BLT-8 and the §9 Q9 proposal. There is no opt-in attribute (TECH-96 retired); launching still needs operate permission (INV-301) and is refused on a ReadOnly dashboard (INV-302).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-12; §4.15 BLT-8; §9 Q9" }]
     },
@@ -361,6 +370,81 @@
       "notes": "Uniqueness scope in that mode is INV-500 in the redis module.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.9.1 RED-9" }]
+    },
+    {
+      "id": "REQ-334", "kind": "transition", "status": "approved",
+      "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
+      "ears": { "while": "a node is starting", "if": "basic authentication is enabled and a configured password is not a supported salted hash", "shall": "stop the node from starting with a message that names the user and shows how to produce the hash" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2; §4.14 SEC-1" }]
+    },
+    {
+      "id": "REQ-335", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default MaxFailedLogins to 5 (MaxFailedLogins)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-336", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default LoginLockoutWindow to 15 minutes (LoginLockoutWindow)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-337", "kind": "transition", "status": "approved",
+      "entity": "ApiKey", "actor": "Operator", "to": ["Active"],
+      "ears": { "when": "an operator creates an API key in the dashboard with a name, a scope of view or operate and an optional expiry", "shall": "generate the key, show it once, and store only its hash with the name, scope, creator and expiry, using ApiKeyDefaultExpiry when no expiry is given" },
+      "mentions": ["ApiKey.name", "ApiKey.scope", "ApiKey.hash", "ApiKey.createdBy", "ApiKey.expiresAt"],
+      "dependsOn": ["INV-301", "REQ-340"],
+      "notes": "Decided by the owner on 2026-11-06. Creating a key is an operate action, so it needs operate permission and is refused on a ReadOnly dashboard (INV-302).",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-338", "kind": "transition", "status": "approved",
+      "entity": "ApiKey", "actor": "Operator", "from": ["Active"], "to": ["Revoked"],
+      "ears": { "when": "an operator revokes an API key in the dashboard", "shall": "mark the key revoked" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-339", "kind": "transition", "status": "approved",
+      "entity": "ApiKey", "actor": "system", "from": ["Active"], "to": ["Expired"],
+      "ears": { "while": "an API key is active", "when": "its expiresAt has passed", "shall": "mark the key expired" },
+      "mentions": ["ApiKey.expiresAt"],
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "REQ-340", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "default an API key's expiry to ApiKeyDefaultExpiry, 90 days, and allow a key that never expires when the operator asks for one (ApiKeyDefaultExpiry)" },
+      "notes": "Decided by the owner on 2026-11-06.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "INV-307", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "if": "a request authenticated by an API key tries to create or revoke an API key", "shall": "respond 403 Forbidden and change nothing" },
+      "mentions": ["DashboardRequest.principal", "DashboardRequest.response"],
+      "notes": "Decided by the owner on 2026-11-06: only interactive users mint keys, so a leaked key cannot create more keys.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
+    },
+    {
+      "id": "INV-308", "kind": "invariant", "status": "approved",
+      "entity": "DashboardRequest",
+      "ears": { "if": "a request presents an API key that is revoked, expired or unknown", "shall": "respond 401 Unauthorized and count it as a failed login for the client address" },
+      "mentions": ["ApiKey.Revoked", "ApiKey.Expired", "DashboardRequest.response", "LoginAttempt.failedCount"],
+      "dependsOn": ["REQ-304"],
+      "notes": "Decided by the owner on 2026-11-06 (key lifecycle); counting it towards the address lockout follows from REQ-304.",
+      "tags": ["M2"],
+      "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     }
   ],
 
@@ -378,14 +462,14 @@
       "then": "Anonymous requests are served and one notice was logged."
     },
     {
-      "id": "SCN-302", "title": "Operator launches a launchable job", "status": "approved",
-      "given": "SendReport is marked [Launchable]; Olga has operate permission; she fills the form with valid values.",
+      "id": "SCN-302", "title": "Operator launches a job", "status": "approved",
+      "given": "SendReport is a registered job type; Olga has operate permission; she fills the form with valid values.",
       "steps": [ { "req": "REQ-320", "note": "Run now" } ],
       "then": "One SendReport job is Enqueued with Olga's principal name stored on it and it appears in recent launches."
     },
     {
       "id": "SCN-303", "title": "Viewer cannot launch", "status": "approved",
-      "given": "SendReport is [Launchable]; Vic has view permission only.",
+      "given": "SendReport is a registered job type; Vic has view permission only.",
       "steps": [ { "req": "REQ-320", "note": "Vic submits Run now" } ],
       "impossibleAt": 1
     },
@@ -400,11 +484,26 @@
       "given": "SendReport has [Required] Email; Olga leaves it empty.",
       "steps": [ { "req": "REQ-319" } ],
       "then": "Validation errors are shown and no job was created."
+    },
+    {
+      "id": "SCN-306", "title": "An API key cannot mint another key", "status": "approved",
+      "given": "A CI script holds an active API key with operate scope.",
+      "steps": [ { "req": "REQ-337", "note": "the script calls the create-key endpoint with its key" } ],
+      "impossibleAt": 1
+    },
+    {
+      "id": "SCN-307", "title": "Expired key is rejected", "status": "approved",
+      "given": "Olga created key k with a 1-day expiry two days ago.",
+      "steps": [
+        { "req": "REQ-339", "note": "k expires" },
+        { "req": "REQ-305", "note": "the CLI calls the JSON API with k" }
+      ],
+      "impossibleAt": 2
     }
   ],
 
   "features": [
-    { "id": "FEAT-300", "name": "Access control", "members": ["REQ-300", "REQ-301", "INV-300", "INV-301", "INV-302", "REQ-302", "REQ-303", "REQ-304", "REQ-305", "REQ-306", "SCN-300", "SCN-301", "SCN-303", "SCN-304"] },
+    { "id": "FEAT-300", "name": "Access control", "members": ["REQ-300", "REQ-301", "INV-300", "INV-301", "INV-302", "REQ-302", "REQ-303", "REQ-304", "REQ-305", "REQ-306", "REQ-334", "REQ-335", "REQ-336", "REQ-337", "REQ-338", "REQ-339", "REQ-340", "INV-307", "INV-308", "SCN-300", "SCN-301", "SCN-303", "SCN-304", "SCN-306", "SCN-307"] },
     { "id": "FEAT-301", "name": "Pages", "members": ["REQ-307", "REQ-308", "INV-303", "REQ-309", "REQ-310", "REQ-311", "REQ-312", "REQ-313", "REQ-315", "REQ-316", "REQ-317", "REQ-318", "REQ-325", "REQ-326", "REQ-327", "REQ-330", "REQ-331", "INV-306"] },
     { "id": "FEAT-302", "name": "Launch page", "members": ["INV-304", "REQ-319", "REQ-320", "REQ-321", "REQ-322", "REQ-323", "REQ-324", "SCN-302", "SCN-305"] },
     { "id": "FEAT-303", "name": "Node metrics and insights", "members": ["REQ-314", "REQ-332", "INV-305", "REQ-333"] },
@@ -413,9 +512,11 @@
 
   "glossary": {
     "view": "Permission to read dashboard pages and the JSON API (INV-301).",
-    "operate": "Permission to retry, requeue, cancel, delete, trigger, pause, resume, edit, launch and change limits (INV-301).",
+    "operate": "Permission to retry, requeue, cancel, delete, trigger, pause, resume, edit, launch, change limits and manage API keys; includes view (INV-301).",
     "NodeSampleInterval": "15 s by default (REQ-314).",
     "NodeSampleRetention": "7 days by default (REQ-314).",
-    "MaxFailedLogins": "Basic-auth failures before attempts are rejected; no default yet (REQ-304)."
+    "MaxFailedLogins": "Failed logins per user or client address before attempts are rejected; 5 by default (REQ-335).",
+    "LoginLockoutWindow": "Window for counting failed logins; 15 min by default (REQ-336).",
+    "ApiKeyDefaultExpiry": "Expiry of a new API key when none is given; 90 days (REQ-340)."
   }
 }

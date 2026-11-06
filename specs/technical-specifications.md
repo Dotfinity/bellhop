@@ -899,8 +899,9 @@ Format: refiner-tech/1
 - **Statement:** The core package shall provide [Launchable(Category = "...", Description = "...")] and a global "all jobs launchable" switch.
 - **Applies to:** INV-304
 - **Strength:** must
-- **Status:** approved
+- **Status:** retired
 - **Source:** requirements.md §4.15 BLT-8
+- **Notes:** Retired on 2026-11-06 by owner decision: every registered job type is launchable (INV-304, DSH-12), so no opt-in attribute or switch is needed and the Launch page lists jobs by name.
 
 ## TECH-97 — Tracing
 
