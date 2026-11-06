@@ -170,12 +170,12 @@ Format: refiner-tech/1
 ## TECH-19 — IJobClient
 
 - **Area:** other
-- **Statement:** The core package shall expose all scheduling through an injectable IJobClient interface with ordinary methods (EnqueueAsync, EnqueueManyAsync, ScheduleAsync with at or delay, ContinueWithAsync, ChainAsync, CancelAsync, RequeueAsync, DeleteAsync, GetAsync, WaitForCompletionAsync, GetResultAsync<T>) and no static entry point.
+- **Statement:** The core package shall expose all scheduling through an injectable IJobClient interface with ordinary methods (EnqueueAsync, EnqueueManyAsync, ScheduleAsync with at or delay, ContinueWithAsync, ChainAsync, CreateBatchAsync(name, jobs, continuations), CancelAsync, RequeueAsync, RequeueDeadLetteredAsync(filter), DeleteAsync, GetAsync, WaitForCompletionAsync, GetResultAsync<T>) and no static entry point.
 - **Applies to:** jobs
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.3 intro — "All scheduling goes through IJobClient (injectable, mockable). There is no static entry point."; §4.3 SCH-1 to SCH-3, SCH-6, SCH-7, SCH-9; §4.8 WF-2; §4.12 TST-2
-- **Notes:** Batch creation (WF-3) and bulk requeue of dead letters by name, queue, tag or time range (RET-5, jobs REQ-142) need methods too; the source names neither. Batches can no longer be extended (jobs REQ-178 retired). See Open questions.
+- **Notes:** Decided by the owner on 2026-11-06: CreateBatchAsync (WF-3, jobs REQ-177) and RequeueDeadLetteredAsync for bulk requeue by name, queue, tag or time range (RET-5, jobs REQ-142) live on IJobClient; the source named neither. Batches cannot be extended (jobs REQ-178 retired), so there is no AddToBatch.
 
 ## TECH-20 — EnqueueOptions
 
@@ -337,11 +337,12 @@ Format: refiner-tech/1
 
 - **Area:** datastore
 - **Statement:** The Bellhop.PostgreSql package shall use PostgreSQL as the reference store implementation.
+- **Version:** the three most recent major versions at each Bellhop release
 - **Applies to:** system
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-2; §6; §8 (M1); §9 Q2 — "PostgreSQL as the reference store first, SQL Server second? (Proposed: yes, because SKIP LOCKED + LISTEN/NOTIFY give the best reliability and latency story; SQL Server follows in M2.)"
-- **Notes:** No PostgreSQL version is given. §9 Q2 is already reflected in the phasing (PostgreSQL in M1, SQL Server in M2) but still awaits the owner's confirmation.
+- **Notes:** Decided by the owner on 2026-11-06: the last three major versions. §9 Q2 is already reflected in the phasing (PostgreSQL in M1, SQL Server in M2) but still awaits the owner's confirmation.
 
 ## TECH-38 — PostgreSQL notifications
 
@@ -365,10 +366,12 @@ Format: refiner-tech/1
 
 - **Area:** datastore
 - **Statement:** The Bellhop.SqlServer package shall use Microsoft SQL Server as a job store.
+- **Version:** the three most recent major versions at each Bellhop release
 - **Applies to:** system
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-2; §6; §8 (M2)
+- **Notes:** Decided by the owner on 2026-11-06: the last three major versions. Whether Azure SQL Database and Azure SQL Managed Instance count as supported is still open.
 
 ## TECH-41 — SQL Server claims
 
@@ -650,7 +653,7 @@ Format: refiner-tech/1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-2; §4.9.1 intro — "Durability is weaker than a database and the store says so out loud."; §6; §8 (M2)
-- **Notes:** §9 question 7 asks whether the Redis store ships in 1.0 or 1.1; §8 places it in M2 (1.0) with Tier 1 servers.
+- **Notes:** Decided by the owner on 2026-11-06 (§9 Q7): the Redis store ships in 1.0 (M2) with the Tier 1 servers.
 
 ## TECH-71 — Valkey
 
@@ -709,9 +712,9 @@ Format: refiner-tech/1
 - **Version:** >= 2.0
 - **Applies to:** TECH-70, REQ-503
 - **Strength:** must
-- **Status:** proposed
+- **Status:** approved
 - **Source:** requirements.md §4.9.2 RDV-4; §9 Q8
-- **Notes:** Dragonfly is BSL 1.1, not OSI; the docs state the licence and the recommended flags --cluster_mode=emulated --lock_on_hashtags (NFR-34). §9 question 8 asks whether it is listed as supported or only "known to work".
+- **Notes:** Dragonfly is BSL 1.1, not OSI; the docs state the licence and the recommended flags --cluster_mode=emulated --lock_on_hashtags (NFR-34). Decided by the owner on 2026-11-06 (§9 Q8): listed as supported at Tier 2.
 
 ## TECH-77 — Apache Kvrocks
 
@@ -1188,12 +1191,8 @@ Format: refiner-tech/1
 
 ## Open questions
 
-- TECH-19: Name and shape the batch creation method (for example CreateBatchAsync(name, jobs, continuations)) and the bulk requeue method (for example RequeueDeadLetteredAsync(filter)), and say whether they live on IJobClient or a separate interface. Ask the owner.
-- TECH-37: Which PostgreSQL versions are supported? No version is given. Ask the owner.
-- TECH-40: Which SQL Server versions (and Azure SQL) are supported? Ask the owner.
+- TECH-40: Are Azure SQL Database and Azure SQL Managed Instance supported? Ask the owner.
 - TECH-42: SQLite is "single node". What happens if two nodes are pointed at one SQLite file: refuse to start, or undefined? Ask the owner.
-- TECH-70: Does the Redis store ship in 1.0 (§8 M2) or 1.1 (§9 Q7)? Ask the owner.
-- TECH-76: Is Dragonfly listed as supported (Tier 2) or only as "known to work"? (§9 Q8.) Ask the owner.
 - TECH-93: Pick the dashboard front-end stack (§9 Q3). Ask the owner.
 - TECH-94: Which hash is the default, and which Argon2 implementation is acceptable as a dependency? Ask the owner.
 - TECH-114: How is the body success predicate expressed in a serializable payload? Ask the owner.

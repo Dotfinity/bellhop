@@ -270,7 +270,8 @@
       "entity": "Job", "actor": "system", "from": ["Processing"], "to": ["Processing"],
       "ears": { "while": "a job is processing", "when": "it has run for longer than its timeout", "shall": "signal the handler's cancellation token" },
       "mentions": ["Job.timeout"],
-      "notes": "No default timeout is given; the reading is 'no timeout unless set'. Not confirmed by the owner on 2026-11-06; still open.",
+      "dependsOn": ["REQ-189"],
+      "notes": "Decided by the owner on 2026-11-06: every job has a timeout, 5 minutes unless one is set (REQ-189). Long-running jobs must set a longer one.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7" }]
     },
@@ -806,7 +807,7 @@
       "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Enqueued"],
       "ears": { "while": "a continuation is awaiting", "when": "its parent is dead-lettered", "if": "the condition is OnFailure or OnCompletion", "shall": "enqueue the continuation" },
       "mentions": ["Job.continuationCondition", "Job.DeadLettered"],
-      "notes": "Failed (will retry) is not terminal, so OnFailure fires on dead-lettering, not on each failed attempt. That is my reading of WF-1. Not confirmed by the owner on 2026-11-06; still open.",
+      "notes": "Decided by the owner on 2026-11-06 (reading confirmed): Failed (will retry) is not terminal, so OnFailure and OnCompletion fire on dead-lettering, not on each failed attempt.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.8 WF-1" }]
     },
@@ -1048,6 +1049,14 @@
       "notes": "Decided by the owner on 2026-11-06. Applies to every call that creates a job (EnqueueAsync, EnqueueManyAsync, ContinueWithAsync, ChainAsync, batch creation, recurring trigger-now). Failing would make code that works in production fail under test, and blocking deadlocks when a handler enqueues a job with its own key. Example: handler A (key tenant:7, Max 1) enqueues B with the same key; B is stored and runs right after A, before the outer EnqueueAsync(A) returns. When two test threads collide, the second thread's call returns before its job has run, and that job runs on the first thread.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.12 TST-4; §4.7 CON-3" }]
+    },
+    {
+      "id": "REQ-189", "kind": "assumption", "status": "approved",
+      "ears": { "shall": "give every job a timeout of DefaultJobTimeout, 5 minutes, unless one is set by attribute, fluently or per enqueue (DefaultJobTimeout)" },
+      "mentions": ["Job.timeout"],
+      "notes": "Decided by the owner on 2026-11-06. The source gave no default. A handler that ignores its token is abandoned TimeoutGracePeriod later (REQ-138, REQ-186). The docs must say so prominently, because a job that silently ran for an hour under another library will now time out.",
+      "tags": ["M1"],
+      "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-7" }]
     }
   ],
 
@@ -1271,7 +1280,7 @@
 
   "features": [
     { "id": "FEAT-100", "name": "Enqueue and schedule", "members": ["REQ-105", "REQ-120", "REQ-121", "REQ-122", "REQ-146", "REQ-147", "REQ-148", "INV-101", "REQ-153", "INV-102", "REQ-154", "REQ-155", "INV-115", "REQ-182", "INV-131", "INV-132", "INV-133", "INV-134", "INV-137", "SCN-107", "SCN-113", "SCN-116"] },
-    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117"] },
+    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "REQ-189", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117"] },
     { "id": "FEAT-102", "name": "Retries and dead letters", "members": ["REQ-100", "REQ-129", "REQ-130", "REQ-131", "REQ-141", "REQ-142", "INV-117", "INV-118", "SCN-101", "SCN-112"] },
     { "id": "FEAT-103", "name": "Uniqueness", "members": ["REQ-107", "REQ-150", "REQ-151", "REQ-152", "INV-100", "INV-135", "SCN-105"] },
     { "id": "FEAT-104", "name": "Queues, priority, concurrency and throttling", "members": ["REQ-106", "REQ-108", "INV-107", "INV-108", "REQ-156", "REQ-157", "INV-109", "REQ-158", "INV-110", "REQ-159", "INV-111", "INV-112", "REQ-160", "REQ-161", "INV-113", "REQ-162", "REQ-163", "INV-114", "LIV-100", "SCN-106", "SCN-110"] },
@@ -1297,6 +1306,7 @@
     "CleanupBatchSize": "500 rows per cleanup batch (REQ-109).",
     "TimeoutGracePeriod": "Time a handler gets after its timeout token is signalled before it is abandoned; 30 s by default (REQ-187).",
     "ResultSizeLimit": "Cap on a stored job result; 1 MB by default (REQ-185).",
+    "DefaultJobTimeout": "Timeout of a job that sets none; 5 min (REQ-189).",
     "UnroutableAfter": "How long an unclaimed job waits before it can be marked Unroutable; 5 min by default (REQ-183).",
     "active": "For uniqueness: Scheduled, Enqueued, Processing, Awaiting, Failed or Unroutable (REQ-107)."
   }

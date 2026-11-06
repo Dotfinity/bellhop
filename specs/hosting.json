@@ -98,9 +98,9 @@
     },
     {
       "id": "REQ-11", "kind": "assumption", "status": "approved",
-      "ears": { "shall": "allow a node mode of Both, ClientOnly or WorkerOnly, with Both as the default (NodeMode)" },
+      "ears": { "shall": "allow a node mode of Both or ClientOnly, with Both as the default (NodeMode)" },
       "mentions": ["Node.mode"],
-      "notes": "Decided by the owner on 2026-11-06: the node mode governs only workers and the scheduler. ClientOnly runs neither (REQ-20, REQ-40). The dashboard is independent of the mode (REQ-51). With that, Both and WorkerOnly behave the same; whether WorkerOnly is still needed is open.",
+      "notes": "Decided by the owner on 2026-11-06: WorkerOnly is dropped from SET-7; a node that runs workers is simply Both. The mode governs only workers and the scheduler: ClientOnly runs neither (REQ-20, REQ-40). The dashboard is independent of the mode (REQ-51).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
@@ -463,7 +463,7 @@
   ],
 
   "glossary": {
-    "NodeMode": "Both (default), ClientOnly or WorkerOnly (REQ-11).",
+    "NodeMode": "Both (default) or ClientOnly (REQ-11).",
     "ShutdownTimeout": "Time in-flight jobs get to finish after the host stops; 30 s by default (REQ-28).",
     "AutoMigrate": "Whether a node applies embedded schema migrations at startup; true by default (REQ-21).",
     "ClockSkewThreshold": "Node-versus-database clock difference above which a warning is logged; 5 s by default (REQ-45).",
