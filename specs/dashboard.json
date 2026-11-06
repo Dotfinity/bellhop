@@ -47,16 +47,16 @@
     {
       "id": "REQ-300", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["Starting"],
-      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth and the environment is Development", "shall": "treat anonymous requests as having operate permission and log a notice saying so" },
-      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardRequest.hasOperate"],
-      "notes": "refiner-model 2026-11-06 F-1 (option 1, owner decision): anonymous access is a permission grant, operate in Development, so INV-301 holds. F-10 (option 1): the authorization requirements are listed by name; RequireApiKey() is not one, because it authenticates scripts, not browsers.",
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth and the environment is Development", "shall": "treat anonymous requests as having operate permission and the principal name \"anonymous\", and log a notice saying so" },
+      "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardRequest.hasOperate", "DashboardRequest.principal"],
+      "notes": "refiner-model 2026-11-06 F-1 (option 1, owner decision): anonymous access is a permission grant, operate in Development, so INV-301 holds. F-10 (option 1): the authorization requirements are listed by name; RequireApiKey() is not one, because it authenticates scripts, not browsers. Run 2 F-1 (recommended option): the principal name gives every Development launch an author (REQ-320 to REQ-323). Outside Development anonymous requests can only view (REQ-342), so the name never appears on a launch there.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.10 DSH-2; §4.14 SEC-1" }]
     },
     {
       "id": "REQ-301", "kind": "transition", "status": "approved",
       "entity": "hosting.Node", "actor": "system", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth, AllowAnonymous() was not called and the environment is not Development", "shall": "fail the host's start with a message that says how to add authorization or opt in to anonymous access" },
+      "ears": { "while": "a node is starting", "if": "the dashboard is mapped without RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth, AllowAnonymous() was not called and the environment is not Development", "shall": "fail the host's start with a message that says how to add authorization or opt in to anonymous access and, where RequireApiKey() is enabled, that API keys authenticate scripts but do not protect the pages" },
       "mentions": ["DashboardEndpoint.environment", "DashboardEndpoint.authRequirement", "DashboardEndpoint.allowAnonymous"],
       "notes": "refiner-model 2026-11-06 F-10 (option 1): the authorization requirements are listed by name; a dashboard protected only by RequireApiKey() still needs one of them or AllowAnonymous() outside Development. F-5: hosting REQ-18/REQ-19 name this check as a startup check, so it always runs before the node is marked running.",
       "tags": ["M1"],
@@ -120,7 +120,7 @@
       "entity": "DashboardRequest",
       "ears": { "where": "RequireApiKey() is enabled", "when": "a script or the CLI calls the JSON API with an active API key whose expiresAt has not passed", "shall": "authenticate it with the scope assigned to that key and the principal name \"apikey:\" followed by the key's name" },
       "mentions": ["DashboardRequest.principal", "ApiKey.Active", "ApiKey.scope", "ApiKey.expiresAt", "ApiKey.name"],
-      "notes": "Decided by the owner on 2026-11-06: keys are issued and revoked from the dashboard (REQ-337, REQ-338), stored hashed, scoped to view or operate, and expire after 90 days by default (REQ-340). Several keys can be active at once, which is how rotation works. refiner-model 2026-11-06 F-4 (option 1): expiry is decided at request time from expiresAt, so a key stops working at the instant it expires whatever REQ-339 has done. F-9 (option 1): the principal name makes key launches attributable (REQ-320, REQ-323). F-2 (owner decision): a key is never refused because of a basic-auth lockout (REQ-304).",
+      "notes": "Decided by the owner on 2026-11-06: keys are issued and revoked from the dashboard (REQ-337, REQ-338), stored hashed, scoped to view or operate, and expire after 90 days by default (REQ-340). Several keys can be active at once, which is how rotation works. refiner-model 2026-11-06 F-4 (option 1): expiry is decided at request time from expiresAt, so a key stops working at the instant it expires whatever REQ-339 has done. F-9 (option 1): the principal name makes key launches attributable (REQ-320, REQ-323). F-2 (owner decision): a key is never refused because of a basic-auth lockout (REQ-304). Run 2 F-2 (accepted, option 3): RequireApiKey() adds a way in for scripts and closes nothing. The dashboard UI is itself a client of the JSON API (TECH-92), so whatever REQ-300 or REQ-342 grant anonymous browsers, an anonymous script gets too; a 401 for keyless API calls would break the anonymous pages, and telling the UI's calls apart from a script's cannot be enforced. A keyless script in Development therefore has operate, like the open pages, and a production dashboard needs an authorization requirement or AllowAnonymous() for its pages even when only scripts use it (REQ-301 says so in its message).",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },
@@ -359,9 +359,9 @@
     {
       "id": "INV-305", "kind": "invariant", "status": "approved", "strength": "should",
       "entity": "Rollup",
-      "ears": { "where": "the worker is registered on a node", "shall": "compute each rollup interval, as one of that node's background duties, only while the node holds the interval's lease in the store, and write the interval in one batched write that succeeds only if the node still holds the lease" },
+      "ears": { "where": "the worker is registered on a node", "shall": "start computing each rollup interval, as one of that node's background duties, only while the node holds the interval's lease in the store, and write the interval in one batched write that succeeds only if the node still holds the lease" },
       "mentions": ["Rollup", "hosting.Node.hasWorker"],
-      "notes": "refiner-model 2026-11-06 F-7 (option 1): the write is fenced by the lease, so at most one result is written per interval even when a lease expires mid-computation; duplicate computation stays possible and harmless. F-8 (option 1): rollups are a worker duty (hosting REQ-40).",
+      "notes": "refiner-model 2026-11-06 F-7 (option 1): the write is fenced by the lease, so at most one result is written per interval even when a lease expires mid-computation; duplicate computation stays possible and harmless. F-8 (option 1): rollups are a worker duty (hosting REQ-40). Run 2 F-3 (recommended option): the sentence says 'start computing', because a node cannot know its lease expired mid-computation until it next talks to the store; the fenced write is what keeps the result single.",
       "tags": ["M3"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-13", "quote": "Rollups are computed by one node under a lease (CON-7) in one batched write per interval." }]
     },
@@ -588,8 +588,8 @@
     "NodeSampleInterval": "15 s by default (REQ-314).",
     "NodeSampleRetention": "7 days by default (REQ-343).",
     "MaxFailedLogins": "Failed basic-auth logins per user or client address before further basic-auth attempts are rejected; 5 by default (REQ-335). API-key attempts are not counted (REQ-304, INV-308).",
-    "authorizationRequirement": "RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth on the dashboard endpoint (REQ-300, REQ-301, REQ-342). RequireApiKey() is not one: it authenticates scripts, not browsers.",
-    "anonymousPermission": "Operate in Development without an authorization requirement (REQ-300); view only with AllowAnonymous() elsewhere (REQ-342).",
+    "authorizationRequirement": "RequireAuthorization, RequireRole, RequireClaim or RequireBasicAuth on the dashboard endpoint (REQ-300, REQ-301, REQ-342). RequireApiKey() is not one: it authenticates scripts, not browsers, and it never restricts what anonymous requests are granted (REQ-305).",
+    "anonymousPermission": "Operate in Development without an authorization requirement (REQ-300), with the principal name \"anonymous\"; view only with AllowAnonymous() elsewhere (REQ-342). Applies to every anonymous request, from a browser or a script, on the pages, the JSON API and MCP alike.",
     "LoginLockoutWindow": "Window for counting failed logins; 15 min by default (REQ-336).",
     "ApiKeyDefaultExpiry": "Expiry of a new API key when none is given; 90 days (REQ-340)."
   }
