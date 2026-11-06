@@ -100,7 +100,7 @@
       "id": "REQ-11", "kind": "assumption", "status": "approved",
       "ears": { "shall": "allow a node mode of Both, ClientOnly or WorkerOnly, with Both as the default (NodeMode)" },
       "mentions": ["Node.mode"],
-      "notes": "Decided by the owner on 2026-11-06: WorkerOnly runs workers and the scheduler but does not serve the dashboard (REQ-41). ClientOnly runs neither workers (REQ-20) nor the scheduler (REQ-40) and may serve the dashboard. Both does everything.",
+      "notes": "Decided by the owner on 2026-11-06: the node mode governs only workers and the scheduler. ClientOnly runs neither (REQ-20, REQ-40). The dashboard is independent of the mode (REQ-51). With that, Both and WorkerOnly behave the same; whether WorkerOnly is still needed is open.",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
@@ -314,12 +314,13 @@
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
-      "id": "REQ-41", "kind": "invariant", "status": "approved",
+      "id": "REQ-41", "kind": "invariant", "status": "retired",
       "entity": "Node",
       "ears": { "while": "a node's mode is WorkerOnly", "shall": "not serve the dashboard on that node" },
       "mentions": ["Node.mode"],
+      "supersededBy": "REQ-51",
       "dependsOn": ["REQ-11"],
-      "notes": "Decided by the owner on 2026-11-06 (meaning of the node modes). Still open: whether mapping the dashboard on a WorkerOnly node fails startup or is ignored with a warning.",
+      "notes": "Retired. Decided by the owner on 2026-11-06: the dashboard does not depend on the node mode; an instance serves it exactly when the application maps it (REQ-51).",
       "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7" }]
     },
     {
@@ -383,6 +384,14 @@
       "ears": { "shall": "default HealthyAfterPasses to 3 (HealthyAfterPasses)" },
       "notes": "Decided by the owner on 2026-11-06.",
       "sources": [{ "document": "requirements.md", "section": "§4.11 OBS-5 (implied)" }]
+    },
+    {
+      "id": "REQ-51", "kind": "invariant", "status": "approved",
+      "entity": "Node",
+      "ears": { "shall": "serve the dashboard on a node exactly when the application maps it, whatever the node's mode" },
+      "mentions": ["Node.mode"],
+      "notes": "Decided by the owner on 2026-11-06: an instance can run workers and the dashboard, only workers, or only the dashboard (ClientOnly with the dashboard mapped). A worker never needs the dashboard mapped, and the dashboard never needs workers on the same instance.",
+      "sources": [{ "document": "requirements.md", "section": "§4.1 SET-7; §4.10 DSH-1" }]
     }
   ],
 
@@ -447,7 +456,7 @@
   ],
 
   "features": [
-    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-43", "REQ-45", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
+    { "id": "FEAT-1", "name": "Startup and configuration", "members": ["REQ-9", "REQ-11", "REQ-12", "REQ-13", "REQ-14", "REQ-15", "REQ-16", "REQ-17", "REQ-18", "REQ-19", "REQ-20", "REQ-21", "REQ-22", "REQ-23", "REQ-24", "REQ-25", "REQ-26", "REQ-40", "REQ-41", "REQ-42", "REQ-51", "REQ-43", "REQ-45", "SCN-1", "SCN-2", "SCN-3", "SCN-5", "SCN-6"] },
     { "id": "FEAT-2", "name": "Health", "members": ["REQ-30", "REQ-31", "REQ-32", "REQ-33", "REQ-34", "REQ-35", "REQ-44", "REQ-46", "REQ-47", "REQ-48", "REQ-49", "REQ-50"] },
     { "id": "FEAT-3", "name": "Graceful shutdown", "members": ["REQ-27", "REQ-28", "REQ-29", "SCN-4"] },
     { "id": "FEAT-4", "name": "Product context", "members": ["REQ-1", "REQ-2", "REQ-3", "REQ-4", "REQ-5", "REQ-6", "REQ-7", "REQ-8", "REQ-10", "REQ-36", "REQ-37", "REQ-38", "REQ-39"] }
