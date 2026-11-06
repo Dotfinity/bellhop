@@ -1,20 +1,24 @@
 ------------------------- MODULE IntegrationsAlerts -------------------------
-\* Generated from integrations.json (specHash 3b92b190e27a) — FEAT-400 Notifications: who evaluates.
+\* Generated from integrations.json (specHash 8d15657c8cd5) — FEAT-400 Notifications: who evaluates.
 \* Edit the requirements, not this file. Every action/property carries an @req comment.
-\* New in run 2: the alerts registration and the notification lease (INV-411, REQ-438), the node-lost and
+\* Run 2: the alerts registration and the notification lease (INV-411, REQ-438), the node-lost and
 \* missed-occurrence triggers (REQ-404, REQ-403), SCN-404, SCN-405, and run 1's assumption A-11 (two nodes
 \* noticing the same event). Cooldowns are in IntegrationsNotifications.tla; here a "delivery" is counted
 \* per event or per lost node, whatever its Pending/Suppressed outcome.
+\* Run 3 (handoff): INV-412 added, SCN-406 added. What the job store records for each event, and how a
+\* new rule starts, are in IntegrationsAlertEvents.tla.
 \*
-\* EventTracking: edge-triggered rules (REQ-400 "when a job is dead-lettered", REQ-401 Nth failure) fire on
-\* an event that happens on some worker node. The alerts node that holds the lease must learn about it,
-\* and after a lease handover the new holder must know which events were already handled. No requirement
-\* says how (finding F-15). Three readings:
-\*   "storeCursor"   : the store records an event as handled in the same write that creates its delivery.
+\* EventTracking: edge-triggered rules (REQ-400 "when a job is dead-lettered", REQ-401 Nth failure, REQ-403
+\* missed or late occurrence) fire on an event that happens on some worker node.
+\*   "storeCursor"   : @req INV-412  the events are found in the job store and each one is marked handled
+\*                     for the rule in the same store write that creates its delivery. This is the
+\*                     requirement; IntegrationsAlerts.cfg and IntegrationsAlerts_SCN406.cfg use it.
+\* The two node-memory readings of run 2 are no longer readings of the requirements. They stay as
+\* counterfactuals ("INV-412 dropped"), to show that INV-412 carries the guarantee:
 \*   "nodeReplay"    : each node remembers what it handled; a new holder handles every stored event it has
-\*                     not handled itself.
+\*                     not handled itself (IntegrationsAlerts_noInv412Replay.cfg).
 \*   "nodeFromNow"   : each node remembers what it handled; a new holder handles only events that happen
-\*                     after it took the lease.
+\*                     after it took the lease (IntegrationsAlerts_noInv412FromNow.cfg).
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Nodes,          \* processes
@@ -98,8 +102,9 @@ LeasePauses ==
   /\ pauses' = pauses + 1
   /\ UNCHANGED <<running, stale, occurred, handledS, handledN, made, lost, crashes>>
 
-\* @req REQ-400 REQ-401  An edge event becomes a delivery for its rule.
+\* @req REQ-400 REQ-401 REQ-403  An edge event becomes a delivery for its rule.
 \* @req INV-411  Only on a running alerts node that holds the lease, checked in the same store write.
+\* @req INV-412  ("storeCursor") the event is found in the store and marked handled in that same write.
 HandleEvent(n, e) ==
   /\ n \in AlertNodes
   /\ running[n]
@@ -168,11 +173,14 @@ Fairness ==
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
-\* Run-1 assumption A-11, now a check: one event never yields two deliveries.
-Chk_OneDeliveryPerEvent == \A e \in Events : made[e] <= 1
+\* @req INV-412  "neither alerts an event again": one event never yields two deliveries
+\*               (also run 1's assumption A-11).
+Inv_OneDeliveryPerEvent == \A e \in Events : made[e] <= 1
 
-\* Every event eventually yields a delivery (as long as some alerts node runs; restarts are fair).
-Chk_EventAlerted == \A e \in Events : (e \in occurred) ~> (made[e] >= 1)
+\* @req INV-412  "nor skips one": every event eventually yields a delivery (as long as some alerts node
+\*               runs; restarts are fair). INV-412 notes: events while no node holds the lease are
+\*               alerted when a holder next runs.
+Liv_EventAlerted == \A e \in Events : (e \in occurred) ~> (made[e] >= 1)
 
 \* @req SCN-405  (negative, impossibleAt 2) A node without the notification lease creates no delivery.
 Scn405_NoLeaseNoDelivery ==
@@ -182,4 +190,27 @@ Scn405_NoLeaseNoDelivery ==
 \*               for the only worker is created while no worker node runs.
 Scn404_NotReached ==
   ~(\E x \in WorkerNodes : lost[x] = 1 /\ \A w \in WorkerNodes : ~running[w])
+
+\* @req SCN-406  The cfg uses strings for nodes and events ("a1", "e1"), so the given can name them.
+\*               Given: a1 created e1's delivery, then paused past LeaseDuration (lease expired, pauses
+\*               used up); e2 was dead-lettered while no node held the lease. Reachable in the main spec
+\*               (e1 happens, a1 takes the lease, handles e1, pauses, e2 happens), so Inv_OneDeliveryPerEvent
+\*               in IntegrationsAlerts.cfg covers "a2 did not alert e1 again" from this state too.
+InitSCN406 ==
+  /\ running  = [n \in Nodes |-> TRUE]
+  /\ stale    = [n \in Nodes |-> FALSE]
+  /\ lease    = NULL
+  /\ occurred = Events
+  /\ handledS = {"e1"}
+  /\ handledN = [n \in Nodes |-> {}]
+  /\ made     = [e \in Events |-> IF e = "e1" THEN 1 ELSE 0]
+  /\ lost     = [n \in Nodes |-> 0]
+  /\ crashes  = 0
+  /\ pauses   = MaxPauses
+SpecSCN406 == InitSCN406 /\ [][Next]_vars /\ Fairness
+
+\* @req SCN-406  Trap for IntegrationsAlerts_SCN406.cfg (expected to be VIOLATED): a2 holds the lease and
+\*               there is exactly one delivery for e1 and exactly one for e2.
+Scn406_NotReached ==
+  ~(lease = "a2" /\ \A e \in Events : made[e] = 1)
 =============================================================================

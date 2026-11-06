@@ -1,8 +1,9 @@
 --------------------------- MODULE IntegrationsHttp ---------------------------
-\* Generated from integrations.json (specHash 3b92b190e27a) — FEAT-401 HTTP jobs and outbound security.
+\* Generated from integrations.json (specHash 8d15657c8cd5) — FEAT-401 HTTP jobs and outbound security.
 \* Edit the requirements, not this file. Every action/property carries an @req comment.
 \* The job lifecycle around the HTTP call is the jobs module, abstracted (assumption A-6).
 \* Run 2 (handoff): INV-402, INV-404, INV-408, REQ-422 changed; REQ-434 added; SCN-402 re-checked.
+\* Run 3 (handoff): REQ-434 no longer lists the redirect rules; RedirectRefused removed (run-2 F-14).
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Jobs,             \* HTTP job slots
@@ -26,7 +27,7 @@ Sources  == {"application", "launchPage", "configuration"}
 Creds    == {"none", "authHeader", "customSecret"}
 JStatus  == {"none", "Enqueued", "Processing", "Failed", "Succeeded", "DeadLettered"}
 \* Responses. A redirect that is not followed (other host, or the limit reached) moves the job to phase
-\* "redirectRefused"; what happens next is decided by REQ-421/REQ-422 or REQ-434 (see finding F-14).
+\* "redirectRefused"; the unfollowed 3xx is then the response, decided by REQ-421/REQ-422.
 Outcomes == {"accepted", "notAccepted", "predicateFails", "timeout",
              "redirectSameHost", "redirectOtherHost", "transportError"}
 Reasons  == {"none", "refused"}
@@ -124,13 +125,6 @@ RedirectAsResponse(j) ==
        ELSE FailAttempt(j, job[j].resp, TRUE)
   /\ UNCHANGED calls
 
-\* @req REQ-434  "…if its destination is refused by … the redirect rules": dead-letter at once.
-RedirectRefused(j) ==
-  /\ job[j].status = "Processing"
-  /\ job[j].phase = "redirectRefused"
-  /\ job' = [job EXCEPT ![j].status = "DeadLettered", ![j].phase = "idle", ![j].reason = "refused"]
-  /\ UNCHANGED calls
-
 \* modeling artefact A-4: finished jobs free their slot (retention, jobs REQ-145).
 Archive(j) ==
   /\ job[j].status \in {"Succeeded", "DeadLettered"}
@@ -140,7 +134,7 @@ Archive(j) ==
 Next ==
   \/ \E j \in Jobs, h \in Hosts, s \in Sources, c \in Creds, a \in BOOLEAN : Enqueue(j, h, s, c, a)
   \/ \E j \in Jobs : \/ Claim(j) \/ SendRequest(j) \/ RefuseDestination(j) \/ Archive(j)
-                     \/ RedirectAsResponse(j) \/ RedirectRefused(j)
+                     \/ RedirectAsResponse(j)
                      \/ \E o \in Outcomes : Respond(j, o)
 
 Spec == Init /\ [][Next]_vars
@@ -166,9 +160,11 @@ Chk_NoPayloadSecretAtAll == \A c \in calls : c.cred = "none"
 Scn401_RefusedOffAllowlist ==
   \A j \in Jobs : (job[j].status = "Processing" /\ job[j].host \notin Allowlist) => ~ENABLED SendRequest(j)
 
-\* Probe (finding F-14): one refused redirect, two requirements with different outcomes.
+\* Probe kept from run 2 (F-14): an unfollowed redirect has exactly one way on, as a response
+\* (REQ-421/REQ-422), and the refusal step REQ-434 does not apply to it.
 Probe_RedirectOneRule ==
-  \A j \in Jobs : ~(ENABLED RedirectAsResponse(j) /\ ENABLED RedirectRefused(j))
+  \A j \in Jobs : job[j].phase = "redirectRefused" =>
+                    (ENABLED RedirectAsResponse(j) /\ ~ENABLED RefuseDestination(j))
 
 \* @req SCN-402  Trap for IntegrationsHttp_SCN402.cfg (expected to be VIOLATED): the 503 fails the
 \*               attempt, the response is stored, and a retry is still due.

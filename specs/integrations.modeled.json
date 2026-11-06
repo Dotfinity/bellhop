@@ -1,18 +1,18 @@
 {
   "module": "integrations",
-  "specHash": "3b92b190e27a93f98482220c751a5a6caf29d449158d98974cc3c0abbe884718",
-  "generatedAt": "2026-11-06T22:00:00Z",
-  "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
+  "specHash": "8d15657c8cd56fbaef557cb0f68bc07fc82d84921fd14b0a0ec8a1f2a945affe",
+  "generatedAt": "2026-11-06T23:00:00Z",
+  "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsAlertEvents.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
   "items": {
     "REQ-400": {
       "hash": "4b15ca75d0e530b27e0f177d58ebbd5c44d4fb886ca8014b8c714334e428f774",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; model/integrations/IntegrationsAlerts.tla: HandleEvent (edge event) -> F-15"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent (INV-412); IntegrationsAlertEvents.tla: HandleDeadLetter -> F-18, F-19"
     },
     "REQ-401": {
       "hash": "fa4f5ce7811070589566bf04fe771213bab1fe3029e8c0c3e431a69bd5e45706",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; model/integrations/IntegrationsAlerts.tla: HandleEvent (edge event) -> F-15"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent (edge event, INV-412) -> F-18, F-19 (requeue restarts the count)"
     },
     "REQ-402": {
       "hash": "e39de7723ebfdf511d1ebe317b703cb63464ec7e44d23dd8f0b96c12cac03dea",
@@ -22,7 +22,7 @@
     "REQ-403": {
       "hash": "f31f60461edbfa53e629028cbf74f1a75c05cbc13efea5a4e0b72ee015cd088b",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; model/integrations/IntegrationsAlerts.tla: HandleEvent (missed/late occurrence as edge event) -> F-15"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent; IntegrationsAlertEvents.tla: HandleMissed, Liv_MissedAlerted violated -> F-17"
     },
     "REQ-404": {
       "hash": "88df2c741a7379689aca56f470de10a4e8a52d4ad47ff5cb94fc9d78b37d54b8",
@@ -107,7 +107,7 @@
     "INV-411": {
       "hash": "2fecc024e416563f9c0aeaaace283579e7ca8d136a9df47d01bb204dcf2023f8",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla: lease guard on HandleEvent/NodeLostAlert, fenced write; SCN-405 holds. Edge-event handover open: F-15"
+      "note": "model/integrations/IntegrationsAlerts.tla: lease guard on HandleEvent/NodeLostAlert, fenced write; SCN-405 holds (445 states)"
     },
     "REQ-438": {
       "hash": "787fa90356e09512df8b35a918865b93b82a824ae01ae69612d46a09d8a9d7db",
@@ -122,17 +122,17 @@
     "REQ-421": {
       "hash": "6ca0b2b78826920e01dc94a94f57fa48fd7e556035fc53e147d87dab9c0f1991",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsHttp.tla: Respond accepted; RedirectAsResponse -> F-14"
+      "note": "model/integrations/IntegrationsHttp.tla: Respond accepted; RedirectAsResponse (accepted 3xx)"
     },
     "REQ-422": {
       "hash": "1a0d606a58ed3e5996c02b724175e720f958bc117e689ab51b3501ea176d0955",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsHttp.tla: Respond / FailAttempt incl. transport errors; RedirectAsResponse -> F-14"
+      "note": "model/integrations/IntegrationsHttp.tla: Respond / FailAttempt incl. transport errors; RedirectAsResponse (unaccepted 3xx)"
     },
     "REQ-434": {
-      "hash": "059f4e28b7a836777af5c8672b05b649ad79db954d58e220ea49cb7708e17ee3",
+      "hash": "bf4ddca49f4ab79b6ac95e8543e0a446120e17a7f8959c684243d5794654a359",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsHttp.tla: RefuseDestination; RedirectRefused -> F-14 (contradicts REQ-422 notes)"
+      "note": "model/integrations/IntegrationsHttp.tla: RefuseDestination (allowlist, private address); redirect clause removed; Probe_RedirectOneRule holds (5,392 / 2,313 states); run-2 F-14 resolved"
     },
     "INV-401": {
       "hash": "ba26ff7b178883ef87e3cb0718ece99f630b1672f2b8edd1ebb8af6be51888bf",
@@ -147,7 +147,7 @@
     "INV-403": {
       "hash": "43c7e7112c7e98d4e160b34b2f7b04acfec026badfe9f1cf3a876194703e6d99",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsHttp.tla: Inv_Redirects holds; unfollowed redirect -> F-14"
+      "note": "model/integrations/IntegrationsHttp.tla: Inv_Redirects holds; an unfollowed redirect is a response (Probe_RedirectOneRule holds)"
     },
     "INV-404": {
       "hash": "4e5c3a8340b4c81332e99cacd50a84b027430986c7cde555e5d5fe2ee2713d43",
@@ -177,12 +177,12 @@
     "REQ-436": {
       "hash": "5322f6d43a4d23cb95d07ed6df5848e8aa1caf26e05a7af9bda9f4960c2222c1",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsOutbox.tla: guard on RetentionRemoves (A-13); without it INV-406 fails (load-bearing, as stated)"
+      "note": "model/integrations/IntegrationsOutbox.tla: guard on RetentionRemoves (A-13); without it INV-406 fails; operator delete in the crash window accepted (run-2 F-16), same effect with a lease pause (operatorDeletePause cfg)"
     },
     "INV-406": {
       "hash": "882b6078e34afb099f69dbf873bebfc679c821b1f13729eb79b4c4ed9a11e6da",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsOutbox.tla: Inv_OneJobPerRow holds (199 states); operator delete in the crash window breaks it -> F-16"
+      "note": "model/integrations/IntegrationsOutbox.tla: Inv_OneJobPerRow holds (199 states); operator-delete traces accepted in REQ-436 notes"
     },
     "LIV-400": {
       "hash": "3bd7498555d0617070956e1fd6d99898343f686bacea69a211bd4ee942d663b1",
@@ -218,10 +218,20 @@
       "hash": "de144f435e7920d0adda184eb8fc40652c2265e453164c8674bbe3f90295cf26",
       "reviewed": false,
       "note": "model/integrations/IntegrationsAlerts.tla: Scn405_NoLeaseNoDelivery holds (all three readings)"
+    },
+    "INV-412": {
+      "hash": "a1a440c4eaea2bcf280db1f970974275605b7302024c402bc3b842aa737ac9d0",
+      "reviewed": false,
+      "note": "model/integrations/IntegrationsAlerts.tla: EventTracking storeCursor; Inv_OneDeliveryPerEvent and Liv_EventAlerted hold (445 states); without it both fail (noInv412 cfgs). IntegrationsAlertEvents.tla: store records -> F-17, rule start -> F-18, event identity -> F-19"
+    },
+    "SCN-406": {
+      "hash": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11",
+      "reviewed": false,
+      "note": "model/integrations/IntegrationsAlerts.tla: Scn406_NotReached violated as expected from InitSCN406 (3 steps, 19 states)"
     }
   },
   "skipped": {
-    "REQ-410": "could not encode: static merge of rule definitions and a page listing, no state change",
+    "REQ-410": "could not encode: static merge of rule definitions and a page listing, no state change (rule identity by name used as assumption A-17)",
     "INV-405": "could not encode: masking in dashboard and logs is presentation, not state",
     "REQ-431": "configuration choice between enqueue paths, no interleaving to check",
     "REQ-437": "rejection of a call in a configuration without outbox mode, no interleaving to check"
