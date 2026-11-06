@@ -1,6 +1,6 @@
 ----------------------------- MODULE Jobs_Flow -----------------------------
 \* Generated from specs/jobs.json — edit the requirements, not this file.
-\* Scope: FEAT-106 continuations, chains and batches: REQ-170..REQ-177, REQ-179..REQ-181, REQ-188,
+\* Scope: FEAT-106 continuations, chains and batches: REQ-170..REQ-177, REQ-179..REQ-181, REQ-188, REQ-192,
 \*        LIV-102, SCN-108, SCN-109, SCN-114, SCN-118, SCN-119; plus the parent-side effects of
 \*        REQ-134 (cancel Awaiting), REQ-141/REQ-143 (requeue), REQ-144 (delete), REQ-145 (retention).
 \* Execution is abstracted to claim -> outcome; leases and nodes are in Jobs.tla.
@@ -32,7 +32,7 @@ JobRec == [status: Status, attempt: 0..MaxAttempts, parent: Jobs \cup {NULL}, co
 
 TypeInv ==
   /\ job \in [Jobs -> JobRec]
-  /\ batch \in [Batches -> [status: {"none", "Open", "Succeeded", "Completed"}, wasCompleted: BOOLEAN]]
+  /\ batch \in [Batches -> [status: {"none", "Open", "Succeeded", "Completed", "removed"}, wasCompleted: BOOLEAN]]
 
 Empty == [status |-> "none", attempt |-> 0, parent |-> NULL, cond |-> "-", member |-> NULL,
           cbatch |-> NULL, fires |-> 0, released |-> "no", late |-> FALSE, hs |-> {}]
@@ -74,7 +74,9 @@ Enqueue(j) ==
   /\ job' = [job EXCEPT ![j] = [Empty EXCEPT !.status = "Enqueued"]]
   /\ UNCHANGED batch
 
-\* @req REQ-170  parent not finished -> Awaiting.   @req REQ-175  parent finished -> resolve at once.
+\* @req REQ-170  parent not finished -> Awaiting.
+\* @req REQ-175  parent finished -> resolve as if the parent had just finished (REQ-171..174); stored as
+\*               awaiting only when none of those rules applies (run 3).
 \* @req INV-138  a parent id that does not exist (never created, deleted or removed) is rejected: guard.
 AddContinuation(c, p, cond) ==
   /\ job[c].status = "none" /\ p # c
@@ -184,6 +186,29 @@ BatchCompletes(bt) ==
   /\ batch' = [batch EXCEPT ![bt].status = "Completed", ![bt].wasCompleted = TRUE]
   /\ job' = ReleaseBatchConts(bt, FALSE)
 
+\* @req REQ-192 REQ-188  (run 3) a Completed or Succeeded batch is removed with its stored members once every
+\*        stored member is past its own state's retention (A-1: a fair nondeterministic event, guarded only
+\*        by every stored member being finished).  Awaiting batch-level continuations are cancelled (REQ-188).
+\*        Awaiting job-level continuations of a removed member are cancelled as for removal by retention
+\*        (REQ-188 "removed by retention", A-17).  Slots are not reused (A-11).
+StoredMembers(bt) == {m \in Members(bt) : job[m].status # "removed"}
+BatchRemoved(bt) ==
+  /\ batch[bt].status \in {"Completed", "Succeeded"}
+  /\ \A m \in StoredMembers(bt) : job[m].status \in Finished
+  /\ batch' = [batch EXCEPT ![bt].status = "removed"]
+  /\ LET RM == StoredMembers(bt)
+         f0 == [c \in Jobs |-> IF c \in RM THEN [job[c] EXCEPT !.status = "removed"]
+                               ELSE IF job[c].status = "Awaiting" /\ job[c].cbatch = bt
+                                 THEN [job[c] EXCEPT !.status = "Cancelled", !.released = "cancel",
+                                                     !.hs = @ \cup {"Cancelled"}]
+                               ELSE job[c]]
+         cascade == Close({c \in Jobs : f0[c].status = "Awaiting" /\ f0[c].parent \in RM}
+                          \cup {c \in Jobs : job[c].status = "Awaiting" /\ job[c].cbatch = bt})
+     IN job' = [c \in Jobs |-> IF c \in cascade /\ f0[c].status = "Awaiting"
+                                 THEN [f0[c] EXCEPT !.status = "Cancelled", !.released = "cancel",
+                                                    !.hs = @ \cup {"Cancelled"}]
+                                 ELSE f0[c]]
+
 Next ==
   \/ \E j \in Jobs : \/ Enqueue(j) \/ Claim(j) \/ HandlerOutcome(j) \/ TimeoutOutcome(j) \/ RetryDue(j)
                      \/ GoUnroutable(j) \/ BackRoutable(j) \/ Cancel(j) \/ Requeue(j) \/ Delete(j)
@@ -191,13 +216,13 @@ Next ==
   \/ \E c, p \in Jobs, cond \in JobConds : AddContinuation(c, p, cond)
   \/ \E a, b \in Jobs : CreateChain(a, b)
   \/ \E bt \in Batches, m1, m2, c \in Jobs, cond \in BatchConds : CreateBatch(bt, m1, m2, c, cond)
-  \/ \E bt \in Batches : BatchSucceeds(bt) \/ BatchCompletes(bt)
+  \/ \E bt \in Batches : BatchSucceeds(bt) \/ BatchCompletes(bt) \/ BatchRemoved(bt)
 
 \* Fair: system actions.  BackRoutable is environment (a node with the handler starts) — not fair.
 Fairness ==
   /\ \A j \in Jobs : WF_vars(Claim(j)) /\ WF_vars(TimeoutOutcome(j)) /\ WF_vars(RetryDue(j))
                      /\ WF_vars(Retention(j))
-  /\ \A bt \in Batches : WF_vars(BatchSucceeds(bt)) /\ WF_vars(BatchCompletes(bt))
+  /\ \A bt \in Batches : WF_vars(BatchSucceeds(bt)) /\ WF_vars(BatchCompletes(bt)) /\ WF_vars(BatchRemoved(bt))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
@@ -235,9 +260,28 @@ Scn121_NotReached == ~\E c \in Jobs : job[c].cond = "OnSuccess" /\ job[c].status
 Scn123_MissingParentRejected ==
   \A c, p \in Jobs, cond \in JobConds : job[p].status \in {"none", "removed"} => ~ENABLED AddContinuation(c, p, cond)
 
-\* REQ-175 says a continuation added to a finished parent is resolved at once "instead of storing it as
-\* awaiting"; probe for one that is stored as awaiting anyway (run 2, expected VIOLATED).
+\* Run 2 probe: a continuation added to a finished parent is stored as awaiting.  Run 3: REQ-175 now allows
+\* this when none of REQ-171..174 applies, so a violation is the allowed case, not a finding.
 Gap_LateContinuationAwaits == ~\E c \in Jobs : job[c].late /\ job[c].status = "Awaiting"
+
+\* @req REQ-175 REQ-171 REQ-172 REQ-173 REQ-174  (run 3) a continuation whose parent has finished is awaiting
+\*        only when none of REQ-171..174 applies: the parent is dead-lettered and the condition is OnSuccess.
+Inv_AwaitingOnlyWhenNoRule ==
+  \A c \in Jobs : (job[c].status = "Awaiting" /\ job[c].parent # NULL /\ job[job[c].parent].status \in Finished)
+                  => (job[job[c].parent].status = "DeadLettered" /\ ~Matches(job[c].cond, "DeadLettered"))
+
+\* @req REQ-192  (run 3) a Completed batch whose members nobody requeues is eventually removed (A-6 reading).
+Liv_CompletedBatchRemoved ==
+  \A bt \in Batches : batch[bt].status = "Completed" ~> batch[bt].status \in {"Succeeded", "removed"}
+
+\* Probe (run 3): a job-level continuation of a batch member is cancelled because REQ-192 removed its parent
+\* with the batch (A-17).  Expected VIOLATED: the trace shows the case REQ-188's wording has to cover.
+Probe_MemberContinuationRemoved ==
+  ~\E c \in Jobs : /\ job[c].parent # NULL /\ job[c].status = "Cancelled" /\ job[c].released = "cancel"
+                   /\ job[job[c].parent].status = "removed" /\ job[job[c].parent].member # NULL
+                   /\ batch[job[job[c].parent].member].status = "removed"
+                   /\ job[c].cond = "OnSuccess" /\ "Succeeded" \notin job[job[c].parent].hs
+                   /\ "Cancelled" \notin job[job[c].parent].hs
 
 \* gap probes (finding evidence; expected VIOLATED)
 \* An OnSuccess continuation stays cancelled although its parent was requeued and then succeeded.

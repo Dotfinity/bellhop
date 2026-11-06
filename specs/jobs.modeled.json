@@ -1,7 +1,7 @@
 {
   "module": "jobs",
-  "specHash": "f8184c68c75cb2291ef7d8a9df9c370b87094a26fb28c0ca4e0070e8f54f2813",
-  "generatedAt": "2026-11-06T19:30:00Z",
+  "specHash": "4abf0385ed9d57dbe10175d4662566bd5b731aa55990f78ae44f32898b6bbe60",
+  "generatedAt": "2026-11-06T21:17:34Z",
   "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla",
   "items": {
     "INV-100": {
@@ -165,9 +165,9 @@
       "note": "Jobs.tla"
     },
     "REQ-123": {
-      "hash": "b48a62556fbc703aefe335570756b42585a53461d07f34d2ecfa5e4c2f237a2c",
+      "hash": "a17a0148c578583c8334d8984ead82c929c3e7efc716c9c6a488d2c2c9d2ec76",
       "reviewed": false,
-      "note": "Jobs.tla Claim; queue-limit and LongRunning guards in Jobs_Throttle.tla"
+      "note": "Jobs.tla Claim: guard Cardinality(Claims(n)) < NodeLimit (run 3, the INV-106 measure); queue-limit and LongRunning guards in Jobs_Throttle.tla (its Busy already counts claims)"
     },
     "REQ-124": {
       "hash": "157d994df2f6cdffda88e11d7fff6affc7689f68a180754490ee03e00ee76e4e",
@@ -250,24 +250,24 @@
       "note": "Jobs.tla"
     },
     "REQ-140": {
-      "hash": "d9fbfbddfc2d4bd025937d1138419a588c6c9a4ac4de0103be918838c98eba22",
+      "hash": "1079974bc9d46f40ee0c7e9387aa95b76c5e7ebeff291325fbf3ece77127145f",
       "reviewed": false,
-      "note": "Jobs.tla ReleaseOnShutdown + R140 in HandlerThrows (overlaps REQ-138, finding)"
+      "note": "Jobs.tla ReleaseOnShutdown + R140 (run 3: OCE branch only when the timeout token was not signalled); Chk_TimeoutVsShutdown holds; still-running branch vs REQ-138: finding F-1"
     },
     "REQ-141": {
-      "hash": "6d4d4ef84b7cd7dd0465376c0a5b055d902f473e91b4d1515e9d5ef86b3c2928",
+      "hash": "25daec5403a37590cc9c8d5a490fde9cceca1fbace087d0fdcbe8ee103fcb431",
       "reviewed": false,
-      "note": "Jobs.tla, Jobs_Unique.tla"
+      "note": "Jobs.tla Requeue (clears cancelReq, run 3); unique-key side Jobs_Unique.tla; Jobs_Flow.tla Requeue"
     },
     "REQ-142": {
-      "hash": "b9aa3e768f4c6a74d6cb7052c07dcd487d4f0c21693392df566253fb70ce1f4a",
+      "hash": "33ce32c6df16e709e453532883a18da64c45049a56b7e29200215b75542913c1",
       "reviewed": false,
-      "note": "Jobs_Unique.tla BulkRequeueOne"
+      "note": "Jobs.tla Requeue (clears cancelReq, run 3); per-job bulk step in Jobs_Unique.tla BulkRequeueOne"
     },
     "REQ-143": {
-      "hash": "1c188d770f4984ee459f6d257ad4167ed4865c824af3bb15ccd4ff5682830aa9",
+      "hash": "0a9da7a3fe50d6dcfe18132a228ef8c0029eadd5d01d8b751781374cbcbff60c",
       "reviewed": false,
-      "note": "Jobs.tla, Jobs_Unique.tla"
+      "note": "Jobs.tla Requeue (clears cancelReq, run 3); Jobs_Unique.tla; Jobs_Flow.tla (F-6 of run 2 accepted in notes)"
     },
     "REQ-144": {
       "hash": "863586d79e8889e385f55099a69648f9e98cecafcbee8a3116829c2e6952fcc4",
@@ -277,7 +277,7 @@
     "REQ-145": {
       "hash": "dd124249102d271588071a2ac2823d102f61ee289a6b28b3b1f7e915d6a6748c",
       "reviewed": false,
-      "note": "Jobs.tla Retention; batch-member exemption in Jobs_Flow.tla"
+      "note": "Jobs.tla Retention; batch-member exemption in Jobs_Flow.tla, ended by BatchRemoved (REQ-192)"
     },
     "REQ-147": {
       "hash": "63eae862cab274b7a1b4d97a589168d61d91f163d15c2cccd1dd1f91c7d673b4",
@@ -355,9 +355,9 @@
       "note": "Jobs_Flow.tla Resolved"
     },
     "REQ-175": {
-      "hash": "fe5286694a78da38b1e5ff14dbc34a787e7ab5267a6bd0776fe5082ad26f7c58",
+      "hash": "903bbf414e9782ca52d0fb81b81921005ea90480c6a6e173c9a754c1ab624821",
       "reviewed": false,
-      "note": "Jobs_Flow.tla"
+      "note": "Jobs_Flow.tla AddContinuation -> Resolved; Inv_AwaitingOnlyWhenNoRule (run 3)"
     },
     "REQ-176": {
       "hash": "077398ef64e3e04b6dc1b7ad04926ca46caeb570b6afe02bf8ccb1f94fbf1d2a",
@@ -415,9 +415,9 @@
       "note": "Jobs.tla - abstracted to the GracePasses flag"
     },
     "REQ-188": {
-      "hash": "d816c8fdf067c7b227ee4e96af8619fe7f54785f63df4aa6ced2bc09089fb5ad",
+      "hash": "03589f4a5ac362306e94351fd91e4e123d508435c6280937d50911c6b67dbc71",
       "reviewed": false,
-      "note": "Jobs_Flow.tla Delete and Retention -> Resolved(...,\"deleted\")"
+      "note": "Jobs_Flow.tla Delete, Retention and BatchRemoved (run 3) -> cancel awaiting continuations; member continuations on REQ-192 removal: A-17, finding F-3"
     },
     "REQ-189": {
       "hash": "6b9d0da09bbb6fca39162e67eaa32acb35613e007b88a474d46693933701f1c9",
@@ -425,14 +425,19 @@
       "note": "Jobs.tla - every run gets SignalTimeout"
     },
     "REQ-190": {
-      "hash": "95d2edf117bf1168b2e60d1072af3ff7e6610e20f6439e3a6a4ea14271d17b03",
+      "hash": "b48aa7dd7997d510100767214258e5653b1cb54305632a1eceac1b435f2030d2",
       "reviewed": false,
-      "note": "Jobs.tla Recover, R190, AbandonOnTimeout, ReleaseOnShutdown"
+      "note": "Jobs.tla Recover, R190 (run 3: retryable failures only), AbandonOnTimeout, ReleaseOnShutdown; Chk_PermanentVsCancel holds"
     },
     "REQ-191": {
-      "hash": "26b667aa265af10bc852e4ed768ada53afa954fe288eca82683d48fee172eeb5",
+      "hash": "a20f7457ab449664baae19d8a16d9d4f3db02cbd0dc612eab1f4464494421e3e",
       "reviewed": false,
-      "note": "Jobs.tla: abandonment recorded as history tag \"Abandoned\" (the log line is not state)"
+      "note": "Jobs.tla: abandonment/release as run modes; lease-lost trigger as predicate LeaseLostRecordable (run 3, history only); finding F-2"
+    },
+    "REQ-192": {
+      "hash": "de45473aa59ac24e5e895bdabb4987cf0ac7f51d529269fdfec2b259cb644389",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla BatchRemoved (run 3, fair, time A-1); Liv_CompletedBatchRemoved"
     },
     "SCN-100": {
       "hash": "dfbf6fc367ccbb9e9e608ad513163ad75905206777fa6769062f4a50836d3223",

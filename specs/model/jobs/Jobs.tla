@@ -57,8 +57,11 @@ Init ==
   /\ maint = "Off"
 
 RunsOn(n)   == {r \in runs : r.node = n}
-Busy(n)     == Cardinality({r \in RunsOn(n) : r.mode = "running"})
 Current(r)  == job[r.job].status = "Processing" /\ job[r.job].token = r.token
+\* Claims a node holds: processing jobs whose current lease token is held by the node's live run (A-4).
+\* Run 3: REQ-123 and INV-106 use this one measure.
+Claims(n)   == {j \in Jobs : job[j].status = "Processing"
+                             /\ \E r \in RunsOn(n) : r.job = j /\ r.mode = "running" /\ Current(r)}
 WorkerUp    == \E n \in WorkerNodes : node[n].st = "Running"
 HandlerUp   == \E n \in WorkerNodes : node[n].st = "Running" /\ node[n].handler
 SetJob(j, f) == job' = [job EXCEPT ![j] = f]
@@ -111,14 +114,14 @@ RetryDue(j) ==
   /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.due = FALSE, !.longWait = FALSE])
   /\ UNCHANGED <<runs, node, queue, maint>>
 
-\* @req REQ-123  claim: active queue, maintenance off, running worker node with the handler and a
-\*               free slot; new leaseToken, attempt + 1, fresh lease.  (INV-113, INV-114, hosting REQ-20)
-\*               Concurrency keys / rate limits / priority order: Jobs_Throttle.tla.
+\* @req REQ-123  claim: active queue, maintenance off, running worker node with the handler that holds
+\*               claims on fewer processing jobs than its limit; new leaseToken, attempt + 1, fresh lease.
+\*               (INV-113, INV-114, hosting REQ-20)  Keys / rate limits / priority order: Jobs_Throttle.tla.
 Claim(n, j) ==
   /\ job[j].status = "Enqueued"
   /\ queue = "Active" /\ maint = "Off"
   /\ n \in WorkerNodes /\ node[n].st = "Running" /\ node[n].handler
-  /\ Busy(n) < NodeLimit                                   \* "free worker slot" (A-4)
+  /\ Cardinality(Claims(n)) < NodeLimit                     \* run 3: "fewer claims than its limit"
   /\ LET t == job[j].token + 1 IN
        /\ SetJob(j, [job[j] EXCEPT !.status = "Processing", !.owner = n, !.token = t,
                       !.attempt = @ + 1, !.leaseExpired = FALSE, !.longWait = FALSE])
@@ -142,8 +145,8 @@ Renew(r) ==
   /\ SetJob(r.job, [job[r.job] EXCEPT !.leaseExpired = FALSE])
   /\ UNCHANGED <<runs, node, queue, maint>>
 
-\* A cancellation request recorded on an earlier run of the same job (REQ-135) is still "requested"
-\* after a requeue: no requirement clears cancelRequested (A-16).  Tag outcomes it causes on a later run.
+\* Tags an outcome decided by a cancellation request recorded on an earlier run of the same job (REQ-135).
+\* Run 3: REQ-141..143 clear the request on requeue, so Gap_StaleCancelRequest is expected to hold.
 Stale(j) == IF job[j].token > job[j].cancelTok THEN {"StaleCancel"} ELSE {}
 
 \* @req REQ-132 REQ-133 REQ-190  lease expired: any running worker node recovers (one event, complementary
@@ -182,8 +185,9 @@ CR(r)         == job[r.job].cancelReq
 ShutOCE(r, e) == e = "oce" /\ r.sSig            \* "an OCE thrown after the job's token was cancelled for shutdown"
 R136(r, e) == e = "oce" /\ CR(r)                                          \* REQ-136
 R138(r, e) == e = "oce" /\ ~CR(r) /\ r.tSig /\ ~r.graceOver               \* REQ-138 / REQ-186 ("throws OCE within it")
-R140(r, e) == ShutOCE(r, e) /\ ~CR(r)                                     \* REQ-140 ("or throws OperationCanceledException")
-R190(r, e) == e # "oce" /\ CR(r) /\ job[r.job].attempt < MaxAttempts       \* REQ-190 ("other than OCE with attempts left")
+R140(r, e) == ShutOCE(r, e) /\ ~CR(r) /\ ~r.tSig                          \* REQ-140 (run 3: "or it throws OCE and its timeout token was not signalled")
+R190(r, e) == e = "retryable" /\ CR(r) /\ job[r.job].attempt < MaxAttempts \* REQ-190 (run 3: "other than OCE or PermanentJobFailureException while
+                                                                         \*  the attempt number is below maxAttempts and the retry policy allows another attempt")
 \* A-5: an OCE covered by REQ-136 or REQ-138 is not also an ordinary failure (REQ-136 notes).
 Gen(r, e)  == ~ShutOCE(r, e) /\ ~(e = "oce" /\ (R136(r, e) \/ R138(r, e)))
 R129(r, e) == Gen(r, e) /\ ~CR(r) /\ job[r.job].attempt < MaxAttempts /\ e # "permanent"   \* REQ-129
@@ -326,12 +330,13 @@ NodeStart(n) ==
   /\ UNCHANGED <<runs, queue, maint>>
 
 \* ---------------------------------------------------------------- requeue / delete / retention
-\* @req REQ-141 REQ-142  dead letter -> Enqueued, attempt 0 (bulk = per job, one atomic step each).
-\* @req REQ-143          succeeded / cancelled -> Enqueued, attempt 0, history kept.
+\* @req REQ-141 REQ-142  dead letter -> Enqueued, attempt 0, cancellation request cleared (bulk = per job,
+\*                      one atomic step each).
+\* @req REQ-143          succeeded / cancelled -> Enqueued, attempt 0, cancellation request cleared, history kept.
 \* @req INV-129          any other state is refused (guard).  Unique-key part: Jobs_Unique.tla.
 Requeue(j) ==
   /\ job[j].status \in Finished
-  /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.attempt = 0, !.owner = NULL,
+  /\ SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.attempt = 0, !.owner = NULL, !.cancelReq = FALSE,
                  !.longWait = FALSE, !.due = FALSE, !.hist = @ \cup {"Requeued"}])
   /\ UNCHANGED <<runs, node, queue, maint>>
 
@@ -392,10 +397,7 @@ Inv_SingleClaim ==
   \A j \in Jobs : Cardinality({r \in runs : r.job = j /\ r.mode = "running" /\ Current(r)
                                             /\ ~job[j].leaseExpired}) <= 1
 
-\* @req INV-106  never claims on more processing jobs at once on a node than its limit.  A claim is held
-\*               by the node's live run with the current lease token (A-4).
-Claims(n) == {j \in Jobs : job[j].status = "Processing"
-                           /\ \E r \in RunsOn(n) : r.job = j /\ r.mode = "running" /\ Current(r)}
+\* @req INV-106  never claims on more processing jobs at once on a node than its limit (Claims, A-4).
 Inv_NodeClaims == \A n \in Nodes : Cardinality(Claims(n)) <= NodeLimit
 
 \* Former reading of INV-106 (run 1, F-5): handlers executing in the process, abandoned ones included.
@@ -481,6 +483,25 @@ Gap_CancelRequestLost ==
 Gap_CooperativeShutdownCounted == ~\E j \in Jobs : "ShutdownFailure" \in job[j].hist
 \* A cancellation requested on an earlier run decides a later run after a requeue (A-16).
 Gap_StaleCancelRequest == ~\E j \in Jobs : "StaleCancel" \in job[j].hist
+
+\* @req REQ-191 INV-128 REQ-123  (run 3) REQ-191 records a lease-lost handler when the system "refuses the heartbeat
+\*        of a handler that is still running because its lease token is no longer current".  The record is
+\*        history only, so it is a predicate, not an action.
+LeaseLostRecordable(r) == r.mode = "running" /\ node[r.node].st # "Stopped" /\ job[r.job].token # r.token
+\* Probe: a handler still running on a live node holds no claim (so its node claims another job, REQ-123),
+\* its job has left Processing for a finished state without a new lease token, so REQ-191 can never record it
+\* until a person requeues the job.  Expected VIOLATED = finding.
+Gap_LeaseLostUnrecorded ==
+  ~\E r \in runs : /\ r.mode = "running" /\ node[r.node].st # "Stopped" /\ ~Current(r)
+                   /\ ~LeaseLostRecordable(r) /\ job[r.job].status \in Finished
+                   /\ Claims(r.node) # {}
+
+\* Check (run 3): a handler whose timeout token was signalled and whose node then signals shutdown.  If it is
+\* still running, REQ-140 releases it and takes the attempt back; if it throws OperationCanceledException,
+\* REQ-138/186 count the attempt.  Violation = a state where both are possible (cooperating costs an attempt).
+Chk_TimeoutReleaseSplit ==
+  \A r \in runs : ~(Current(r) /\ r.tSig /\ r.sSig /\ ~r.graceOver /\ ~CR(r)
+                    /\ ENABLED ReleaseOnShutdown(r) /\ R138(r, "oce"))
 
 \* @req SCN-122  positive: a cancelled job whose lease expires with attempts left ends Cancelled (expected VIOLATED).
 Scn122_NotReached == ~\E j \in Jobs : job[j].status = "Cancelled" /\ "LeaseCancel" \in job[j].hist
