@@ -64,7 +64,7 @@
       "ears": { "when": "a node with the worker registered starts and the hash of a code-defined recurring job's code definition differs from the definitionHash of the stored code-defined job with that name", "shall": "update the stored definition and definitionHash to match the code, keeping its paused or active state, and, if the schedule changed, compute nextRunAt from now as in REQ-227" },
       "mentions": ["RecurringJob.schedule", "RecurringJob.origin", "RecurringJob.definitionHash", "RecurringJob.nextRunAt"],
       "dependsOn": ["REQ-227"],
-      "notes": "Decided by the owner on 2026-11-06: code is reapplied only when the code definition itself changed, so a runtime edit under AllowRuntimeOverride survives restarts and deploys that leave the code unchanged. During a rolling deploy, nodes on N and N+1 may rewrite a changed definition back and forth; the last writer wins and it settles when the deploy ends. Keeping the paused state is confirmed. refiner-model 2026-11-06 F-10 (decided 2026-11-06, recommended option): a schedule change that arrives with new code recomputes nextRunAt. F-6: applies only to a stored job of code origin; a runtime job with the same name stops the node instead (REQ-236).",
+      "notes": "Decided by the owner on 2026-11-06: code is reapplied only when the code definition itself changed, so a runtime edit under AllowRuntimeOverride survives restarts and deploys that leave the code unchanged. During a rolling deploy, nodes on N and N+1 may rewrite a changed definition back and forth; the last writer wins, and once no running node's code matches the stored definition, REQ-241 brings it back to a running release (refiner-model run 2 F-2; before that, this note said it settles when the deploy ends, which fails after a rollback or a late restart of an old node). Keeping the paused state is confirmed. refiner-model 2026-11-06 F-10 (decided 2026-11-06, recommended option): a schedule change that arrives with new code recomputes nextRunAt. F-6: applies only to a stored job of code origin; a runtime job with the same name stops the node instead (REQ-236).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3" }]
     },
@@ -81,7 +81,7 @@
       "entity": "RecurringJob", "actor": "system", "from": ["Active", "Paused"], "to": ["Orphaned"],
       "ears": { "when": "the scheduler finds a stored code-defined recurring job that no running worker node declares", "if": "the job's orphanPolicy is Orphan, the default", "shall": "record the job's current state and mark it orphaned, which also pauses it, instead of deleting it" },
       "mentions": ["RecurringJob.origin", "RecurringJob.orphanPolicy", "RecurringJob.stateBeforeOrphan", "hosting.Node.Running"],
-      "notes": "Decided by the owner on 2026-11-06: nodes publish the recurring names they declare with their heartbeat, as they do handler names (jobs REQ-124), so a job is orphaned only once no live node declares it. A rolling deploy therefore no longer flips it between Active and Orphaned. refiner-model 2026-11-06 F-11 (decided 2026-11-06, recommended option): the orphan policy is a per-job attribute, orphanPolicy.",
+      "notes": "Decided by the owner on 2026-11-06: nodes publish the recurring names they declare with their heartbeat, as they do handler names (jobs REQ-124), so a job is orphaned only once no live node declares it. A rolling deploy therefore no longer flips it between Active and Orphaned. refiner-model 2026-11-06 F-11 (decided 2026-11-06, recommended option): the orphan policy is a per-job attribute, orphanPolicy. Run 2 F-2: each published name carries the hash of its code definition, which REQ-241 uses.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3", "quote": "A code-defined job removed from code MUST be marked Orphaned and paused, not deleted (configurable)." }]
     },
@@ -414,7 +414,25 @@
       "id": "REQ-239", "kind": "assumption", "status": "approved",
       "ears": { "shall": "treat an occurrence's job as unfinished for overlap decisions while it is not Succeeded, DeadLettered, Cancelled or Unroutable" },
       "mentions": ["Occurrence.job", "jobs.Job.Succeeded", "jobs.Job.DeadLettered", "jobs.Job.Cancelled", "jobs.Job.Unroutable"],
-      "notes": "refiner-model 2026-11-06 F-7 (decided 2026-11-06, recommended option): an Unroutable occurrence job no longer blocks its recurring job for good; the next occurrence is decided by its own handler availability and becomes Unroutable too, which the dashboard shows. Before this, the definition (without Unroutable) lived only in REQ-221's notes and the glossary, which are not semantic."
+      "notes": "refiner-model 2026-11-06 F-7 (decided 2026-11-06, recommended option): an Unroutable occurrence job no longer blocks its recurring job for good; the next occurrence is decided by its own handler availability and becomes Unroutable too, which the dashboard shows. Before this, the definition (without Unroutable) lived only in REQ-221's notes and the glossary, which are not semantic. Run 2 F-1: because jobs REQ-125 brings an Unroutable job back when a handler appears, the newer occurrence cancels it when it starts (REQ-240), so the two never run side by side."
+    },
+    {
+      "id": "REQ-240", "kind": "transition", "status": "approved", "strength": "must",
+      "entity": "jobs.Job", "actor": "system", "from": ["Unroutable"], "to": ["Cancelled"],
+      "ears": { "when": "an occurrence of a recurring job starts while an earlier occurrence of the same recurring job has an unroutable job", "shall": "cancel that unroutable job with reason Superseded in the same write that starts the new occurrence" },
+      "mentions": ["Occurrence.job", "Occurrence.Started", "jobs.Job.Unroutable", "jobs.Job.Cancelled"],
+      "dependsOn": ["REQ-221", "REQ-224", "REQ-239"],
+      "rationale": "REQ-239 lets the next occurrence start past an Unroutable job, but jobs REQ-125 returns that job to Enqueued as soon as a handler appears, which is exactly when the newer job becomes runnable too (INV-204).",
+      "notes": "refiner-model 2026-11-06 run 2 F-1 (recommended option; checked by the model over 262,576 states with all four overlap policies). The newer occurrence replaces the stale one, which is what Skip and Queue intend, so a recurring job never holds more than one Unroutable job and only one runs when a handler comes back. Cost: the stale occurrence's run is lost; the cancel reason says why. jobs REQ-134 already allows cancelling an Unroutable job, so the jobs module needs no change."
+    },
+    {
+      "id": "REQ-241", "kind": "transition", "status": "approved", "strength": "must",
+      "entity": "RecurringJob", "actor": "system", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
+      "ears": { "when": "the scheduler finds a stored code-defined recurring job that running worker nodes declare but whose definitionHash matches the code definition of none of them", "shall": "update the stored definition and definitionHash to the code definition of one of those nodes, keeping its paused or active state, and, if the schedule changed, compute nextRunAt from now as in REQ-227" },
+      "mentions": ["RecurringJob.definitionHash", "RecurringJob.origin", "RecurringJob.nextRunAt", "hosting.Node.Running"],
+      "dependsOn": ["REQ-204", "REQ-227"],
+      "rationale": "REQ-204 runs only when a node starts, so after a rollback, or after an old node restarted late in a deploy, the stored definition can belong to a release that no running node runs.",
+      "notes": "refiner-model 2026-11-06 run 2 F-2 (recommended option). Nodes publish each declared name with the hash of its code definition in their heartbeat, as they already publish the names (REQ-205); the check runs with the orphan sweep, a worker duty (hosting REQ-40). While the stored hash matches any running node's code nothing changes, so there is no back-and-forth during a deploy, and the definition settles as soon as the old release is gone. A runtime edit under AllowRuntimeOverride does not change definitionHash, so it survives."
     },
     {
       "id": "INV-206", "kind": "invariant", "status": "approved",
@@ -604,13 +622,24 @@
       "steps": [{ "req": "REQ-208", "note": "an operator adds a runtime recurring job named nightly-export from the dashboard" }],
       "impossibleAt": 1,
       "notes": "refiner-model 2026-11-06 F-6 regression (INV-211 rejects the call)."
+    },
+    {
+      "id": "SCN-215", "status": "approved",
+      "title": "A newer occurrence supersedes an Unroutable one",
+      "given": "sync-crm runs every minute with overlap Skip. Its 10:00 occurrence's job is Unroutable because no running worker has the SyncCrm handler.",
+      "steps": [
+        { "req": "REQ-221", "note": "the 10:06 occurrence is created; the Unroutable job does not count as unfinished (REQ-239)" },
+        { "req": "REQ-240", "note": "the 10:00 job is cancelled with reason Superseded in the write that starts the 10:06 occurrence" }
+      ],
+      "then": "The 10:00 job is Cancelled with reason Superseded, the 10:06 occurrence is Started with an Enqueued job, and sync-crm has no Unroutable job, so a worker that later registers SyncCrm can run only the 10:06 job.",
+      "notes": "refiner-model 2026-11-06 run 2 F-1 regression."
     }
   ],
 
   "features": [
-    { "id": "FEAT-200", "name": "Definitions and reconciliation", "members": ["REQ-202", "REQ-203", "REQ-204", "INV-200", "REQ-205", "REQ-206", "REQ-207", "REQ-208", "REQ-209", "REQ-210", "REQ-211", "REQ-212", "REQ-213", "REQ-232", "INV-206", "INV-209", "SCN-204", "SCN-205", "SCN-207", "SCN-208", "SCN-209", "SCN-212", "REQ-236", "INV-211", "SCN-214"] },
+    { "id": "FEAT-200", "name": "Definitions and reconciliation", "members": ["REQ-202", "REQ-203", "REQ-204", "INV-200", "REQ-205", "REQ-206", "REQ-207", "REQ-208", "REQ-209", "REQ-210", "REQ-211", "REQ-212", "REQ-213", "REQ-232", "INV-206", "INV-209", "SCN-204", "SCN-205", "SCN-207", "SCN-208", "SCN-209", "SCN-212", "REQ-236", "INV-211", "SCN-214", "REQ-241"] },
     { "id": "FEAT-201", "name": "Triggering and misfire", "members": ["REQ-201", "REQ-214", "REQ-215", "INV-201", "INV-202", "REQ-216", "INV-203", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-226", "REQ-227", "REQ-230", "REQ-231", "REQ-234", "INV-207", "INV-210", "SCN-200", "SCN-202", "SCN-203", "SCN-206", "SCN-211"] },
-    { "id": "FEAT-202", "name": "Overlap", "members": ["REQ-221", "REQ-222", "REQ-223", "REQ-224", "REQ-225", "INV-204", "INV-205", "REQ-233", "REQ-235", "SCN-201", "SCN-210", "REQ-237", "REQ-238", "REQ-239", "SCN-213"] },
+    { "id": "FEAT-202", "name": "Overlap", "members": ["REQ-221", "REQ-222", "REQ-223", "REQ-224", "REQ-225", "INV-204", "INV-205", "REQ-233", "REQ-235", "SCN-201", "SCN-210", "REQ-237", "REQ-238", "REQ-239", "SCN-213", "REQ-240", "SCN-215"] },
     { "id": "FEAT-203", "name": "Time zones and DST", "members": ["REQ-200", "REQ-228", "REQ-229", "INV-208"] }
   ],
 
