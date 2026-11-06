@@ -37,13 +37,17 @@ Target(kind) == CASE kind = "enqueue"      -> "Enqueued"     \* REQ-120
 
 \* One creation call.  The duplicate rules are applied exactly where their sentences apply; a
 \* combination no sentence covers falls through to the plain creation requirement (REQ-120/121/170/182).
+\* Run 2: REQ-150/REQ-152 cover every creating call (continuations, chain steps and batch members are the
+\* "continue" kind: created Awaiting or Enqueued, same duplicate check).  A schedule call for a past time
+\* (REQ-182) is a call that schedules (A-15).
 \* @req REQ-120 REQ-121 REQ-170 REQ-182 REQ-150 REQ-151 REQ-152 INV-135
+Schedules(kind) == kind \in {"schedule", "schedulePast"}
 Create(j, kind, keyed, pol) ==
   /\ job[j].status = "none"
   /\ IF keyed /\ Holder # {}
-       THEN CASE kind = "enqueue" /\ pol = "Ignore"
+       THEN CASE pol = "Ignore" \/ (pol = "ReplaceSchedule" /\ ~Schedules(kind))
                    -> job' = job /\ lastCall' = "duplicate"                         \* REQ-150
-              [] kind = "enqueue" /\ pol = "Error"
+              [] pol = "Error"
                    -> job' = job /\ lastCall' = "rejected"                          \* REQ-152
               [] kind \in {"schedule", "schedulePast"} /\ pol = "ReplaceSchedule"
                    /\ \E e \in Holder : job[e].status = "Scheduled"
@@ -76,11 +80,12 @@ Requeue(j) ==
   /\ ~(job[j].keyed /\ KeyHeld(j))
   /\ Set(j, "Enqueued")
 
-\* @req REQ-142  bulk requeue: each matching dead letter in its own atomic step; skipped only when
-\*               "their state changed meanwhile".
+\* @req REQ-142  bulk requeue: each matching dead letter in its own atomic step; skipped when its state
+\*               changed meanwhile or its unique key is held by another active job (run 2).
 BulkRequeueOne(j) ==
   /\ BulkOn
   /\ job[j].status = "DeadLettered"
+  /\ ~(job[j].keyed /\ KeyHeld(j))
   /\ Set(j, "Enqueued")
 
 Next ==

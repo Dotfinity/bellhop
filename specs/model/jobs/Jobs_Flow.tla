@@ -27,6 +27,7 @@ JobRec == [status: Status, attempt: 0..MaxAttempts, parent: Jobs \cup {NULL}, co
            member: Batches \cup {NULL}, cbatch: Batches \cup {NULL},
            fires: 0..3,                \* times released to Enqueued as a continuation (history)
            released: {"no", "enq", "cancel"},
+           late: BOOLEAN,              \* added by REQ-175 to a parent that had already finished (history)
            hs: SUBSET Finished]        \* outcomes ever reached (history)
 
 TypeInv ==
@@ -34,7 +35,7 @@ TypeInv ==
   /\ batch \in [Batches -> [status: {"none", "Open", "Succeeded", "Completed"}, wasCompleted: BOOLEAN]]
 
 Empty == [status |-> "none", attempt |-> 0, parent |-> NULL, cond |-> "-", member |-> NULL,
-          cbatch |-> NULL, fires |-> 0, released |-> "no", hs |-> {}]
+          cbatch |-> NULL, fires |-> 0, released |-> "no", late |-> FALSE, hs |-> {}]
 Init == job = [j \in Jobs |-> Empty] /\ batch = [b \in Batches |-> [status |-> "none", wasCompleted |-> FALSE]]
 
 \* Awaiting continuations below a set of jobs (transitively).
@@ -48,12 +49,14 @@ Matches(cond, outcome) ==
 
 \* A-10: continuations are resolved in the same step as the parent's event (REQ-171..174, REQ-173
 \* cascade, REQ-188); the cascade repeats down a chain (REQ-173 notes).
-\* outcome \in {"Succeeded", "DeadLettered", "Cancelled", "deleted"}
+\* outcome \in {"Succeeded", "DeadLettered", "Cancelled", "deleted"}  ("deleted" = REQ-144 or retention)
+\* Run 2: REQ-174 cancels only on success with OnFailure; a non-matching continuation of a dead-lettered
+\* parent stays Awaiting (the parent can be requeued).
 Resolved(f, p, outcome) ==
   LET direct == {c \in Jobs : f[c].status = "Awaiting" /\ f[c].parent = p}
       enq    == IF outcome \in {"Succeeded", "DeadLettered"}
                   THEN {c \in direct : Matches(f[c].cond, outcome)} ELSE {}
-      cancel == Close(direct \ enq)
+      cancel == IF outcome = "DeadLettered" THEN {} ELSE Close(direct \ enq)
   IN [c \in Jobs |-> IF c \in enq THEN [f[c] EXCEPT !.status = "Enqueued", !.fires = @ + 1, !.released = "enq"]
                      ELSE IF c \in cancel THEN [f[c] EXCEPT !.status = "Cancelled", !.released = "cancel",
                                                              !.hs = @ \cup {"Cancelled"}]
@@ -72,13 +75,14 @@ Enqueue(j) ==
   /\ UNCHANGED batch
 
 \* @req REQ-170  parent not finished -> Awaiting.   @req REQ-175  parent finished -> resolve at once.
-\* (A parent that was deleted or removed by retention is not covered by either: F-? static finding.)
+\* @req INV-138  a parent id that does not exist (never created, deleted or removed) is rejected: guard.
 AddContinuation(c, p, cond) ==
   /\ job[c].status = "none" /\ p # c
   /\ job[p].status \in Pending \cup Finished
   /\ IF job[p].status \in Pending
        THEN job' = [job EXCEPT ![c] = [Empty EXCEPT !.status = "Awaiting", !.parent = p, !.cond = cond]]
-       ELSE LET aw == [job EXCEPT ![c] = [Empty EXCEPT !.status = "Awaiting", !.parent = p, !.cond = cond]]
+       ELSE LET aw == [job EXCEPT ![c] = [Empty EXCEPT !.status = "Awaiting", !.parent = p, !.cond = cond,
+                                                       !.late = TRUE]]
             IN job' = Resolved(aw, p, job[p].status)
   /\ UNCHANGED batch
 
@@ -144,16 +148,21 @@ Delete(j) == "delete" \in EnvActs /\ job[j].status \notin {"none", "removed", "P
              /\ LET f == [job EXCEPT ![j].status = "removed"] IN job' = Resolved(f, j, "deleted")
              /\ UNCHANGED batch
 
-\* @req REQ-145  retention removes finished jobs (system, time A-1).  Slots are not reused (A-11).
-Retention(j) == job[j].status \in Finished
-                /\ job' = [job EXCEPT ![j].status = "removed"] /\ UNCHANGED batch
+\* @req REQ-145 REQ-188  retention removes finished jobs (system, time A-1) except members of an open or
+\*                      completed batch; awaiting continuations of a removed parent are cancelled (REQ-188).
+\*                      Slots are not reused (A-11).
+Retention(j) == /\ job[j].status \in Finished
+                /\ ~(job[j].member # NULL /\ batch[job[j].member].status \in {"Open", "Completed"})
+                /\ LET f == [job EXCEPT ![j].status = "removed"] IN job' = Resolved(f, j, "deleted")
+                /\ UNCHANGED batch
 
 \* ---------------------------------------------------------------- batches (system)
 Members(bt) == {j \in Jobs : job[j].member = bt}
-\* A-12: "every member job" ranges over the members created with the batch; a removed member is
-\*       neither succeeded nor finished.
+\* A-12: "every member job" ranges over the members created with the batch.  Run 2 (REQ-180): a deleted
+\*       member counts as finished and not succeeded; retention no longer removes members of an open or
+\*       completed batch (REQ-145).
 AllSucceeded(bt) == \A m \in Members(bt) : job[m].status = "Succeeded"
-AllFinished(bt)  == \A m \in Members(bt) : job[m].status \in Finished
+AllFinished(bt)  == \A m \in Members(bt) : job[m].status \in Finished \cup {"removed"}
 
 \* @req REQ-181  batch-level continuations released in the same step as the batch transition.
 ReleaseBatchConts(bt, succeeded) ==
@@ -168,7 +177,8 @@ BatchSucceeds(bt) ==
   /\ batch' = [batch EXCEPT ![bt].status = "Succeeded"]
   /\ job' = ReleaseBatchConts(bt, TRUE)
 
-\* @req REQ-180  Open -> Completed when every member finished and one did not succeed.
+\* @req REQ-180  Open -> Completed when every member is succeeded, dead-lettered, cancelled or deleted and
+\*               one did not succeed.
 BatchCompletes(bt) ==
   /\ batch[bt].status = "Open" /\ AllFinished(bt) /\ ~AllSucceeded(bt)
   /\ batch' = [batch EXCEPT ![bt].status = "Completed", ![bt].wasCompleted = TRUE]
@@ -218,12 +228,30 @@ Scn119_NotReached == ~\E c \in Jobs, bt \in Batches : job[c].cbatch = bt /\ job[
                          /\ job[c].status = "Enqueued" /\ job[c].fires = 1 /\ batch[bt].status = "Succeeded"
                          /\ batch[bt].wasCompleted
 
+\* @req SCN-121  positive: requeuing a dead-lettered chain step revives the chain (expected VIOLATED).
+Scn121_NotReached == ~\E c \in Jobs : job[c].cond = "OnSuccess" /\ job[c].status = "Enqueued" /\ job[c].parent # NULL
+                         /\ job[job[c].parent].status = "Succeeded" /\ "DeadLettered" \in job[job[c].parent].hs
+\* @req SCN-123 INV-138  negative: no continuation can be added to a parent that does not exist.
+Scn123_MissingParentRejected ==
+  \A c, p \in Jobs, cond \in JobConds : job[p].status \in {"none", "removed"} => ~ENABLED AddContinuation(c, p, cond)
+
+\* REQ-175 says a continuation added to a finished parent is resolved at once "instead of storing it as
+\* awaiting"; probe for one that is stored as awaiting anyway (run 2, expected VIOLATED).
+Gap_LateContinuationAwaits == ~\E c \in Jobs : job[c].late /\ job[c].status = "Awaiting"
+
 \* gap probes (finding evidence; expected VIOLATED)
 \* An OnSuccess continuation stays cancelled although its parent was requeued and then succeeded.
+\* (run 1 F-9: VIOLATED; run 2: expected to PASS)
 Gap_ContinuationLostOnRequeue ==
   ~\E c \in Jobs : job[c].cond = "OnSuccess" /\ job[c].status = "Cancelled" /\ job[c].parent # NULL
                    /\ job[job[c].parent].status = "Succeeded" /\ "DeadLettered" \in job[job[c].parent].hs
+\* F-9 path only: the parent was dead-lettered (never cancelled), requeued and succeeded (run 2: expected to PASS).
+Gap_DeadLetterRequeueLosesContinuation ==
+  ~\E c \in Jobs : job[c].cond = "OnSuccess" /\ job[c].status = "Cancelled" /\ job[c].parent # NULL
+                   /\ job[job[c].parent].status = "Succeeded" /\ "DeadLettered" \in job[job[c].parent].hs
+                   /\ "Cancelled" \notin job[job[c].parent].hs
 \* A Completed batch lost a member to retention while an OnBatchSucceeded continuation still waits.
+\* (run 1 F-10: VIOLATED; run 2: expected to PASS when only requeue is used, i.e. no explicit delete)
 Gap_BatchUpgradeImpossible ==
   ~\E c \in Jobs, bt \in Batches : job[c].cbatch = bt /\ job[c].status = "Awaiting"
                    /\ batch[bt].status = "Completed" /\ \E m \in Members(bt) : job[m].status = "removed"

@@ -28,7 +28,7 @@ Status == {"none", "Scheduled", "Enqueued", "Processing", "Succeeded", "Failed",
 Finished == {"Succeeded", "Cancelled", "DeadLettered"}
 \* history tags (history variable only, never read by an action)
 Hist == {"Failed", "DeadLettered", "Interrupted", "Released", "Timeout", "Unroutable",
-         "Requeued", "ShutdownFailure"}
+         "Requeued", "ShutdownFailure", "Abandoned", "LeaseCancel", "StaleCancel"}
 
 JobRec == [status: Status, attempt: 0..MaxAttempts, token: Nat, owner: Nodes \cup {NULL},
            due: BOOLEAN,          \* scheduledAt / retryAt has passed (A-1)
@@ -142,11 +142,19 @@ Renew(r) ==
   /\ SetJob(r.job, [job[r.job] EXCEPT !.leaseExpired = FALSE])
   /\ UNCHANGED <<runs, node, queue, maint>>
 
-\* @req REQ-132 REQ-133  lease expired: any running worker node recovers (one event, complementary guards).
+\* A cancellation request recorded on an earlier run of the same job (REQ-135) is still "requested"
+\* after a requeue: no requirement clears cancelRequested (A-16).  Tag outcomes it causes on a later run.
+Stale(j) == IF job[j].token > job[j].cancelTok THEN {"StaleCancel"} ELSE {}
+
+\* @req REQ-132 REQ-133 REQ-190  lease expired: any running worker node recovers (one event, complementary
+\*                              guards); cancellation requested with attempts left -> Cancelled (REQ-190).
 Recover(n, j) ==
   /\ n \in WorkerNodes /\ node[n].st = "Running"
   /\ job[j].status = "Processing" /\ job[j].leaseExpired
-  /\ IF job[j].attempt < MaxAttempts
+  /\ IF job[j].attempt < MaxAttempts /\ job[j].cancelReq
+       THEN SetJob(j, [job[j] EXCEPT !.status = "Cancelled", !.owner = NULL, !.leaseExpired = FALSE,
+                        !.hist = @ \cup {"LeaseCancel"} \cup Stale(j)])
+     ELSE IF job[j].attempt < MaxAttempts
        THEN SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.owner = NULL, !.leaseExpired = FALSE,
                         !.longWait = FALSE, !.hist = @ \cup {"Interrupted"}])
        ELSE SetJob(j, [job[j] EXCEPT !.status = "DeadLettered", !.owner = NULL, !.leaseExpired = FALSE,
@@ -167,34 +175,46 @@ HandlerReturns(r) ==
        ELSE UNCHANGED job                     \* INV-128 refused, or job no longer Processing (no rule)
   /\ UNCHANGED <<node, queue, maint>>
 
-\* Which requirement decides a throw.  A-5: OperationCanceledException is only thrown after the token
-\* was signalled, and the specific OCE rules (REQ-136, REQ-138/186) take precedence over REQ-129/131
-\* (REQ-136 notes).  Both specific rules can apply at once: see Chk_CancelTimeoutOverlap.
-CancelRule(r, e)  == e = "oce" /\ job[r.job].cancelReq                       \* REQ-136
-TimeoutRule(r, e) == e = "oce" /\ r.tSig /\ ~r.graceOver                     \* REQ-138 / REQ-186
-Outcomes(r, e) ==
-  LET a == job[r.job].attempt IN
-  (IF CancelRule(r, e) THEN {"Cancelled"} ELSE {})
-  \cup (IF TimeoutRule(r, e) THEN (IF a < MaxAttempts THEN {"Failed", "DeadLettered"} ELSE {"DeadLettered"}) ELSE {})
-  \cup (IF ~CancelRule(r, e) /\ ~TimeoutRule(r, e)
-          THEN (IF a < MaxAttempts /\ e # "permanent" THEN {"Failed"} ELSE {"DeadLettered"})   \* REQ-129 / REQ-131
-          ELSE {})
+\* Which requirement decides a throw.  e = "retryable": the retry policy allows another attempt ·
+\* "permanent": the policy declines or PermanentJobFailureException · "oce": OperationCanceledException,
+\* only thrown after a token was signalled (A-5).  One predicate per requirement, as written.
+CR(r)         == job[r.job].cancelReq
+ShutOCE(r, e) == e = "oce" /\ r.sSig            \* "an OCE thrown after the job's token was cancelled for shutdown"
+R136(r, e) == e = "oce" /\ CR(r)                                          \* REQ-136
+R138(r, e) == e = "oce" /\ ~CR(r) /\ r.tSig /\ ~r.graceOver               \* REQ-138 / REQ-186 ("throws OCE within it")
+R140(r, e) == ShutOCE(r, e) /\ ~CR(r)                                     \* REQ-140 ("or throws OperationCanceledException")
+R190(r, e) == e # "oce" /\ CR(r) /\ job[r.job].attempt < MaxAttempts       \* REQ-190 ("other than OCE with attempts left")
+\* A-5: an OCE covered by REQ-136 or REQ-138 is not also an ordinary failure (REQ-136 notes).
+Gen(r, e)  == ~ShutOCE(r, e) /\ ~(e = "oce" /\ (R136(r, e) \/ R138(r, e)))
+R129(r, e) == Gen(r, e) /\ ~CR(r) /\ job[r.job].attempt < MaxAttempts /\ e # "permanent"   \* REQ-129
+R131(r, e) == Gen(r, e) /\ (job[r.job].attempt >= MaxAttempts \/ e = "permanent")          \* REQ-131
 
-\* @req REQ-129 REQ-131 REQ-136 REQ-138 REQ-186   handler throws e
-\*   e = "retryable": retry policy allows · "permanent": policy declines or PermanentJobFailureException · "oce"
+Rules == {"R129", "R131", "R136", "R138", "R140", "R190"}
+Applies(r, e, x) == CASE x = "R129" -> R129(r, e) [] x = "R131" -> R131(r, e) [] x = "R136" -> R136(r, e)
+                      [] x = "R138" -> R138(r, e) [] x = "R140" -> R140(r, e) [] x = "R190" -> R190(r, e)
+Applicable(r, e) == {x \in Rules : Applies(r, e, x)}
+RuleOut(r, x) == CASE x = "R129" -> {"Failed"} [] x = "R131" -> {"DeadLettered"}
+                   [] x = "R136" -> {"Cancelled"} [] x = "R190" -> {"Cancelled"} [] x = "R140" -> {"Released"}
+                   [] x = "R138" -> IF job[r.job].attempt < MaxAttempts THEN {"Failed", "DeadLettered"}
+                                                                       ELSE {"DeadLettered"}
+
+\* @req REQ-129 REQ-131 REQ-136 REQ-138 REQ-140 REQ-186 REQ-190   handler throws e
 HandlerThrows(r, e) ==
   /\ r \in runs
   /\ e = "oce" => (r.cSig \/ r.tSig \/ r.sSig)
   /\ runs' = runs \ {r}
   /\ IF Current(r)
-       THEN \E o \in Outcomes(r, e) :
-              LET generic == ~CancelRule(r, e) /\ ~TimeoutRule(r, e)
-                  tags == (IF o = "Failed" THEN {"Failed"} ELSE {})
-                          \cup (IF o = "DeadLettered" THEN {"DeadLettered"} ELSE {})
-                          \cup (IF TimeoutRule(r, e) /\ ~CancelRule(r, e) THEN {"Timeout"} ELSE {})
-                          \cup (IF generic /\ e = "oce" /\ r.sSig /\ ~r.cSig /\ ~r.tSig THEN {"ShutdownFailure"} ELSE {})
-              IN SetJob(r.job, [job[r.job] EXCEPT !.status = o, !.owner = NULL, !.due = FALSE,
-                                 !.hist = @ \cup tags])
+       THEN \E x \in Applicable(r, e) : \E o \in RuleOut(r, x) :
+              LET j == r.job
+                  tags == (IF o \in {"Failed", "DeadLettered"} THEN {o} ELSE {})
+                          \cup (IF x = "R138" THEN {"Timeout"} ELSE {})
+                          \cup (IF x \in {"R129", "R131"} /\ ShutOCE(r, e) THEN {"ShutdownFailure"} ELSE {})
+                          \cup (IF x \in {"R136", "R190"} THEN Stale(j) ELSE {})
+              IN IF o = "Released"
+                   THEN SetJob(j, [job[j] EXCEPT !.status = "Enqueued", !.owner = NULL, !.attempt = @ - 1,
+                                    !.leaseExpired = FALSE, !.longWait = FALSE, !.hist = @ \cup {"Released"}])
+                   ELSE SetJob(j, [job[j] EXCEPT !.status = o, !.owner = NULL, !.due = FALSE,
+                                    !.hist = @ \cup tags])
        ELSE UNCHANGED job                     \* INV-128 refused, or job no longer Processing
   /\ UNCHANGED <<node, queue, maint>>
 
@@ -211,16 +231,20 @@ GracePasses(r) ==
   /\ SetRun(r, [r EXCEPT !.graceOver = TRUE])
   /\ UNCHANGED <<job, node, queue, maint>>
 
-\* @req REQ-138 REQ-186  still running after the grace period: abandon the handler (it keeps running
-\*                       in the process, REQ-138 notes), Failed with retry or DeadLettered.
+\* @req REQ-138 REQ-186 REQ-190 REQ-191  still running after the grace period: abandon the handler (it keeps
+\*        running in the process outside the limit, INV-106 notes, and is recorded, REQ-191): Failed with
+\*        retry or DeadLettered, or Cancelled when cancellation was requested (REQ-190).
 AbandonOnTimeout(r) ==
   /\ r \in runs /\ r.mode = "running" /\ r.tSig /\ r.graceOver /\ Current(r)
-  /\ \E allow \in BOOLEAN :
-       IF job[r.job].attempt < MaxAttempts /\ allow
-         THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Failed", !.owner = NULL, !.due = FALSE,
-                              !.hist = @ \cup {"Timeout", "Failed"}])
-         ELSE SetJob(r.job, [job[r.job] EXCEPT !.status = "DeadLettered", !.owner = NULL,
-                              !.hist = @ \cup {"Timeout", "DeadLettered"}])
+  /\ IF job[r.job].cancelReq
+       THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Cancelled", !.owner = NULL,
+                            !.hist = @ \cup {"Abandoned"} \cup Stale(r.job)])
+       ELSE \E allow \in BOOLEAN :
+         IF job[r.job].attempt < MaxAttempts /\ allow
+           THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Failed", !.owner = NULL, !.due = FALSE,
+                                !.hist = @ \cup {"Timeout", "Failed", "Abandoned"}])
+           ELSE SetJob(r.job, [job[r.job] EXCEPT !.status = "DeadLettered", !.owner = NULL,
+                                !.hist = @ \cup {"Timeout", "DeadLettered", "Abandoned"}])
   /\ SetRun(r, [r EXCEPT !.mode = "abandoned"])
   /\ UNCHANGED <<node, queue, maint>>
 
@@ -258,12 +282,17 @@ SignalShutdown(r) ==
   /\ SetRun(r, [r EXCEPT !.sSig = TRUE])
   /\ UNCHANGED <<job, node, queue, maint>>
 
-\* @req REQ-140  handler still running: release the lease, take back the attempt.
+\* @req REQ-140 REQ-190 REQ-191  handler still running: release the lease and take back the attempt or, when
+\*        cancellation was requested, mark the job Cancelled (REQ-190); the handler is abandoned and recorded
+\*        (REQ-191).  The "throws OperationCanceledException" branch of REQ-140 is in HandlerThrows.
 ReleaseOnShutdown(r) ==
   /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r)
   /\ node[r.node].st = "Draining"
-  /\ SetJob(r.job, [job[r.job] EXCEPT !.status = "Enqueued", !.owner = NULL, !.attempt = @ - 1,
-                     !.leaseExpired = FALSE, !.longWait = FALSE, !.hist = @ \cup {"Released"}])
+  /\ IF job[r.job].cancelReq
+       THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Cancelled", !.owner = NULL,
+                            !.hist = @ \cup {"Abandoned"} \cup Stale(r.job)])
+       ELSE SetJob(r.job, [job[r.job] EXCEPT !.status = "Enqueued", !.owner = NULL, !.attempt = @ - 1,
+                     !.leaseExpired = FALSE, !.longWait = FALSE, !.hist = @ \cup {"Released", "Abandoned"}])
   /\ SetRun(r, [r EXCEPT !.mode = "released"])
   /\ UNCHANGED <<node, queue, maint>>
 
@@ -363,9 +392,15 @@ Inv_SingleClaim ==
   \A j \in Jobs : Cardinality({r \in runs : r.job = j /\ r.mode = "running" /\ Current(r)
                                             /\ ~job[j].leaseExpired}) <= 1
 
-\* @req INV-106  never more jobs running at once on a node than its limit.  "Running" = a handler is
-\*               executing in that node's process, including one abandoned after a timeout (A-4).
-Inv_NodeConcurrency ==
+\* @req INV-106  never claims on more processing jobs at once on a node than its limit.  A claim is held
+\*               by the node's live run with the current lease token (A-4).
+Claims(n) == {j \in Jobs : job[j].status = "Processing"
+                           /\ \E r \in RunsOn(n) : r.job = j /\ r.mode = "running" /\ Current(r)}
+Inv_NodeClaims == \A n \in Nodes : Cardinality(Claims(n)) <= NodeLimit
+
+\* Former reading of INV-106 (run 1, F-5): handlers executing in the process, abandoned ones included.
+\* Expected VIOLATED and accepted by the owner (INV-106, REQ-191 notes); kept to show the trace.
+Chk_HandlersWithinLimit ==
   \A n \in Nodes : Cardinality({r \in RunsOn(n) : node[n].st # "Stopped"}) <= NodeLimit
 
 \* @req INV-130  a processing job cannot be deleted.
@@ -398,7 +433,17 @@ Scn_NoWorkerNoClaim == \A j \in Jobs, n \in Nodes \ WorkerNodes : ~ENABLED Claim
 \* Same-trigger check (validate warning REQ-129/REQ-131 + REQ-136/REQ-138): a run that may throw
 \* OperationCanceledException while both REQ-136 and REQ-138 apply.  Violation = two rules, two outcomes.
 Chk_CancelTimeoutOverlap ==
-  \A r \in runs : ~(Current(r) /\ CancelRule(r, "oce") /\ TimeoutRule(r, "oce"))
+  \A r \in runs : ~(Current(r) /\ R136(r, "oce") /\ R138(r, "oce"))
+
+\* Pairwise same-event checks (each run alone gives its own shortest trace).
+Chk_PermanentVsCancel   == \A r \in runs : ~(Current(r) /\ R131(r, "permanent") /\ R190(r, "permanent"))   \* REQ-131 vs REQ-190
+Chk_TimeoutVsShutdown   == \A r \in runs : ~(Current(r) /\ (r.cSig \/ r.tSig \/ r.sSig) /\ R138(r, "oce") /\ R140(r, "oce"))   \* REQ-138/186 vs REQ-140
+
+\* Same-event check for every throw: at most one of REQ-129, REQ-131, REQ-136, REQ-138/186, REQ-140 and
+\* REQ-190 applies.  Violation = two requirements decide one exception differently.
+Chk_SingleRule ==
+  \A r \in runs, e \in {"retryable", "permanent", "oce"} :
+    (Current(r) /\ (e = "oce" => (r.cSig \/ r.tSig \/ r.sSig))) => Cardinality(Applicable(r, e)) <= 1
 
 \* @req LIV-101  while processing with an expired lease and a worker node running, the job is
 \*               eventually returned or dead-lettered (or the condition stops holding, A-6).
@@ -434,4 +479,9 @@ Gap_CancelRequestLost ==
                    /\ "Requeued" \notin job[j].hist
 \* A handler that honours the shutdown token gets a counted, failed attempt.
 Gap_CooperativeShutdownCounted == ~\E j \in Jobs : "ShutdownFailure" \in job[j].hist
+\* A cancellation requested on an earlier run decides a later run after a requeue (A-16).
+Gap_StaleCancelRequest == ~\E j \in Jobs : "StaleCancel" \in job[j].hist
+
+\* @req SCN-122  positive: a cancelled job whose lease expires with attempts left ends Cancelled (expected VIOLATED).
+Scn122_NotReached == ~\E j \in Jobs : job[j].status = "Cancelled" /\ "LeaseCancel" \in job[j].hist
 =============================================================================

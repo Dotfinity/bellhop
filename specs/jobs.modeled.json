@@ -1,13 +1,13 @@
 {
   "module": "jobs",
-  "specHash": "1779db13a8ddd6fd161d15e3590919eca421f2346c34b014f1777e30a30f8dee",
-  "generatedAt": "2026-11-06T17:30:00Z",
+  "specHash": "f8184c68c75cb2291ef7d8a9df9c370b87094a26fb28c0ca4e0070e8f54f2813",
+  "generatedAt": "2026-11-06T19:30:00Z",
   "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla",
   "items": {
     "INV-100": {
-      "hash": "ded7c419f09d09bb258cafff445d72c4b9b7f50c3cbefb64b432d4770f524855",
+      "hash": "2aa323d1daab6e7fc06862824dea5a1c1c8ae7e6819f9bbb460b4d19a6d5fea0",
       "reviewed": false,
-      "note": "Jobs_Unique.tla"
+      "note": "Jobs_Unique.tla (single namespace; the ShardByQueue per-queue scope is not modeled, A-13)"
     },
     "INV-103": {
       "hash": "67154542b112b249ffab15aa9805140f3359ba7a74dde81d2d03642a682077bd",
@@ -20,9 +20,9 @@
       "note": "Jobs.tla"
     },
     "INV-106": {
-      "hash": "6b2ef320268d4abb0e56154752174c74787f9c45f5f4622df7c61074d0245992",
+      "hash": "3872fadda2ae7f2075d0ac03a7c17a324ce8147efd1567b40c049c9b161520cb",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla Inv_NodeClaims (claims held by the live run with the current token); former handler reading kept as Chk_HandlersWithinLimit"
     },
     "INV-107": {
       "hash": "dc5c84f283e73140e6a0933fed55d4f189c7fa79667da92491fbae8704fcb67e",
@@ -30,14 +30,14 @@
       "note": "Jobs_Throttle.tla"
     },
     "INV-108": {
-      "hash": "8c767ded9b2630a52ff6ade644fe0d2a4c97bba79b404c07d162631811fef4b3",
+      "hash": "9ef0d9ea0c32df83f8461eb4460127e856dd993dc307b488ff048a3f669c9a97",
       "reviewed": false,
-      "note": "Jobs_Throttle.tla"
+      "note": "Jobs_Throttle.tla Prop_KeyMaxAtClaim (action property)"
     },
     "INV-109": {
-      "hash": "5d8b3d7046bb251a81a6b82458774cf751720561f44fe656daad73bb116857ff",
+      "hash": "2cab1389e0fedb5798d9b7a066e6cb13100767b848a770d7f7f91f31df299aab",
       "reviewed": false,
-      "note": "Jobs_Throttle.tla"
+      "note": "Jobs_Throttle.tla Prop_RateAtStart (action property, fixed windows A-9)"
     },
     "INV-110": {
       "hash": "8ece86a3e5d215536adb6ab2aac245fcd459f13dd48f88ec6f9b92986fa346bb",
@@ -48,6 +48,11 @@
       "hash": "8ace1a6cbf14f303e57be3b407104736ad4c769a70860c6b0e75c8ac2217fb9a",
       "reviewed": false,
       "note": "Jobs_Throttle.tla"
+    },
+    "INV-112": {
+      "hash": "17e7f740e5a222253148a1b2deca9e8f8039f623c6c1d74fef6d7d641e06ca2b",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla Inv_LongRunning + REQ-123 guard (one node)"
     },
     "INV-113": {
       "hash": "4bef02e483673f096b79c40a7f05d4387d97365a2278f3c4d8d943d3c631e1ca",
@@ -89,6 +94,11 @@
       "reviewed": false,
       "note": "Jobs_Unique.tla"
     },
+    "INV-138": {
+      "hash": "8fdf98f1da293aa901befaa6bc7900bca46184cf97ded85b134026db0aa0c3eb",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla AddContinuation guard; Scn123_MissingParentRejected"
+    },
     "LIV-100": {
       "hash": "2fffe4a7664eb76b9ceaecb87e4cd183ea8f95a1f2764d55106e8808a766884a",
       "reviewed": false,
@@ -100,9 +110,9 @@
       "note": "Jobs.tla"
     },
     "LIV-102": {
-      "hash": "6b2cb2c18589b2f7c7c3a1e66d9d9012b6e2901b2c52a27f8cec7fb9e0b0658a",
+      "hash": "49693795242b8ad8c1ee2bfa1366a5856c016b15c150a7af434195ceda6424c4",
       "reviewed": false,
-      "note": "Jobs_Flow.tla"
+      "note": "Jobs_Flow.tla Liv_ContinuationResolved; should, tagged accepted-unprovable"
     },
     "REQ-100": {
       "hash": "93f2063d111409838341953f2c712211398325d82c22b2f85bd7d01a2c040e23",
@@ -155,9 +165,9 @@
       "note": "Jobs.tla"
     },
     "REQ-123": {
-      "hash": "cae261d04c8febb80b14cb7faf591b89b18de08521561d68ab4876c02038ae35",
+      "hash": "b48a62556fbc703aefe335570756b42585a53461d07f34d2ecfa5e4c2f237a2c",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla Claim; queue-limit and LongRunning guards in Jobs_Throttle.tla"
     },
     "REQ-124": {
       "hash": "157d994df2f6cdffda88e11d7fff6affc7689f68a180754490ee03e00ee76e4e",
@@ -185,9 +195,9 @@
       "note": "Jobs.tla - same action as REQ-127; result storage is not state"
     },
     "REQ-129": {
-      "hash": "2638820a0d3fc7df13d07e274fa5071f388608b660eeec1f26db793e2d72596c",
+      "hash": "e9439f73405bdf989108f00f4872055008b1f90c26d2c1209f9cd4d5b93bc637",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla R129 in HandlerThrows"
     },
     "REQ-130": {
       "hash": "236d986fbc94d0053d615cfe899a4bfdd12a3f3fc89bdf2b8d79a261b18345b2",
@@ -195,14 +205,14 @@
       "note": "Jobs.tla"
     },
     "REQ-131": {
-      "hash": "f5ad2c4724b7148f6a35456476da00d1b8319ddba45db309790a87a658db51f3",
+      "hash": "8d722bad13039307b0893957e064d783b2b50ca3ea16ebb77f74e28c0ba7001c",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla R131 in HandlerThrows (overlaps REQ-190, finding)"
     },
     "REQ-132": {
-      "hash": "f54c645f7a0047bfa1a7fbe40ec8876a4da384443e18365cc8dce9e5798d3584",
+      "hash": "72fab6f6b47ddaab089e1f5511b745d84c03149ca0de3d35b486c265d65fbe65",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla Recover"
     },
     "REQ-133": {
       "hash": "e6f8ee5c1231e65f3e234da1a0890ce2bc241b210c4f98f3ec434458432296c4",
@@ -230,9 +240,9 @@
       "note": "Jobs.tla"
     },
     "REQ-138": {
-      "hash": "a6c4f89f6428d9a220d028dd0af4ad125e5e804ab7f0f8428e978ad7b3754d50",
+      "hash": "5e5e7657e4e12e0ac5725a0386a739c677f60158a0203cd4b901f13f2babcacf",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla R138 / AbandonOnTimeout"
     },
     "REQ-139": {
       "hash": "1de9300b84fdee35b00e4c08d23e1b73847f97add78227f80342a77322d3a500",
@@ -240,9 +250,9 @@
       "note": "Jobs.tla"
     },
     "REQ-140": {
-      "hash": "2d3a23f1365fa4a7e5c49485495b11381221471840f1f01205647a10f54e50da",
+      "hash": "d9fbfbddfc2d4bd025937d1138419a588c6c9a4ac4de0103be918838c98eba22",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla ReleaseOnShutdown + R140 in HandlerThrows (overlaps REQ-138, finding)"
     },
     "REQ-141": {
       "hash": "6d4d4ef84b7cd7dd0465376c0a5b055d902f473e91b4d1515e9d5ef86b3c2928",
@@ -250,9 +260,9 @@
       "note": "Jobs.tla, Jobs_Unique.tla"
     },
     "REQ-142": {
-      "hash": "e57ee21788c8f042d086a0e270a7fb90fada9e826a8fd44b0d089be4b80bf1bc",
+      "hash": "b9aa3e768f4c6a74d6cb7052c07dcd487d4f0c21693392df566253fb70ce1f4a",
       "reviewed": false,
-      "note": "Jobs.tla, Jobs_Unique.tla"
+      "note": "Jobs_Unique.tla BulkRequeueOne"
     },
     "REQ-143": {
       "hash": "1c188d770f4984ee459f6d257ad4167ed4865c824af3bb15ccd4ff5682830aa9",
@@ -265,9 +275,9 @@
       "note": "Jobs.tla, Jobs_Flow.tla"
     },
     "REQ-145": {
-      "hash": "94bdefe3c234e9bfa48887434cc05c0f9a3122a02c7f0b29917dc777d77144e2",
+      "hash": "dd124249102d271588071a2ac2823d102f61ee289a6b28b3b1f7e915d6a6748c",
       "reviewed": false,
-      "note": "Jobs.tla, Jobs_Flow.tla"
+      "note": "Jobs.tla Retention; batch-member exemption in Jobs_Flow.tla"
     },
     "REQ-147": {
       "hash": "63eae862cab274b7a1b4d97a589168d61d91f163d15c2cccd1dd1f91c7d673b4",
@@ -275,9 +285,9 @@
       "note": "Jobs.tla - stored like REQ-120; the warning is not state"
     },
     "REQ-150": {
-      "hash": "f74fb62088886303a4af8da05313ad9164b89736b13426a580ac8920502e956e",
+      "hash": "add6a108fbfc5976058d2619ee6184cdd5b01129ea38184ffb3be938db22c161",
       "reviewed": false,
-      "note": "Jobs_Unique.tla"
+      "note": "Jobs_Unique.tla Create (all creating calls)"
     },
     "REQ-151": {
       "hash": "aafd1db4a953786b5e679aa0ed0537c55faad998e2b8ead98e8ecede523a4c5a",
@@ -285,9 +295,9 @@
       "note": "Jobs_Unique.tla"
     },
     "REQ-152": {
-      "hash": "398fb8264b93efd26f69b60c7bd55370e87299d730562156b615f8bdfbfd0d6a",
+      "hash": "586f6d1a411ff929f77e9b833acc6ff6807b5a1e8206582b7184aa148c15b4a0",
       "reviewed": false,
-      "note": "Jobs_Unique.tla"
+      "note": "Jobs_Unique.tla Create (all creating calls)"
     },
     "REQ-156": {
       "hash": "72cd54f829934d5552c63f7ebed7a76049397d06228cf2b5e4f0a59f58ccfa2b",
@@ -340,9 +350,9 @@
       "note": "Jobs_Flow.tla"
     },
     "REQ-174": {
-      "hash": "6b9fb25746eea3f7d124ba18213b1f97d7a4ef0120dd2c54caa5f30cfbcc623a",
+      "hash": "5375daf5efe8e4776c7e813f94ede2b976f5820a94feddda5aa2c8d974c95c94",
       "reviewed": false,
-      "note": "Jobs_Flow.tla"
+      "note": "Jobs_Flow.tla Resolved"
     },
     "REQ-175": {
       "hash": "fe5286694a78da38b1e5ff14dbc34a787e7ab5267a6bd0776fe5082ad26f7c58",
@@ -365,9 +375,9 @@
       "note": "Jobs_Flow.tla"
     },
     "REQ-180": {
-      "hash": "a45fcfa6b8b78082d81af9c12b498855b264522cdae068ce80d95606c3094f96",
+      "hash": "b19cebdc0a617ccb24764f6c798e6fe39a891cd93ff1158e4fc338db20818c7e",
       "reviewed": false,
-      "note": "Jobs_Flow.tla"
+      "note": "Jobs_Flow.tla BatchCompletes (deleted member counts)"
     },
     "REQ-181": {
       "hash": "d5d60c995dc7423dc51d4cd19070df01358a28a215ae11f82c9fdadbfe512197",
@@ -395,9 +405,9 @@
       "note": "Jobs.tla - absorbed: result size is not state"
     },
     "REQ-186": {
-      "hash": "640874174441f0dc4f0af3568a79a21ad090247323403d9103d377b88c6195df",
+      "hash": "2905accadd2fbb00ea1e7d3eb5b77d28ac72ca1823d1acd97c1964ec8b039922",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla R138 / AbandonOnTimeout"
     },
     "REQ-187": {
       "hash": "e6d268510a263b99d436d185dfe1223b4d5a1b20c3591e58cabca7be3af2a01f",
@@ -405,14 +415,24 @@
       "note": "Jobs.tla - abstracted to the GracePasses flag"
     },
     "REQ-188": {
-      "hash": "2b86ba3f06b050e764eaa7bcdb1e46f2d662c5871156bcd413c8ab8e423a1aae",
+      "hash": "d816c8fdf067c7b227ee4e96af8619fe7f54785f63df4aa6ced2bc09089fb5ad",
       "reviewed": false,
-      "note": "Jobs_Flow.tla"
+      "note": "Jobs_Flow.tla Delete and Retention -> Resolved(...,\"deleted\")"
     },
     "REQ-189": {
       "hash": "6b9d0da09bbb6fca39162e67eaa32acb35613e007b88a474d46693933701f1c9",
       "reviewed": false,
       "note": "Jobs.tla - every run gets SignalTimeout"
+    },
+    "REQ-190": {
+      "hash": "95d2edf117bf1168b2e60d1072af3ff7e6610e20f6439e3a6a4ea14271d17b03",
+      "reviewed": false,
+      "note": "Jobs.tla Recover, R190, AbandonOnTimeout, ReleaseOnShutdown"
+    },
+    "REQ-191": {
+      "hash": "26b667aa265af10bc852e4ed768ada53afa954fe288eca82683d48fee172eeb5",
+      "reviewed": false,
+      "note": "Jobs.tla: abandonment recorded as history tag \"Abandoned\" (the log line is not state)"
     },
     "SCN-100": {
       "hash": "dfbf6fc367ccbb9e9e608ad513163ad75905206777fa6769062f4a50836d3223",
@@ -443,6 +463,11 @@
       "hash": "9c7e93386da4f4fc3a77fe98b7776ceb5b17f0dcd36b9e6c6521778d3cd0e1b1",
       "reviewed": false,
       "note": "Jobs_Unique.tla"
+    },
+    "SCN-106": {
+      "hash": "40aa0b4d010865447e4fc8db7f3a48b0ce37870378e33745c752c6930db3e5fd",
+      "reviewed": false,
+      "note": "Jobs_Throttle.tla Prop_KeyMaxAtClaim covers the Max guard it tests"
     },
     "SCN-107": {
       "hash": "79da855a4259c27d0573c9dbd21eb60436a689c5a20b38d9015b24a1bf997eb1",
@@ -503,13 +528,27 @@
       "hash": "5978fdbe12a6e16aee328716703699a79c48500fc887970fb4731186a688b863",
       "reviewed": false,
       "note": "Jobs.tla"
+    },
+    "SCN-121": {
+      "hash": "b79c364b8260db8cfaf9f4bf1ccb638c041cd593dac423ea15f0f3e688e465ea",
+      "reviewed": false,
+      "note": "Jobs_Flow_SCN121.cfg trap (reachable)"
+    },
+    "SCN-122": {
+      "hash": "d64f10e48f99d1ff2176956fae71269f624ae476bb202eada3b705bc327c90b5",
+      "reviewed": false,
+      "note": "Jobs_SCN122.cfg trap (reachable)"
+    },
+    "SCN-123": {
+      "hash": "6bfc8c48525e95f20cbd5dc819676bf23b33017864bdb343400318f782647411",
+      "reviewed": false,
+      "note": "Jobs_Flow.tla Scn123_MissingParentRejected (holds)"
     }
   },
   "skipped": {
     "INV-101": "could not encode: application transactions are not modeled",
     "INV-102": "one atomic call: no interleaving to check at this abstraction",
     "INV-105": "absorbed: the model has no clocks (A-1)",
-    "INV-112": "not modeled separately: same shape as INV-107, see F-2",
     "INV-116": "data (state history content)",
     "INV-117": "data (exception details)",
     "INV-119": "data (history lifetime)",
@@ -544,7 +583,6 @@
     "REQ-168": "data (correlation id)",
     "REQ-169": "observer calls, not state",
     "REQ-178": "retired",
-    "SCN-106": "not encoded as its own negative scenario; the Max guard it tests is checked by Inv_KeyMax (Jobs_Throttle.tla)",
     "SCN-113": "could not encode: application transactions are not modeled (INV-101)",
     "SCN-116": "payload size is data (REQ-148)"
   }
