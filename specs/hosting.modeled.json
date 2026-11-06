@@ -1,0 +1,226 @@
+{
+  "module": "hosting",
+  "specHash": "40f284cf2fba0ca8fe76266669a0c1be00a7c3040138a5f78e1a04b5d8793fa0",
+  "generatedAt": "2026-11-06T00:00:00Z",
+  "model": "model/hosting/Hosting.tla",
+  "items": {
+    "REQ-9": {
+      "hash": "34986b68cb9072920d790f3e70d377c013ee4d812f4c49ca87e60baaa159e74c",
+      "reviewed": false,
+      "note": "ValidationFails"
+    },
+    "REQ-12": {
+      "hash": "d4e5e0fce0a8bf1e3c4b8c635f5ea8e34efee2dadbdc2b0d1601c3d00cca4f29",
+      "reviewed": false,
+      "note": "HostStarts + ReconcileRecurring (reconcile order left nondeterministic, A-4, F-4)"
+    },
+    "REQ-13": {
+      "hash": "386cb916d9322cd55c9dd504e16ea8d7a08d13c0447b8a470431a4eeb2e9b518",
+      "reviewed": false,
+      "note": "Inv_NoIOBeforeHostStart (holds)"
+    },
+    "REQ-14": {
+      "hash": "18fba2d7e2d72b6933e5820bd3170cb4f2203db0d48800bad1a2870c22c18921",
+      "reviewed": false,
+      "note": "Inv_NoWorkerInBuildTooling \u2014 VIOLATED if tooling starts the host (F-6)"
+    },
+    "REQ-15": {
+      "hash": "b7129d7ec389cf5d6baa28ad008bd69916f28226221119cf26cb9564ce030362",
+      "reviewed": false,
+      "note": "Reach/Sch helpers + Inv_InMemoryWhenNoStore (holds)"
+    },
+    "REQ-16": {
+      "hash": "771afe7e15530c764b30d44e45c34baffb4fd337449d4b6e1b3ad21e626ac5b6",
+      "reviewed": false,
+      "note": "WarnInMemoryStore (F-7)"
+    },
+    "REQ-18": {
+      "hash": "2c79296718ccff4085baa0b3ff6a999e59bfc8877994c549743cd444fc708d3c",
+      "reviewed": false,
+      "note": "MarkRunning; 'startup checks' read as REQ-9/23/43 conditions (A-2)"
+    },
+    "REQ-19": {
+      "hash": "45bdd2009bd26e1cbca96db43fbeac853573875ae4fe3337b3cb3722fbbcad72",
+      "reviewed": false,
+      "note": "same action as REQ-18 (summaryLogged)"
+    },
+    "REQ-20": {
+      "hash": "28ac7ba8bb6444582a99be523ee672ca9450c2c3cbe398d4db095e5fffc02f91",
+      "reviewed": false,
+      "note": "Inv_NoJobsWithoutWorker (holds)"
+    },
+    "REQ-21": {
+      "hash": "6620673757e5bef7c892b56d4f43610b942b92016423e456ee7ee1673cb5d033",
+      "reviewed": false,
+      "note": "AutoMigrate explored both ways; default has no effect on the model"
+    },
+    "REQ-22": {
+      "hash": "f92d53a53b028145c650f89a67b16fadc19f78ccadf03718abfe4b5f74c2ea53",
+      "reviewed": false,
+      "note": "AcquireMigrationLock + Migrate (F-2)"
+    },
+    "REQ-23": {
+      "hash": "fce0f32753c516571411b05b7a8c0ce98035a68bc2531788e1415d922823ead6",
+      "reviewed": false,
+      "note": "SchemaTooOld"
+    },
+    "REQ-24": {
+      "hash": "ab682363f56a0c01d6bf6d4185856e3e5c579136d9788d430de1eb6f739ceb91",
+      "reviewed": false,
+      "note": "Prop_MigrationIdempotent (holds)"
+    },
+    "REQ-25": {
+      "hash": "e6d9b18fb3c2178f89335e5a2de3005b5257028d34de0d6ecde3f1775c23954d",
+      "reviewed": false,
+      "note": "guards Reach on claim/running; no action stops the host on outage"
+    },
+    "REQ-27": {
+      "hash": "ce15b349c1546afeb686ccab38ecb3974f87c12cf522a2da7d558db8c49c939d",
+      "reviewed": false,
+      "note": "HostStops in Running -> Draining (F-1)"
+    },
+    "REQ-28": {
+      "hash": "512d9a4fb12838c1bd27a4355e910d6d8bff4e385900f0432ba8b9129e64a4a4",
+      "reviewed": false,
+      "note": "TimeoutPasses, no clock (A-1)"
+    },
+    "REQ-29": {
+      "hash": "6505ec1ecbc343cff80c949379ff6c9889f0b45e202a1a17cff5c9da7ce59f54",
+      "reviewed": false,
+      "note": "StopNode; release via jobs REQ-140 abstraction (F-5)"
+    },
+    "REQ-30": {
+      "hash": "7926e7c19bd9b16a1988505d8f85d910374ea84ced8f61f35f50e06ae24ef39b",
+      "reviewed": false,
+      "note": "ReportStall (F-3)"
+    },
+    "REQ-31": {
+      "hash": "46069edc116cba5b43aa75f2cde7efd7037f3512e18b47126de6bebccf006642",
+      "reviewed": false,
+      "note": "HealthCheck"
+    },
+    "REQ-32": {
+      "hash": "d4ad2ac95f0bc8f69bdaa809e0b0b53d9fe6d0062b6d6cfb0fd08057084cce21",
+      "reviewed": false,
+      "note": "HealthCheck"
+    },
+    "REQ-33": {
+      "hash": "d2579cd2fc61396cdc2c0e216155a2149b839932431d51baf6956d849c06ec03",
+      "reviewed": false,
+      "note": "HealthCheck"
+    },
+    "REQ-34": {
+      "hash": "009927612d8788c154db06324df5cb9b32b6a94f74e5abd01fb14f81e5892634",
+      "reviewed": false,
+      "note": "HealthCheck (F-8)"
+    },
+    "REQ-35": {
+      "hash": "f8ee5d7196ce079b3da68a1a0576af9230b92727720e50f6db9c0bb6d87be0a0",
+      "reviewed": false,
+      "note": "HealthCheck, HealthyAfterPasses=2 (F-3)"
+    },
+    "REQ-40": {
+      "hash": "d37166932497e48dcd2bcf57388c8647061cef0006a9686480e49b691426b8d3",
+      "reviewed": false,
+      "note": "Inv_NoDutiesWithoutWorker (holds)"
+    },
+    "REQ-42": {
+      "hash": "1ed035b2d3649da6136d1df787bb12ef026728486b4a3653056803d2a1a2f086",
+      "reviewed": false,
+      "note": "Prop_MigrateOnlyUnderLock (holds); lock release not specified (F-4b)"
+    },
+    "REQ-43": {
+      "hash": "f2da9c6057789fde3db8c7459c34f9ab02cc11a0c08f7cb6dd16aa138fda88ca",
+      "reviewed": false,
+      "note": "SchemaTooNew"
+    },
+    "REQ-44": {
+      "hash": "2979d114631f56c9e77aec83232f54f4fea6f9f8eadb51304a779fae12ba6e2f",
+      "reviewed": false,
+      "note": "HealthCheck via nondeterministic fewAlive (A-8, F-9)"
+    },
+    "REQ-46": {
+      "hash": "b1d487c39a4571287041c27791cfde1c384fca53970ece60643c328a69cf9d9d",
+      "reviewed": false,
+      "note": "absorbed into nondeterministic degradedCond"
+    },
+    "REQ-47": {
+      "hash": "58c174b684966ae3e3bbfbbe6f85ef82a918c47d7755eb2501dc256f9d779af2",
+      "reviewed": false,
+      "note": "absorbed into nondeterministic degradedCond"
+    },
+    "REQ-48": {
+      "hash": "1263eb34ce4ffcf69293af1629aa01bdc85e02e3a62f2f59c72c120eaa1c760f",
+      "reviewed": false,
+      "note": "absorbed into nondeterministic degradedCond"
+    },
+    "REQ-49": {
+      "hash": "0dbd0cdee2b37bf15b542e8701399b38f86acded35aaf5a8d6b8b485c982020b",
+      "reviewed": false,
+      "note": "absorbed into nondeterministic fewAlive (A-8)"
+    },
+    "REQ-50": {
+      "hash": "05735352674e4f2b60ee56f7863ddf0dac390b7bef8311e126eb35e784ccc612",
+      "reviewed": false,
+      "note": "HealthyAfterPasses = 2 in the model (3 in the policy)"
+    },
+    "REQ-52": {
+      "hash": "44910fb5dc3ce974e89152b091ae7f95b3a5b30479451f5a89e81c44e2ac69fe",
+      "reviewed": false,
+      "note": "RegVals none/client/worker; worker includes client"
+    },
+    "SCN-1": {
+      "hash": "0242861c846d71afd75a30927dba2b09bd8362d8349547c3cf602d3f94ebbe56",
+      "reviewed": false,
+      "note": "Hosting_SCN1.cfg trap violated (pass); but see F-7"
+    },
+    "SCN-2": {
+      "hash": "d0c1b9c5d1ce5d47d8a5ff15129b85192147fbf3ba998cab4f5db96e6146b38e",
+      "reviewed": false,
+      "note": "Hosting_SCN2.cfg trap violated (pass) + Scn_InvalidOptionNeverClaims holds"
+    },
+    "SCN-3": {
+      "hash": "1fc4f033f7fe9fb4216c34505f9befc289aa59d54a8087c6aae6fbf45422873e",
+      "reviewed": false,
+      "note": "Scn_SchemaMismatchBlocksRunning holds"
+    },
+    "SCN-4": {
+      "hash": "30c6ab1ba1a6301b05ef347fcbe09fb5293df3b0b55067ffd28cd76f77f7b06f",
+      "reviewed": false,
+      "note": "Hosting_SCN4.cfg trap violated (pass)"
+    },
+    "SCN-5": {
+      "hash": "6cc1f10f209dbdcd39aa51ed2a640ec06b99e234cf0f66231eef77a534916929",
+      "reviewed": false,
+      "note": "Hosting_SCN5.cfg trap violated (pass)"
+    },
+    "SCN-6": {
+      "hash": "d402e537049f0870ca757b46ce808e014ed861faeabdfa5415f65ce35efc5751",
+      "reviewed": false,
+      "note": "Hosting_SCN6.cfg trap violated (pass)"
+    }
+  },
+  "skipped": {
+    "REQ-1": "info",
+    "REQ-2": "info",
+    "REQ-3": "info",
+    "REQ-4": "info",
+    "REQ-5": "info",
+    "REQ-6": "info",
+    "REQ-7": "info",
+    "REQ-8": "info",
+    "REQ-10": "could not encode: at-least-once duplicate window needs lease timing (jobs REQ-102); no job execution in this model",
+    "REQ-11": "retired",
+    "REQ-17": "could not encode meaningfully: static option-binding rule with no state change; a model can only restate it",
+    "REQ-26": "log-only self-loop on a measured clock difference; no state any other requirement reads",
+    "REQ-36": "info",
+    "REQ-37": "info",
+    "REQ-38": "info",
+    "REQ-39": "info",
+    "REQ-41": "retired",
+    "REQ-45": "constant only used by REQ-26 (skipped)",
+    "REQ-51": "could not encode meaningfully: static rule (dashboard served iff mapped); see F-9 for the ambiguity",
+    "REQ-53": "log-only; same once/before-running pattern as REQ-16 (F-7)",
+    "REQ-54": "log-only; same once/before-running pattern as REQ-16 (F-7)"
+  }
+}
