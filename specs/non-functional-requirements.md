@@ -34,7 +34,7 @@ Format: refiner-nfr/1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-3 — "Tunables exist but are documented as 'you probably don't need this'."
-- **Notes:** The 24 h duration and the "0 warnings" reading of "quietly" are mine; the source gives only the 3 nodes and 100 jobs/min.
+- **Notes:** The 24 h duration and the "0 warnings" reading of "quietly" are mine; the source gives only the 3 nodes and 100 jobs/min. Decided by the owner on 2026-11-06: soak and load testing move to a later phase (M3), so this is not verified before 1.0.
 
 ## NFR-4 — Worker services and console hosts
 
@@ -51,13 +51,13 @@ Format: refiner-nfr/1
 
 - **Category:** performance
 - **Statement:** When a job is enqueued on PostgreSQL, the system shall return within 2 ms at the median.
-- **Measure:** enqueue p50 < 2 ms, PostgreSQL store, one node, modest hardware
+- **Measure:** enqueue p50 < 2 ms, PostgreSQL store, one node, on the reference machine (2 vCPU, 8 GB RAM)
 - **Verification:** test
 - **Applies to:** REQ-120, TECH-37, TECH-123
 - **Strength:** should
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-2
-- **Notes:** "Modest hardware" is not defined; the benchmark harness should pin a reference machine.
+- **Notes:** Decided by the owner on 2026-11-06: the reference machine for every performance goal is 2 vCPU and 8 GB RAM, the size of a standard GitHub-hosted runner, so anyone can reproduce the numbers.
 
 ## NFR-6 — Schedule-to-start lag
 
@@ -86,13 +86,13 @@ Format: refiner-nfr/1
 
 - **Category:** performance
 - **Statement:** The system shall start recurring occurrences on time.
-- **Measure:** ≥ 99% of occurrences of a 1-second cron schedule start within their second
+- **Measure:** ≥ 99% of occurrences of a 1-second cron schedule start less than 1 s after their due instant, on the reference machine with no other load
 - **Verification:** test
 - **Applies to:** REQ-216, TECH-123
 - **Strength:** should
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-2 — "1-second cron punctuality ≥ 99%"
-- **Notes:** "Within their second" is my reading of "punctuality". Confirm the tolerance.
+- **Notes:** Decided by the owner on 2026-11-06: measured from the due instant to handler start.
 
 ## NFR-9 — Redis enqueue-to-start latency
 
@@ -131,12 +131,13 @@ Format: refiner-nfr/1
 
 - **Category:** performance
 - **Statement:** While a node is idle, the system shall use CPU indistinguishable from an idle host.
-- **Measure:** TBD
+- **Measure:** ≤ 1% of one core averaged over 10 minutes with no jobs, default PollInterval, PostgreSQL store, reference machine
 - **Verification:** test
 - **Applies to:** system
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-4
+- **Notes:** Decided by the owner on 2026-11-06.
 
 ## NFR-13 — Memory footprint
 
@@ -505,13 +506,14 @@ Format: refiner-nfr/1
 ## NFR-46 — Roadmap and triage SLA
 
 - **Category:** maintainability
-- **Statement:** The README shall state a public roadmap and an issue triage SLA.
-- **Measure:** TBD
+- **Statement:** The README shall state a public roadmap and say that issues are triaged on a best-effort basis.
+- **Measure:** README links the roadmap and states best-effort triage
 - **Verification:** inspection
 - **Applies to:** system
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-7
+- **Notes:** Decided by the owner on 2026-11-06: no triage SLA is promised. Security reports follow SECURITY.md.
 
 ## NFR-47 — Reverse proxies and path bases
 
@@ -538,25 +540,26 @@ Format: refiner-nfr/1
 ## NFR-49 — Responsive layout
 
 - **Category:** usability
-- **Statement:** The dashboard shall have a responsive layout.
-- **Measure:** TBD
+- **Statement:** The dashboard shall have a responsive layout in which every page and action is fully usable from 360 px wide upwards.
+- **Measure:** every page and action usable at 360, 768, 1024 and 1440 px widths
 - **Verification:** demonstration
 - **Applies to:** TECH-88
 - **Strength:** should
 - **Status:** approved
 - **Source:** requirements.md §4.10 DSH-10
+- **Notes:** Decided by the owner on 2026-11-06: phones included, not read-only.
 
 ## NFR-50 — Keyboard navigation
 
 - **Category:** accessibility
-- **Statement:** The dashboard shall be fully usable with the keyboard.
-- **Measure:** every page and action reachable and operable by keyboard alone
+- **Statement:** The dashboard shall meet WCAG 2.2 level AA and be fully usable with the keyboard.
+- **Measure:** no axe violations at WCAG 2.2 AA on any page in CI; every page and action reachable and operable by keyboard alone in a manual pass before each release
 - **Verification:** test
 - **Applies to:** TECH-88
 - **Strength:** should
 - **Status:** approved
 - **Source:** requirements.md §4.10 DSH-10
-- **Notes:** No accessibility standard (for example WCAG 2.2 AA) is named. Ask the owner whether one applies.
+- **Notes:** Decided by the owner on 2026-11-06: WCAG 2.2 AA applies. shadcn/ui's Radix primitives cover much of it; Magic UI animations must respect prefers-reduced-motion (TECH-93).
 
 ## NFR-51 — No swallowed exceptions
 
@@ -627,13 +630,14 @@ Format: refiner-nfr/1
 ## NFR-57 — Concurrency and soak testing
 
 - **Category:** reliability
-- **Statement:** The project shall run concurrency and chaos tests (nodes killed mid-job, clock skew, duplicate starts) and a nightly multi-node soak test in CI.
+- **Statement:** The project shall run concurrency and chaos tests (nodes killed mid-job, clock skew, duplicate starts) in CI.
 - **Measure:** suites present and green on main
 - **Verification:** inspection
 - **Applies to:** system, TECH-105
 - **Strength:** should
 - **Status:** approved
 - **Source:** requirements.md §5 NFR-9
+- **Notes:** Decided by the owner on 2026-11-06: the nightly soak test that the source lists here is split out to NFR-61 and deferred.
 
 ## NFR-58 — Redis conformance and chaos testing
 
@@ -665,16 +669,18 @@ Format: refiner-nfr/1
 - **Verification:** inspection
 - **Applies to:** TECH-93
 - **Strength:** should
-- **Status:** proposed
+- **Status:** retired
 - **Source:** requirements.md §9 Q3 — "whichever keeps the embedded bundle under ~300 KB and needs no runtime CDN"
+- **Notes:** Retired. Decided by the owner on 2026-11-06: no bundle-size budget; the front end is React with shadcn/ui and Magic UI (TECH-93).
 
-## Open questions
+## NFR-61 — Multi-node soak test
 
-- NFR-3: Confirm that "quietly" means no warnings or errors, and how long the zero-tuning run must last.
-- NFR-5: Define "modest hardware" for the performance goals, so the benchmark harness can pin a reference machine.
-- NFR-8: What tolerance counts as punctual for the 1-second cron goal?
-- NFR-12: What counts as "indistinguishable from an idle host", for example ≤ 0.1% of one core averaged over 10 minutes? Ask the owner.
-- NFR-46: What triage SLA should the README promise (for example first response within 5 working days)? Ask the owner.
-- NFR-49: Which viewport widths must the dashboard support? Ask the owner.
-- NFR-50: Does an accessibility standard such as WCAG 2.2 AA apply to the dashboard? Ask the owner.
-- NFR-60: Is ~300 KB a hard budget, compressed or uncompressed? Depends on TECH-93.
+- **Category:** reliability
+- **Statement:** The project shall run a multi-node soak test in CI.
+- **Measure:** suite present and green on main, nightly
+- **Verification:** inspection
+- **Applies to:** system, NFR-3
+- **Strength:** should
+- **Status:** approved
+- **Source:** requirements.md §5 NFR-9
+- **Notes:** Split out of NFR-57. Decided by the owner on 2026-11-06: soak and load testing move to a later phase (M3).

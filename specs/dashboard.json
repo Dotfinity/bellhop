@@ -97,9 +97,9 @@
     {
       "id": "REQ-303", "kind": "invariant", "status": "approved",
       "entity": "LoginAttempt",
-      "ears": { "where": "basic authentication is enabled with RequireBasicAuth()", "shall": "accept only users from configuration whose passwords are stored as salted PBKDF2 or Argon2 hashes" },
+      "ears": { "where": "basic authentication is enabled with RequireBasicAuth()", "shall": "accept only users from configuration whose passwords are stored as salted PBKDF2 hashes" },
       "mentions": ["LoginAttempt.user"],
-      "notes": "Decided by the owner on 2026-11-06: a plain-text password fails startup (REQ-334). The hashing technology is TECH-94; constant-time comparison is NFR-43.",
+      "notes": "Decided by the owner on 2026-11-06: a plain-text password fails startup (REQ-334), and PBKDF2 is the only supported hash; Argon2 from BLT-2 is not offered (TECH-94). Constant-time comparison is NFR-43.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2", "quote": "users from configuration as salted PBKDF2 or Argon2 hashes (never plain text" }]
     },

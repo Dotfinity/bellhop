@@ -342,7 +342,7 @@ Format: refiner-tech/1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-2; §6; §8 (M1); §9 Q2 — "PostgreSQL as the reference store first, SQL Server second? (Proposed: yes, because SKIP LOCKED + LISTEN/NOTIFY give the best reliability and latency story; SQL Server follows in M2.)"
-- **Notes:** Decided by the owner on 2026-11-06: the last three major versions. §9 Q2 is already reflected in the phasing (PostgreSQL in M1, SQL Server in M2) but still awaits the owner's confirmation.
+- **Notes:** Decided by the owner on 2026-11-06: the last three major versions. §9 Q2 confirmed: PostgreSQL is the reference store in M1 and SQL Server follows in M2.
 
 ## TECH-38 — PostgreSQL notifications
 
@@ -371,7 +371,7 @@ Format: refiner-tech/1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-2; §6; §8 (M2)
-- **Notes:** Decided by the owner on 2026-11-06: the last three major versions. Whether Azure SQL Database and Azure SQL Managed Instance count as supported is still open.
+- **Notes:** Decided by the owner on 2026-11-06: the last three major versions. Azure SQL Database and Azure SQL Managed Instance are supported too and join the CI matrix (Managed Instance nightly).
 
 ## TECH-41 — SQL Server claims
 
@@ -390,6 +390,7 @@ Format: refiner-tech/1
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-2; §6; §8 (M2)
+- **Notes:** Decided by the owner on 2026-11-06: pointing two nodes at one SQLite file is unsupported and undefined; the docs say so and the store does not check for it.
 
 ## TECH-43 — In-memory store
 
@@ -872,21 +873,22 @@ Format: refiner-tech/1
 ## TECH-93 — Dashboard front-end stack
 
 - **Area:** framework
-- **Statement:** The dashboard front end shall use a framework to be decided: a small framework-free build (Preact or htmx class) or React.
-- **Applies to:** TECH-88, NFR-60
+- **Statement:** The dashboard front end shall be built with React, shadcn/ui components and Magic UI, and shall load nothing from a CDN at runtime.
+- **Applies to:** TECH-88
 - **Strength:** must
-- **Status:** draft
+- **Status:** approved
 - **Source:** requirements.md §9 Q3 — "Proposed: whichever keeps the embedded bundle under ~300 KB and needs no runtime CDN."
+- **Notes:** Decided by the owner on 2026-11-06: React with shadcn/ui and Magic UI; the ~300 KB budget is dropped (NFR-60 retired). Both component sets use Tailwind CSS and are copied into the repository rather than referenced as packages. Only the MIT-licensed free Magic UI components may be used, never Magic UI Pro, to keep NFR-40 (no paid tier). Animations must respect prefers-reduced-motion (NFR-50). The "no runtime CDN" part of §9 Q3 still holds.
 
 ## TECH-94 — Basic-auth password hashing
 
 - **Area:** library
-- **Statement:** RequireBasicAuth() shall verify passwords against salted PBKDF2 or Argon2 hashes, which a helper and the CLI generate.
+- **Statement:** RequireBasicAuth() shall verify passwords against salted PBKDF2-HMAC-SHA256 hashes with at least 600,000 iterations, computed with the BCL's Rfc2898DeriveBytes.Pbkdf2, which a helper and the CLI generate.
 - **Applies to:** REQ-303, NFR-43
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.15 BLT-2
-- **Notes:** Open question: which one is the default, and which Argon2 library (the BCL has none)?
+- **Notes:** Decided by the owner on 2026-11-06: PBKDF2 only, so the dashboard takes no third-party dependency; Argon2 is not offered. 600,000 iterations follows the OWASP recommendation for PBKDF2-HMAC-SHA256.
 
 ## TECH-95 — Launch form generation
 
@@ -1063,12 +1065,12 @@ Format: refiner-tech/1
 ## TECH-114 — HttpRequestJob payload
 
 - **Area:** other
-- **Statement:** The core package shall provide a built-in HttpRequestJob payload with method, URL, headers, body, content type, named HttpClient, timeout, accepted status codes, an optional success predicate on the body and a response capture limit.
+- **Statement:** The core package shall provide a built-in HttpRequestJob payload with method, URL, headers, body, content type, named HttpClient, timeout, accepted status codes, an optional success predicate on the body written as a JSONPath with equals or exists (for example {"path": "$.status", "equals": "ok"}), and a response capture limit.
 - **Applies to:** REQ-420, REQ-421, REQ-422
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.15 BLT-12
-- **Notes:** Remote "agents" from Hangfire.HttpJob are out of scope. Open question: how is a "success predicate on the body" expressed in a JSON payload that can come from configuration or the launch page?
+- **Notes:** Remote "agents" from Hangfire.HttpJob are out of scope. Decided by the owner on 2026-11-06: the success predicate is a declarative JSONPath rule, so it can come from configuration or the launch page and is safe to evaluate.
 
 ## TECH-115 — Webhook notification channel
 
@@ -1154,11 +1156,12 @@ Format: refiner-tech/1
 ## TECH-124 — Product name and root namespace
 
 - **Area:** language
-- **Statement:** The packages shall use the product name Bellhop and a root C# namespace to be confirmed.
+- **Statement:** The packages shall use the product name Bellhop, the root C# namespace Bellhop and package ids of the form Bellhop and Bellhop.<Area>, such as Bellhop.PostgreSql and Bellhop.Dashboard.
 - **Applies to:** system
 - **Strength:** must
-- **Status:** draft
+- **Status:** approved
 - **Source:** requirements.md §9 Q1 — "Confirm the name Bellhop and the root namespace."
+- **Notes:** Decided by the owner on 2026-11-06 (§9 Q1).
 
 ## TECH-125 — Hangfire migration adapter
 
@@ -1166,8 +1169,9 @@ Format: refiner-tech/1
 - **Statement:** A separate legacy package shall provide Hangfire-style Enqueue(() => ...) sugar backed by Bellhop.
 - **Applies to:** NFR-30
 - **Strength:** may
-- **Status:** draft
+- **Status:** retired
 - **Source:** requirements.md §9 Q6; §7 — "Supporting Hangfire's expression-based Enqueue(() => ...) API" is a non-goal
+- **Notes:** Retired. Decided by the owner on 2026-11-06 (§9 Q6): no compatibility package; expression-based jobs stay a non-goal and migration is covered by the side-by-side guide (NFR-30).
 
 ## TECH-126 — Store-native migration lock
 
@@ -1188,13 +1192,3 @@ Format: refiner-tech/1
 - **Status:** approved
 - **Source:** requirements.md §4.9 STO-5
 - **Notes:** Decided by the owner on 2026-11-06 as part of the accepted schema range (expected version or one older).
-
-## Open questions
-
-- TECH-40: Are Azure SQL Database and Azure SQL Managed Instance supported? Ask the owner.
-- TECH-42: SQLite is "single node". What happens if two nodes are pointed at one SQLite file: refuse to start, or undefined? Ask the owner.
-- TECH-93: Pick the dashboard front-end stack (§9 Q3). Ask the owner.
-- TECH-94: Which hash is the default, and which Argon2 implementation is acceptable as a dependency? Ask the owner.
-- TECH-114: How is the body success predicate expressed in a serializable payload? Ask the owner.
-- TECH-124: Confirm the name Bellhop and the root namespace (§9 Q1). Ask the owner.
-- TECH-125: Is a Hangfire migration adapter package worth shipping (§9 Q6)? Ask the owner.

@@ -157,6 +157,7 @@
       "ears": { "while": "an HTTP job is processing", "when": "the response arrives", "if": "its status is one of the accepted status codes and the success predicate, when one is set, holds for the body", "shall": "mark the job succeeded and store the status, headers and body truncated to the response capture limit as its result" },
       "mentions": ["HttpCall.status", "HttpCall.body", "jobs.Job.result"],
       "tags": ["M2"],
+      "notes": "Decided by the owner on 2026-11-06: the success predicate is a JSONPath with equals or exists (TECH-114).",
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-12" }]
     },
     {
