@@ -189,6 +189,16 @@
       "notes": "refiner-model 2026-11-06 F-6: the same kind of lease as the outbox relay (REQ-435) and the cleanup lease (jobs REQ-164), with the job lease's length and heartbeat (jobs REQ-102) so no new constant is needed.",
       "tags": ["M2"]
     },
+    {
+      "id": "INV-412", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "where": "a rule watches an event that happens once: a job dead-lettered (REQ-400), an attempt that makes the Nth failure (REQ-401), or a recurring occurrence missed or late (REQ-403)", "shall": "find those events from what the job store records and mark each one handled for that rule in the same store write that creates its delivery, so that a node that takes over the notification lease neither alerts an event again nor skips one" },
+      "mentions": ["Delivery.rule", "Delivery.subject", "jobs.Job.DeadLettered", "jobs.Job.attempt", "recurring.RecurringJob.nextRunAt"],
+      "dependsOn": ["INV-411", "REQ-438", "REQ-400", "REQ-401", "REQ-403"],
+      "rationale": "The lease decides which node writes, but these events happen on worker nodes. If the lease holder remembered what it reported in its own memory, a handover would alert an event twice or not at all.",
+      "notes": "refiner-model 2026-11-06 run 2 F-15 (recommended option; the model shows one delivery per event and no event lost with this rule, against a duplicate or a loss with node-local memory). Events that happen while no node holds the lease, or while no alerts node runs at all, are alerted when a holder next runs; the subject cooldown and the cap (INV-409) keep a backlog from flooding the channel. An event is no longer alerted once retention has removed the job it belongs to (jobs REQ-145). State-based rules (REQ-402, REQ-404, REQ-405) need nothing like this: any holder sees the condition, and the subject cooldown handles repeats. How the store records events and the handled mark, for example a per-rule position in a store-assigned sequence of state changes, is an implementation choice.",
+      "tags": ["M2"]
+    },
 
     {
       "id": "REQ-420", "kind": "invariant", "status": "approved",
@@ -220,10 +230,10 @@
     {
       "id": "REQ-434", "kind": "transition", "status": "approved", "strength": "must",
       "entity": "jobs.Job", "actor": "system", "from": ["Processing"], "to": ["DeadLettered"],
-      "ears": { "while": "an HTTP job is processing", "if": "its destination is refused by the destination allowlist, the private-address rule or the redirect rules", "shall": "move the job to dead-lettered at once, without sending the request, with a reason that names the rule that refused it" },
-      "mentions": ["HttpCall.host", "HttpCall.resolvedAddress", "HttpCall.redirects", "jobs.Job.result"],
-      "dependsOn": ["INV-401", "INV-402", "INV-403"],
-      "notes": "refiner-model 2026-11-06 F-7 option 1: retrying a host that is not allowed cannot succeed, so refusal is permanent. Before this, a refused job stayed Processing for ever because no requirement moved it on and the lease kept being renewed.",
+      "ears": { "while": "an HTTP job is processing", "if": "its destination is refused by the destination allowlist or the private-address rule", "shall": "move the job to dead-lettered at once, without sending the request, with a reason that names the rule that refused it" },
+      "mentions": ["HttpCall.host", "HttpCall.resolvedAddress", "jobs.Job.result"],
+      "dependsOn": ["INV-401", "INV-402"],
+      "notes": "refiner-model 2026-11-06 F-7 option 1: retrying a host that is not allowed cannot succeed, so refusal is permanent. Before this, a refused job stayed Processing for ever because no requirement moved it on and the lease kept being renewed. Run 2 F-14 (recommended option): the redirect rules are no longer listed. INV-403 never follows a redirect to another host, so a followed redirect always lands on the already allowed host, and a redirect that is not followed is a response: accepted if its status is listed (REQ-421), otherwise an ordinary failure (REQ-422), as the owner decided in REQ-422's notes.",
       "tags": ["M2"]
     },
     {
@@ -308,7 +318,7 @@
     {
       "id": "REQ-436", "kind": "assumption", "status": "approved",
       "ears": { "shall": "assume that every finished-job retention (jobs REQ-104) is much longer than LeaseDuration, so a crashed relay is replaced while the job it created is still stored" },
-      "notes": "refiner-model 2026-11-06 F-11: with the defaults (7 to 30 days against 60 s) this holds by a wide margin. If an application sets a retention close to the lease length, a row can be relayed twice. The model cannot judge durations, so this is stated rather than checked.",
+      "notes": "refiner-model 2026-11-06 F-11: with the defaults (7 to 30 days against 60 s) this holds by a wide margin. If an application sets a retention close to the lease length, a row can be relayed twice. The model cannot judge durations, so this is stated rather than checked. Run 2 F-16 (recommended option, accepted): an operator who deletes an outbox-created job (jobs REQ-144) while the relay that created it has crashed and not yet deleted the row gets the job back once. The window is at most LeaseDuration, and the operator gets an extra job rather than losing one.",
       "tags": ["M3"]
     },
     {
@@ -459,11 +469,21 @@
         { "req": "REQ-400", "note": "a2 also tries to create a delivery for the same dead-letter" }
       ],
       "impossibleAt": 2
+    },
+    {
+      "id": "SCN-406", "title": "A lease handover neither repeats nor loses a dead-letter alert", "status": "approved",
+      "given": "Rule R watches dead-lettering with a subject cooldown that has already ended for every job. Nodes a1 and a2 both have the alerts registration; a1 holds the notification lease. Job e1 is dead-lettered and a1 creates its delivery. a1 then pauses past LeaseDuration, and job e2 is dead-lettered while no node holds the lease.",
+      "steps": [
+        { "req": "REQ-438", "note": "a2 takes the notification lease" },
+        { "req": "REQ-400", "note": "a2 creates the delivery for e2" }
+      ],
+      "then": "There is exactly one delivery for e1 and exactly one for e2: a2 did not alert e1 again, and e2, which happened while no node held the lease, was alerted.",
+      "notes": "refiner-model 2026-11-06 run 2 F-15 regression (INV-412)."
     }
   ],
 
   "features": [
-    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "INV-409", "INV-410", "REQ-433", "INV-411", "REQ-438", "SCN-400", "SCN-404", "SCN-405"] },
+    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "INV-409", "INV-410", "REQ-433", "INV-411", "REQ-438", "SCN-400", "SCN-404", "SCN-405", "INV-412", "SCN-406"] },
     { "id": "FEAT-401", "name": "HTTP jobs and outbound security", "members": ["REQ-420", "REQ-421", "REQ-422", "REQ-434", "INV-401", "INV-402", "INV-403", "INV-404", "INV-405", "REQ-416", "INV-408", "SCN-401", "SCN-402"] },
     { "id": "FEAT-402", "name": "Outbox", "members": ["REQ-430", "REQ-431", "REQ-432", "REQ-435", "REQ-436", "REQ-437", "INV-406", "LIV-400", "SCN-403"] }
   ],
