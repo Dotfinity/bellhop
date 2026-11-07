@@ -237,10 +237,10 @@
     {
       "id": "REQ-29", "kind": "transition", "status": "approved",
       "entity": "Node", "actor": "Host", "from": ["Draining"], "to": ["Stopped"],
-      "ears": { "while": "a node is draining", "when": "every in-flight job has finished, or ShutdownTimeout has passed, the remaining jobs' tokens were cancelled and the release of their leases was attempted", "shall": "stop the node" },
+      "ears": { "while": "a node is draining", "when": "every in-flight job has finished, or ShutdownTimeout has passed, the remaining jobs' tokens were cancelled and the lease releases that jobs REQ-140 calls for were attempted", "shall": "stop the node" },
       "mentions": ["Node.inFlightJobs", "jobs.Job.Processing"],
       "dependsOn": ["REQ-28"],
-      "notes": "The job side (cancel token, release lease, job returns to Enqueued) is REQ-140 in the jobs module. The release is best-effort (refiner-model 2026-11-06 F-5, recommended option): a release that fails because the store is down is covered by lease expiry (jobs REQ-132), and that attempt then counts, so a store outage never blocks shutdown.",
+      "notes": "The job side (cancel token, release lease, job returns to Enqueued) is REQ-140 in the jobs module. The release is best-effort (refiner-model 2026-11-06 F-5, recommended option): a release that fails because the store is down is covered by lease expiry (jobs REQ-132), and that attempt then counts, so a store outage never blocks shutdown. jobs run 3 F-1: a job whose timeout token was signalled before the shutdown signal is not released (jobs REQ-140), so the node does not wait for it; lease expiry recovers it and its attempt counts (jobs REQ-132, REQ-133).",
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6" }]
     },
     {

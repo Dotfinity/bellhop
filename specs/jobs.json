@@ -298,10 +298,10 @@
     {
       "id": "REQ-140", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "Host", "from": ["Processing"], "to": ["Enqueued"],
-      "ears": { "while": "the job's node is draining, the job's token was cancelled for shutdown and its cancellation was not requested", "if": "the handler is still running, or it throws OperationCanceledException and its timeout token was not signalled", "shall": "release the job's lease and take back the attempt it counted, so another node can claim it immediately and the interrupted run does not count towards maxAttempts" },
+      "ears": { "while": "the job's node is draining, the job's token was cancelled for shutdown, its timeout token was not signalled and its cancellation was not requested", "if": "the handler is still running or throws OperationCanceledException", "shall": "release the job's lease and take back the attempt it counted, so another node can claim it immediately and the interrupted run does not count towards maxAttempts" },
       "mentions": ["hosting.Node.Draining", "Job.leaseOwner", "Job.leaseExpiresAt", "Job.attempt", "Job.timeout"],
       "dependsOn": ["REQ-139"],
-      "notes": "Decided by the owner on 2026-11-06: shutdown is not the job's fault, so the attempt is not counted; a crash (lease expiry, REQ-132) still counts. The lease is released as soon as ShutdownTimeout passes. The old handler may still run in the stopping process while another node claims the job; that is an expected at-least-once duplicate, and fencing (INV-128) refuses its result. Resolved after refiner-model 2026-11-06 F-8 (recommended option): a handler that honours the shutdown token by throwing OperationCanceledException is released the same way as one that ignores it, so cooperating never costs an attempt. F-7: a job whose cancellation was requested is marked cancelled instead (REQ-190). Run 2 F-2 (recommended option): an OperationCanceledException thrown after both the timeout and the shutdown signal is a timeout (REQ-138, REQ-186), so the attempt counts and a job that keeps timing out during rolling deploys still uses up its attempts.",
+      "notes": "Decided by the owner on 2026-11-06: shutdown is not the job's fault, so the attempt is not counted; a crash (lease expiry, REQ-132) still counts. The lease is released as soon as ShutdownTimeout passes. The old handler may still run in the stopping process while another node claims the job; that is an expected at-least-once duplicate, and fencing (INV-128) refuses its result. Resolved after refiner-model 2026-11-06 F-8 (recommended option): a handler that honours the shutdown token by throwing OperationCanceledException is released the same way as one that ignores it, so cooperating never costs an attempt. F-7: a job whose cancellation was requested is marked cancelled instead (REQ-190). Run 2 F-2 (recommended option): an OperationCanceledException thrown after both the timeout and the shutdown signal is a timeout (REQ-138, REQ-186), so the attempt counts and a job that keeps timing out during rolling deploys still uses up its attempts. Run 3 F-1 (recommended option): the timeout guard now covers both branches. Run 2 put it on the OperationCanceledException branch only, so a handler that ignored its tokens got its attempt back while one that cooperated did not, and a job that hangs until it times out could survive rolling deploys for ever. A job whose timeout token was signalled before the shutdown signal is a timeout whether the handler cooperates or not (REQ-138, REQ-186); the draining node does not wait for it (hosting REQ-29), and if the process stops first, lease expiry counts the attempt (REQ-132, REQ-133).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-6", "quote": "then any still-running jobs have their leases released so another node picks them up immediately" }]
     },
@@ -960,20 +960,20 @@
     {
       "id": "REQ-188", "kind": "transition", "status": "approved",
       "entity": "Job", "actor": "system", "from": ["Awaiting"], "to": ["Cancelled"],
-      "ears": { "while": "a continuation is awaiting", "when": "its parent is deleted or removed by retention, or, for a batch-level continuation, its batch is removed (REQ-192)", "shall": "cancel the continuation" },
+      "ears": { "while": "a continuation is awaiting", "when": "its parent is deleted or removed by retention (REQ-145, REQ-192), or, for a batch-level continuation, its batch is removed (REQ-192)", "shall": "cancel the continuation" },
       "mentions": ["Job.parentId", "Job.batchId"],
       "dependsOn": ["REQ-144", "REQ-145", "REQ-192"],
-      "notes": "Decided by the owner on 2026-11-06, so a deleted parent never leaves a continuation hanging (LIV-102). Resolved after refiner-model 2026-11-06 F-9: removal by retention is included, because a dead-lettered parent now keeps its OnSuccess continuations awaiting until it is requeued or removed. Run 2 F-5: an OnBatchSucceeded continuation of a batch that stays Completed is cancelled when the batch is removed (REQ-192).",
+      "notes": "Decided by the owner on 2026-11-06, so a deleted parent never leaves a continuation hanging (LIV-102). Resolved after refiner-model 2026-11-06 F-9: removal by retention is included, because a dead-lettered parent now keeps its OnSuccess continuations awaiting until it is requeued or removed. Run 2 F-5: an OnBatchSucceeded continuation of a batch that stays Completed is cancelled when the batch is removed (REQ-192). Run 3 F-3 (recommended option): a member removed together with its batch (REQ-192) counts as removed by retention, so its own awaiting continuations are cancelled rather than left waiting for a parent that no longer exists.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.3 SCH-6; §4.8 WF-1" }]
     },
     {
       "id": "INV-128", "kind": "invariant", "status": "approved",
       "entity": "Job",
-      "ears": { "if": "a run presents a lease token that is no longer the job's current leaseToken when it renews the lease, reports progress, completes or fails", "shall": "refuse the write, leave the job unchanged and log a stale-completion warning" },
+      "ears": { "if": "a run presents a lease token that is no longer the job's current leaseToken, or its job is no longer processing, when it renews the lease, reports progress, completes or fails", "shall": "refuse the write, leave the job unchanged and log a stale-completion warning" },
       "mentions": ["Job.leaseToken", "Job.leaseOwner"],
       "dependsOn": ["REQ-123"],
-      "notes": "Decided by the owner on 2026-11-06 (fencing). After a lease expires and another node recovers the job, the original run can no longer succeed, fail or extend it, so a job never ends twice or ends while it is Processing elsewhere. Worth adding later: a refused heartbeat could cancel the stale run's token.",
+      "notes": "Decided by the owner on 2026-11-06 (fencing). After a lease expires and another node recovers the job, the original run can no longer succeed, fail or extend it, so a job never ends twice or ends while it is Processing elsewhere. Worth adding later: a refused heartbeat could cancel the stale run's token. Run 3 F-2 (recommended option): a job can leave Processing without a new claim (dead-lettered or cancelled on lease expiry, REQ-133, REQ-190; released at shutdown, REQ-140), and then its token stays current. Refusing writes for a job that is no longer processing fences those runs too; before, a run released at shutdown could still complete its job before another node claimed it.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.5 EXE-2, EXE-4 (implied)" }]
     },
@@ -1079,10 +1079,10 @@
     {
       "id": "REQ-191", "kind": "invariant", "status": "approved", "strength": "must",
       "entity": "Job",
-      "ears": { "when": "the system abandons a handler that is still running, after a timeout (REQ-138, REQ-186, REQ-190) or a release at shutdown (REQ-140), or refuses the heartbeat of a handler that is still running because its lease token is no longer current (INV-128)", "shall": "log a warning naming the job, its attempt and the node, and record in that attempt that its handler was abandoned or lost its lease and is still running outside the node's concurrency limit" },
+      "ears": { "when": "the system abandons a handler that is still running, after a timeout (REQ-138, REQ-186, REQ-190) or a release at shutdown (REQ-140), or refuses the heartbeat of a handler that is still running because its lease token is no longer current or its job is no longer processing (INV-128)", "shall": "log a warning naming the job, its attempt and the node, and record in that attempt that its handler was abandoned or lost its lease and is still running outside the node's concurrency limit" },
       "mentions": ["Job.attempts", "Job.leaseToken", "hosting.Node.concurrencyLimit"],
       "dependsOn": ["INV-106", "INV-128"],
-      "notes": "Decided by the owner after refiner-model 2026-11-06 F-5: abandoned handlers run outside the node's limit (INV-106) and are made visible rather than counted. Run 2 F-7 (recommended option): a handler whose lease was lost (a partition or long pause, then recovery by another node) is the third way a node keeps running a handler it no longer holds a claim for, so it is recorded the same way; the node claims again as soon as it holds fewer claims than its limit (REQ-123)."
+      "notes": "Decided by the owner after refiner-model 2026-11-06 F-5: abandoned handlers run outside the node's limit (INV-106) and are made visible rather than counted. Run 2 F-7 (recommended option): a handler whose lease was lost (a partition or long pause, then recovery by another node) is the third way a node keeps running a handler it no longer holds a claim for, so it is recorded the same way; the node claims again as soon as it holds fewer claims than its limit (REQ-123). Run 3 F-2 (recommended option): a lease-lost handler whose job was dead-lettered or cancelled on recovery kept a current token and was never recorded, while its node claimed again; it is now caught by the 'no longer processing' test of INV-128."
     },
     {
       "id": "REQ-192", "kind": "transition", "status": "approved", "strength": "must",
@@ -1357,12 +1357,35 @@
         { "req": "REQ-170", "note": "the app adds an OnSuccess continuation to j1's id" }
       ],
       "impossibleAt": 1
+    },
+    {
+      "id": "SCN-124", "title": "A job that timed out before shutdown is not released", "status": "approved",
+      "given": "Job j is processing on node n1 at attempt 1 of 3, and its handler ignores every cancellation token.",
+      "steps": [
+        { "req": "REQ-137", "note": "j runs past its timeout and its timeout token is signalled" },
+        { "req": "REQ-139", "note": "n1 is draining, ShutdownTimeout passes and j's token is cancelled for shutdown" },
+        { "req": "REQ-140", "note": "n1 tries to release j and take back its attempt" }
+      ],
+      "impossibleAt": 3,
+      "notes": "refiner-model 2026-11-06 run 3 F-1 regression: the attempt counts, through REQ-138/REQ-186 or lease expiry."
+    },
+    {
+      "id": "SCN-125", "title": "A lease-lost run of a job cancelled on recovery is fenced and recorded", "status": "approved",
+      "given": "Job j is processing on node n1 with lease token 1 and attempts left. A partition stops n1's heartbeats while j's handler keeps running.",
+      "steps": [
+        { "req": "REQ-135", "note": "an operator cancels j and the request is recorded" },
+        { "req": "REQ-190", "note": "j's lease expires and a running worker node marks j cancelled, with no new lease token" },
+        { "req": "INV-128", "note": "the partition heals and n1's heartbeat for j presents token 1" },
+        { "req": "REQ-191", "note": "the refused heartbeat is logged and recorded in j's attempt" }
+      ],
+      "then": "j is still Cancelled and unchanged, and its attempt records that its handler lost its lease and is still running outside n1's concurrency limit.",
+      "notes": "refiner-model 2026-11-06 run 3 F-2 regression."
     }
   ],
 
   "features": [
     { "id": "FEAT-100", "name": "Enqueue and schedule", "members": ["REQ-105", "REQ-120", "REQ-121", "REQ-122", "REQ-146", "REQ-147", "REQ-148", "INV-101", "REQ-153", "INV-102", "REQ-154", "REQ-155", "INV-115", "REQ-182", "INV-131", "INV-132", "INV-133", "INV-134", "INV-137", "SCN-107", "SCN-113", "SCN-116"] },
-    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "REQ-189", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117", "REQ-191"] },
+    { "id": "FEAT-101", "name": "Execution, leases and recovery", "members": ["REQ-102", "REQ-103", "REQ-123", "REQ-126", "REQ-127", "REQ-128", "REQ-132", "REQ-133", "REQ-137", "REQ-138", "REQ-139", "REQ-140", "INV-103", "INV-104", "INV-105", "INV-106", "INV-116", "LIV-101", "REQ-184", "REQ-185", "REQ-186", "REQ-187", "REQ-189", "INV-128", "SCN-100", "SCN-102", "SCN-103", "SCN-104", "SCN-115", "SCN-117", "REQ-191", "SCN-124", "SCN-125"] },
     { "id": "FEAT-102", "name": "Retries and dead letters", "members": ["REQ-100", "REQ-129", "REQ-130", "REQ-131", "REQ-141", "REQ-142", "INV-117", "INV-118", "SCN-101", "SCN-112"] },
     { "id": "FEAT-103", "name": "Uniqueness", "members": ["REQ-107", "REQ-150", "REQ-151", "REQ-152", "INV-100", "INV-135", "SCN-105"] },
     { "id": "FEAT-104", "name": "Queues, priority, concurrency and throttling", "members": ["REQ-106", "REQ-108", "INV-107", "INV-108", "REQ-156", "REQ-157", "INV-109", "REQ-158", "INV-110", "REQ-159", "INV-111", "INV-112", "REQ-160", "REQ-161", "INV-113", "REQ-162", "REQ-163", "INV-114", "LIV-100", "SCN-106", "SCN-110"] },
