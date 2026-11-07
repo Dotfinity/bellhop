@@ -392,9 +392,9 @@
     {
       "id": "REQ-236", "kind": "transition", "status": "approved", "strength": "must",
       "entity": "hosting.Node", "actor": "Host", "from": ["Starting"], "to": ["StartupFailed"],
-      "ears": { "while": "a node is starting", "if": "a code-defined or configuration-defined recurring job has the name of a stored runtime-defined recurring job", "shall": "fail the host's start with a message that names the job and says it is already defined at runtime" },
+      "ears": { "while": "a node is starting", "if": "a code-defined or configuration-defined recurring job has the name of a stored runtime-defined recurring job, judged by each stored recurring job's name and origin only, with none stored where the store has no Bellhop schema yet", "shall": "fail the host's start with a message that names the job and says it is already defined at runtime" },
       "mentions": ["RecurringJob.name", "RecurringJob.origin"],
-      "notes": "refiner-model 2026-11-06 F-6, decided by the owner on 2026-11-06: recurring job names are unique across origins, and a collision is an error on both sides (INV-211 for the API). Like REQ-210."
+      "notes": "refiner-model 2026-11-06 F-6, decided by the owner on 2026-11-06: recurring job names are unique across origins, and a collision is an error on both sides (INV-211 for the API). Like REQ-210. hosting run 3 F-1 (recommended option): the check runs before the migration (hosting REQ-12), so it must work on whatever schema is stored. Name and origin are stored by every schema version, because migrations only add (TECH-127); a new database has no Bellhop tables and so no runtime-defined jobs, which must not fail the first start."
     },
     {
       "id": "REQ-237", "kind": "transition", "status": "approved", "strength": "must",
