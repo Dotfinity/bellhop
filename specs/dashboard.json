@@ -441,7 +441,7 @@
       "entity": "DashboardRequest",
       "ears": { "if": "a request authenticated by an API key tries to create or revoke an API key", "shall": "respond 403 Forbidden and change nothing" },
       "mentions": ["DashboardRequest.principal", "DashboardRequest.response"],
-      "notes": "Decided by the owner on 2026-11-06: only interactive users mint keys, so a leaked key cannot create more keys.",
+      "notes": "Decided by the owner on 2026-11-06: only interactive users mint keys, so a leaked key cannot create more keys. This holds outside an open Development dashboard: there, with no scheme listed, anonymous requests have operate (REQ-300), which includes creating a key (INV-301), as accepted in run 2 F-2.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-2" }]
     },

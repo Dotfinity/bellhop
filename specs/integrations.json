@@ -327,7 +327,7 @@
     {
       "id": "REQ-436", "kind": "assumption", "status": "approved",
       "ears": { "shall": "assume that every finished-job retention (jobs REQ-104) is much longer than LeaseDuration, so a crashed relay is replaced while the job it created is still stored" },
-      "notes": "refiner-model 2026-11-06 F-11: with the defaults (7 to 30 days against 60 s) this holds by a wide margin. If an application sets a retention close to the lease length, a row can be relayed twice. The model cannot judge durations, so this is stated rather than checked. Run 2 F-16 (recommended option, accepted): an operator who deletes an outbox-created job (jobs REQ-144) while the relay that created it has crashed and not yet deleted the row gets the job back once. The window is at most LeaseDuration, and the operator gets an extra job rather than losing one.",
+      "notes": "refiner-model 2026-11-06 F-11: with the defaults (7 to 30 days against 60 s) this holds by a wide margin. If an application sets a retention close to the lease length, a row can be relayed twice. The model cannot judge durations, so this is stated rather than checked. Run 2 F-16 (recommended option, accepted): an operator who deletes an outbox-created job (jobs REQ-144) while the relay that created it has crashed or lost its relay lease and not yet deleted the row gets the job back once. The window is at most LeaseDuration, and the operator gets an extra job rather than losing one.",
       "tags": ["M3"]
     },
     {
