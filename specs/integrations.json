@@ -11,7 +11,7 @@
     {
       "name": "NotificationRule",
       "description": "A configured rule: trigger, threshold, window, channel, cooldown.",
-      "attributes": ["trigger", "threshold", "window", "tolerance", "channel", "template", "cooldown"]
+      "attributes": ["name", "trigger", "threshold", "window", "tolerance", "channel", "template", "cooldown"]
     },
     {
       "name": "Delivery",
@@ -66,9 +66,9 @@
       "id": "REQ-403", "kind": "transition", "status": "approved",
       "entity": "Delivery", "actor": "system", "to": ["Pending", "Suppressed"],
       "ears": { "where": "a rule watches recurring jobs", "when": "a recurring job's occurrence is missed, starts later than the rule's tolerance after its due time, or has not started when the rule's tolerance after its due time has passed", "shall": "create a delivery for that rule with the recurring job as subject" },
-      "mentions": ["NotificationRule.tolerance", "recurring.RecurringJob.nextRunAt"],
+      "mentions": ["NotificationRule.tolerance", "recurring.RecurringJob.nextRunAt", "recurring.RecurringJob.missedInstants"],
       "dependsOn": ["INV-411"],
-      "notes": "Missed occurrences come from recurring REQ-220. refiner-model 2026-11-06 F-6, decided by the owner: notification checks run on nodes with the alerts registration (INV-411), not on workers, so an occurrence that never fired because no worker is alive is still reported, from the stored nextRunAt, by the 'has not started' branch.",
+      "notes": "Missed occurrences are read from the record recurring REQ-242 keeps in the store (INV-412), not from REQ-220's in-memory event, so a miss caught by the trigger is alerted even after the next occurrence has finished. refiner-model 2026-11-06 F-6, decided by the owner: notification checks run on nodes with the alerts registration (INV-411), not on workers, so an occurrence that never fired because no worker is alive is still reported, from the stored nextRunAt, by the 'has not started' branch.",
       "tags": ["M2"],
       "sources": [{ "document": "requirements.md", "section": "§4.15 BLT-11; §4.15 BLT-5" }]
     },
@@ -192,12 +192,21 @@
     {
       "id": "INV-412", "kind": "invariant", "status": "approved", "strength": "must",
       "entity": "Delivery",
-      "ears": { "where": "a rule watches an event that happens once: a job dead-lettered (REQ-400), an attempt that makes the Nth failure (REQ-401), or a recurring occurrence missed or late (REQ-403)", "shall": "find those events from what the job store records and mark each one handled for that rule in the same store write that creates its delivery, so that a node that takes over the notification lease neither alerts an event again nor skips one" },
-      "mentions": ["Delivery.rule", "Delivery.subject", "jobs.Job.DeadLettered", "jobs.Job.attempt", "recurring.RecurringJob.nextRunAt"],
+      "ears": { "where": "a rule watches an event that is a single recorded state change: a job dead-lettered (REQ-400), an attempt that makes the Nth failure (REQ-401), or a recurring occurrence missed or late (REQ-403); a job that is requeued (jobs REQ-141, REQ-143) can produce such an event again", "shall": "find those events from what the job store records and mark each one handled for that rule in the same store write that creates its delivery, so that a node that takes over the notification lease neither alerts an event again nor skips one" },
+      "mentions": ["Delivery.rule", "Delivery.subject", "jobs.Job.DeadLettered", "jobs.Job.attempt", "recurring.RecurringJob.nextRunAt", "recurring.RecurringJob.missedInstants"],
       "dependsOn": ["INV-411", "REQ-438", "REQ-400", "REQ-401", "REQ-403"],
       "rationale": "The lease decides which node writes, but these events happen on worker nodes. If the lease holder remembered what it reported in its own memory, a handover would alert an event twice or not at all.",
-      "notes": "refiner-model 2026-11-06 run 2 F-15 (recommended option; the model shows one delivery per event and no event lost with this rule, against a duplicate or a loss with node-local memory). Events that happen while no node holds the lease, or while no alerts node runs at all, are alerted when a holder next runs; the subject cooldown and the cap (INV-409) keep a backlog from flooding the channel. An event is no longer alerted once retention has removed the job it belongs to (jobs REQ-145). State-based rules (REQ-402, REQ-404, REQ-405) need nothing like this: any holder sees the condition, and the subject cooldown handles repeats. How the store records events and the handled mark, for example a per-rule position in a store-assigned sequence of state changes, is an implementation choice.",
+      "notes": "refiner-model 2026-11-06 run 2 F-15 (recommended option; the model shows one delivery per event and no event lost with this rule, against a duplicate or a loss with node-local memory). Events that happen while no node holds the lease, or while no alerts node runs at all, are alerted when a holder next runs; the subject cooldown and the cap (INV-409) keep a backlog from flooding the channel. An event is no longer alerted once retention has removed the job it belongs to (jobs REQ-145). State-based rules (REQ-402, REQ-404, REQ-405) need nothing like this: any holder sees the condition, and the subject cooldown handles repeats. How the store records events and the handled mark, for example a per-rule position in a store-assigned sequence of state changes, is an implementation choice. Run 3 F-17 (recommended option): a missed occurrence is found from the record recurring REQ-242 keeps; the last outcome alone is overwritten by the next occurrence, and RunOnce left no trace. Run 3 F-19 (recommended option): each recorded state change is its own event, so a job that is requeued and then dead-lettered again, or reaches attempt N again, is alerted again (REQ-401 notes); a handled mark kept on the job row would hide the second one. Run 3 F-18: where a new rule starts is INV-413.",
       "tags": ["M2"]
+    },
+    {
+      "id": "INV-413", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "Delivery",
+      "ears": { "where": "a rule watches an event that is a single recorded state change (INV-412)", "when": "the notification lease holder evaluates a rule whose name the job store has no record of", "shall": "record the rule's name in the store and mark every such event the store already records as handled for that rule, without creating deliveries for them" },
+      "mentions": ["NotificationRule.name", "Delivery.rule"],
+      "dependsOn": ["INV-411", "INV-412", "REQ-410"],
+      "rationale": "Without it, deploying a new rule alerts every once-only event still stored, up to 30 days of dead-letters (jobs REQ-104), or alerts none of them, depending on the implementation.",
+      "notes": "refiner-model 2026-11-06 run 3 F-18 (recommended option): a rule starts at the store's present the first time its name is seen. Its record and handled marks are kept by name even while no node loads the rule, so removing and re-adding it, or a rolling deploy in which the lease moves between nodes with and without it, continues where it stopped and skips nothing. A renamed rule is a new rule."
     },
 
     {
@@ -483,7 +492,7 @@
   ],
 
   "features": [
-    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "INV-409", "INV-410", "REQ-433", "INV-411", "REQ-438", "SCN-400", "SCN-404", "SCN-405", "INV-412", "SCN-406"] },
+    { "id": "FEAT-400", "name": "Notifications", "members": ["REQ-400", "REQ-401", "REQ-402", "REQ-403", "REQ-404", "REQ-405", "REQ-406", "INV-400", "REQ-407", "REQ-408", "REQ-409", "REQ-410", "REQ-411", "REQ-412", "REQ-413", "REQ-414", "REQ-415", "INV-407", "INV-409", "INV-410", "REQ-433", "INV-411", "REQ-438", "SCN-400", "SCN-404", "SCN-405", "INV-412", "INV-413", "SCN-406"] },
     { "id": "FEAT-401", "name": "HTTP jobs and outbound security", "members": ["REQ-420", "REQ-421", "REQ-422", "REQ-434", "INV-401", "INV-402", "INV-403", "INV-404", "INV-405", "REQ-416", "INV-408", "SCN-401", "SCN-402"] },
     { "id": "FEAT-402", "name": "Outbox", "members": ["REQ-430", "REQ-431", "REQ-432", "REQ-435", "REQ-436", "REQ-437", "INV-406", "LIV-400", "SCN-403"] }
   ],

@@ -13,7 +13,7 @@
       "description": "A named recurring definition.",
       "states": ["Active", "Paused", "Orphaned"],
       "initial": ["Active"],
-      "attributes": ["name", "schedule", "timeMode", "timeZone", "nextRunAt", "definitionHash", "stateBeforeOrphan", "orphanPolicy", "maxQueued", "misfirePolicy", "overlapPolicy", "origin", "allowRuntimeOverride", "activeFrom", "activeUntil", "payload", "lastOutcome"],
+      "attributes": ["name", "schedule", "timeMode", "timeZone", "nextRunAt", "definitionHash", "stateBeforeOrphan", "orphanPolicy", "maxQueued", "misfirePolicy", "overlapPolicy", "origin", "allowRuntimeOverride", "activeFrom", "activeUntil", "payload", "lastOutcome", "missedInstants"],
       "bound": 2
     },
     {
@@ -235,7 +235,7 @@
       "id": "REQ-220", "kind": "invariant", "status": "approved",
       "entity": "RecurringJob",
       "ears": { "when": "a recurring job is triggered after one or more due instants were missed", "shall": "log how the missed instants were handled and why, and raise the recurring-missed event" },
-      "notes": "The event is consumed by notifications (REQ-403) and IJobEvents (REQ-169).",
+      "notes": "The event is consumed by IJobEvents (jobs REQ-169). Notifications (integrations REQ-403) read the stored record of REQ-242 instead, so a miss is still alerted after a lease handover or while no alerts node runs (integrations INV-412).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5; §4.6 RET-6" }]
     },
@@ -433,6 +433,15 @@
       "dependsOn": ["REQ-204", "REQ-227"],
       "rationale": "REQ-204 runs only when a node starts, so after a rollback, or after an old node restarted late in a deploy, the stored definition can belong to a release that no running node runs.",
       "notes": "refiner-model 2026-11-06 run 2 F-2 (recommended option). Nodes publish each declared name with the hash of its code definition in their heartbeat, as they already publish the names (REQ-205); the check runs with the orphan sweep, a worker duty (hosting REQ-40). While the stored hash matches any running node's code nothing changes, so there is no back-and-forth during a deploy, and the definition settles as soon as the old release is gone. A runtime edit under AllowRuntimeOverride does not change definitionHash, so it survives."
+    },
+    {
+      "id": "REQ-242", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "RecurringJob",
+      "ears": { "when": "a recurring job is triggered after one or more due instants were missed", "shall": "record in the job store which due instants were missed (the first, the last and how many) and how the misfire policy handled them, in the same compare-and-set that advances nextRunAt, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
+      "mentions": ["RecurringJob.missedInstants", "RecurringJob.nextRunAt", "RecurringJob.misfirePolicy"],
+      "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220"],
+      "rationale": "integrations INV-412 makes the notification lease holder find missed occurrences in the job store. The last outcome (REQ-231) is overwritten by the next one, and RunOnce leaves no trace of a miss at all.",
+      "notes": "refiner-model 2026-11-06 integrations run 3 F-17 (recommended option). One record per trigger, not per instant, so a long outage on a frequent schedule writes one record. REQ-220's log line and in-memory event are unchanged."
     },
     {
       "id": "INV-206", "kind": "invariant", "status": "approved",
@@ -638,7 +647,7 @@
 
   "features": [
     { "id": "FEAT-200", "name": "Definitions and reconciliation", "members": ["REQ-202", "REQ-203", "REQ-204", "INV-200", "REQ-205", "REQ-206", "REQ-207", "REQ-208", "REQ-209", "REQ-210", "REQ-211", "REQ-212", "REQ-213", "REQ-232", "INV-206", "INV-209", "SCN-204", "SCN-205", "SCN-207", "SCN-208", "SCN-209", "SCN-212", "REQ-236", "INV-211", "SCN-214", "REQ-241"] },
-    { "id": "FEAT-201", "name": "Triggering and misfire", "members": ["REQ-201", "REQ-214", "REQ-215", "INV-201", "INV-202", "REQ-216", "INV-203", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-226", "REQ-227", "REQ-230", "REQ-231", "REQ-234", "INV-207", "INV-210", "SCN-200", "SCN-202", "SCN-203", "SCN-206", "SCN-211"] },
+    { "id": "FEAT-201", "name": "Triggering and misfire", "members": ["REQ-201", "REQ-214", "REQ-215", "INV-201", "INV-202", "REQ-216", "INV-203", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-226", "REQ-227", "REQ-230", "REQ-231", "REQ-234", "INV-207", "INV-210", "SCN-200", "SCN-202", "SCN-203", "SCN-206", "SCN-211", "REQ-242"] },
     { "id": "FEAT-202", "name": "Overlap", "members": ["REQ-221", "REQ-222", "REQ-223", "REQ-224", "REQ-225", "INV-204", "INV-205", "REQ-233", "REQ-235", "SCN-201", "SCN-210", "REQ-237", "REQ-238", "REQ-239", "SCN-213", "REQ-240", "SCN-215"] },
     { "id": "FEAT-203", "name": "Time zones and DST", "members": ["REQ-200", "REQ-228", "REQ-229", "INV-208"] }
   ],
