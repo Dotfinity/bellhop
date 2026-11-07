@@ -1,7 +1,7 @@
 {
   "module": "dashboard",
-  "specHash": "fec5db365b2d09a0a082a140fa5039bd7bfdf6d50e08ff0c14ac82106910c11e",
-  "generatedAt": "2026-11-06T20:55:00Z",
+  "specHash": "2d34d3724a1639363f5d1a9b7cbe2877d2b1168b005183072757a6db897e0d6b",
+  "generatedAt": "2026-11-07T12:00:00Z",
   "model": "model/dashboard/Dashboard.tla",
   "items": {
     "REQ-300": {
@@ -125,9 +125,9 @@
       "note": "Banner + BannerDetail (lastSeen | neverConnected)."
     },
     "INV-305": {
-      "hash": "5df71e8ca775af61aabeeb6b8ab2c2e4129d783bcfc632f3942d29672d5c8d6f",
+      "hash": "3d59d874a808975483db1845252c488360b7e48b4dd1a62373f64436c2f0851d",
       "reviewed": false,
-      "note": "Run 3: AcquireRollupLease (start under the lease), fenced WriteRollup, RollupWriteRefused. Inv_RollupStartWithLease (action property) holds, 5 120 states; Inv_RollupOneWrite violated in 6 steps: F-1."
+      "note": "Run 4: AcquireRollupLease now also requires that no node has written the interval (the new 'that has not been written yet'). Inv_RollupOneWrite holds (2 048 states; violated in 6 steps in run 3, F-1 resolved); Inv_RollupStartWithLease, extended with the not-written condition, holds (2 048 states)."
     },
     "SCN-300": {
       "hash": "75da8f34ab964b2cc2b5183a92f3efafc1d305890b520295cf89e30bb96a01dc",

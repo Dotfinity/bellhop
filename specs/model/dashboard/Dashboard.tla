@@ -332,13 +332,14 @@ BannerDetail == IF everSeen THEN "lastSeen" ELSE "neverConnected"
 \* Insights rollups (part "rollup") — one interval i1. RollupNodes are nodes with the worker registered
 \* (INV-305 "where the worker is registered", hosting REQ-40).
 
-\* @req INV-305  "start computing each rollup interval … only while the node holds the interval's lease": a node
-\*               takes the free lease and starts computing in one step. (system → fair) Run 3: no sentence says a
-\*               node skips an interval that is already written, so the run-2 guard wrote = {} is gone (F-1).
-\*               A node does not start a second computation of the interval while it is still computing one.
+\* @req INV-305  "start computing each rollup interval that has not been written yet … only while the node holds
+\*               the interval's lease": a node takes the free lease and starts computing in one step, and only if
+\*               no node has written the interval (run 4: the guard wrote = {} is now the sentence, run-3 F-1).
+\*               (system → fair) A node does not start a second computation of the interval while it is still
+\*               computing one (A-18).
 AcquireRollupLease(n) ==
   /\ "rollup" \in Parts
-  /\ lease = NULL /\ n \notin computing
+  /\ lease = NULL /\ n \notin computing /\ wrote = {}
   /\ lease' = n /\ computing' = computing \cup {n}
   /\ UNCHANGED <<cfg, node, anonPerm, noticeLogged, failAddr, key, job, recJob, errorsShown, anonServed, worker, everSeen, wrote>>
 
@@ -439,10 +440,11 @@ Chk_ApiKeyNotBypassed == (cfg.apiKeyAuth /\ ~cfg.allowAnon) => anonServed = {}
 \*               interval"): no two nodes write the same interval. wrote is a set of nodes, so this catches a
 \*               second node's write, not the same node writing twice.
 Inv_RollupOneWrite == Cardinality(wrote) <= 1
-\* @req INV-305  "start computing each rollup interval … only while the node holds the interval's lease": an action
-\*               property (PROPERTIES), since it constrains the step that starts a computation, not a state.
+\* @req INV-305  "start computing each rollup interval that has not been written yet … only while the node holds
+\*               the interval's lease": an action property (PROPERTIES), since it constrains the step that starts a
+\*               computation, not a state. Run 4: the step also requires that no node has written the interval.
 Inv_RollupStartWithLease ==
-  [][\A n \in RollupNodes : (n \notin computing /\ n \in computing') => lease' = n]_vars
+  [][\A n \in RollupNodes : (n \notin computing /\ n \in computing') => (lease' = n /\ wrote = {})]_vars
 
 \* @req SCN-303  Vic (view only) cannot launch (impossibleAt 1).
 Scn_ViewerCannotLaunch ==
