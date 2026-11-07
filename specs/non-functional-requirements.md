@@ -341,14 +341,14 @@ Format: refiner-nfr/1
 ## NFR-31 — Redis durability documentation
 
 - **Category:** reliability
-- **Statement:** The Redis store's first documentation page shall state the data-loss windows plainly and name AWS MemoryDB, ElastiCache for Valkey 9 with synchronous durability, and Kvrocks as the options for durability-critical workloads, and shall state that the store refuses to start unless maxmemory-policy is noeviction; that after a flush, and when the first worker starts on a new server, claims and recurring occurrences pause for one LeaseDuration, with how to shorten that in tests by lowering LeaseDuration; that a job enqueued during that pause with the unique key of a job still running is cancelled with reason DuplicateAfterReset; that after a restore or failover to older data, jobs claimed since that copy may run again and their outcomes may be lost until the rollback is detected and reported; that a rollback to a state less than one RecurringReconcileInterval old is not detected; and that a failover to a server whose clock is behind is reported as a reset.
+- **Statement:** The Redis store's first documentation page shall state the data-loss windows plainly and name AWS MemoryDB, ElastiCache for Valkey 9 with synchronous durability, and Kvrocks as the options for durability-critical workloads, and shall state that the store refuses to start unless maxmemory-policy is noeviction; that after a flush, and when the first worker starts on a new server, claims and recurring occurrences pause for one LeaseDuration, with how to shorten that in tests by lowering LeaseDuration; that a job enqueued during that pause with the unique key of a job still running is cancelled with reason DuplicateAfterReset; that after a restore or failover to older data, jobs claimed since that copy may run again and their outcomes may be lost until the rollback is detected and reported; that a rollback to a state less than one RecurringReconcileInterval old is not detected; that a flush first seen by a newly started worker is not reported if every worker that saw the previous marker is paused until the marker is next advanced, although the outcomes of their runs are still recorded; and that a failover to a server whose clock is behind is reported as a reset.
 - **Measure:** present on the first page of the Redis store docs
 - **Verification:** inspection
 - **Applies to:** TECH-70, REQ-503, REQ-504, REQ-505, REQ-507, REQ-509, REQ-526, REQ-527, REQ-528, REQ-534
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.9.1 RED-7
-- **Notes:** refiner-model 2026-11-06 redis run 2 (F-1 to F-6): the pause is one LeaseDuration (was HeartbeatInterval), also applies to a new server, and rollbacks to older data are at-least-once by decision.
+- **Notes:** refiner-model 2026-11-06 redis run 2 (F-1 to F-6): the pause is one LeaseDuration (was HeartbeatInterval), also applies to a new server, and rollbacks to older data are at-least-once by decision. Redis run 3 F-3 (option 2): the unreported late-join flush is documented rather than detected (REQ-528).
 
 ## NFR-32 — Redis transactional-enqueue documentation
 
