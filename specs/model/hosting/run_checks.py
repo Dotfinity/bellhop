@@ -6,7 +6,7 @@
 An argument equal to a check's full name runs only that check; otherwise it is a substring.
 
 Each check gets a generated cfg in checks/<name>.cfg: the CONSTANTS of a base cfg plus one
-invariant or property (TypeInv always on). TLC runs with --stop-at-first because TLC 2.19 crashes
+invariant or property (TypeInv always on). TLC runs with --stop-at-first (and --workers 4) because TLC 2.19 crashes
 under -continue, and every result is scanned for "unexpected exception": only a completed,
 exception-free run counts as "holds". run_tlc.py's own timeout does not stop TLC on Windows, so
 each run is killed as a process tree after HARD_TIMEOUT seconds.
@@ -15,7 +15,7 @@ import json, pathlib, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUN_TLC = pathlib.Path.home() / ".claude-personal/skills/refiner-model/scripts/run_tlc.py"
-HARD_TIMEOUT = 160
+HARD_TIMEOUT = 600   # run 4: raised from 160 (larger state space, shared machine)
 
 # (name, base cfg, kind, property, expect)   kind: inv | prop | deadlock ; expect: holds | violated
 CHECKS = [
@@ -28,12 +28,19 @@ CHECKS = [
         "Chk_NoRunningAfterHostStop", "Chk_NoClaimAfterHostStop", "Chk_MigrateBeforeRunning",
         "Chk_ReconcileOnAcceptedSchema", "Chk_NoMigrationWithInvalidOptions", "Chk_OneMemoryWarning",
         "Chk_MemoryWarningBeforeRunning", "Chk_ReconciledBeforeRunning", "Chk_NoStoreWriteBeforeOtherChecks",
-        "Chk_StoreChecksOnAcceptedSchema"]
+        "Chk_ConnectChecksFirst", "Chk_NoStopInGraceBeforeTimeout"]
 ] + [
     (f"main_{p}", "Hosting.cfg", "prop", p, "holds") for p in [
         "Prop_MigrationIdempotent", "Prop_MigrateOnlyUnderLock", "Prop_NoUnhealthyToHealthy"]
 ] + [
     ("live_Chk_DrainEnds", "Hosting_Live.cfg", "prop", "Chk_DrainEnds", "holds"),
+    ("main_trap_Chk_NewDatabaseNotRunning", "Hosting.cfg", "trap", "Chk_NewDatabaseNotRunning", "violated"),
+] + [
+    ("drain_Chk_NoStopInGraceBeforeTimeout", "Hosting_Drain.cfg", "inv", "Chk_NoStopInGraceBeforeTimeout", "holds"),
+    ("drain_Chk_DrainEnds", "Hosting_Drain.cfg", "prop", "Chk_DrainEnds", "holds"),
+    ("drainNotes_Chk_NoStopInGraceBeforeTimeout", "Hosting_DrainNotes.cfg", "inv", "Chk_NoStopInGraceBeforeTimeout",
+     "violated"),
+    ("drainNotes_Chk_DrainEnds", "Hosting_DrainNotes.cfg", "prop", "Chk_DrainEnds", "holds"),
 ] + [
     ("health_Chk_StallStaysUnhealthy", "Hosting_Health.cfg", "inv", "Chk_StallStaysUnhealthy", "holds"),
     ("health_Prop_NoUnhealthyToHealthy", "Hosting_Health.cfg", "prop", "Prop_NoUnhealthyToHealthy", "holds"),
@@ -47,7 +54,7 @@ CHECKS = [
 ] + [
     (f"2Nfail_{p}", "Hosting_2N_fail.cfg", "inv", p, "holds") for p in [
         "Inv_LockHolderStarting", "Chk_NoMigrationWithInvalidOptions", "Chk_NoStoreWriteBeforeOtherChecks",
-        "Scn_InvalidOptionNeverClaims", "Chk_ReconciledBeforeRunning"]
+        "Scn_InvalidOptionNeverClaims", "Chk_ReconciledBeforeRunning", "Chk_ConnectChecksFirst"]
 ] + [
     ("2Nfull_deadlock", "Hosting_2N.cfg", "deadlock", None, "holds"),
 ] + [
@@ -56,6 +63,7 @@ CHECKS = [
         ("inv", "Chk_NoMigrationWithInvalidOptions"), ("inv", "Scn_InvalidOptionNeverClaims"),
         ("inv", "Scn_SchemaMismatchBlocksRunning"), ("inv", "Inv_NoJobsWithoutWorker"),
         ("inv", "Chk_NoStoreWriteBeforeOtherChecks"), ("inv", "Chk_ReconciledBeforeRunning"),
+        ("inv", "Chk_ConnectChecksFirst"),
         ("prop", "Prop_MigrateOnlyUnderLock"), ("prop", "Prop_MigrationIdempotent")]
 ] + [
     (f"scn_{n}", f"Hosting_SCN{n[3:]}.cfg", "trap", f"Scn{n[3:]}_NotReached", "violated")
@@ -81,7 +89,7 @@ def run(name, base, kind, prop, expect):
     cfg = make_cfg(name, base, kind, prop)
     out = HERE / "checks" / f"{name}.json"
     cmd = [sys.executable, str(RUN_TLC), "Hosting.tla", "--config", f"checks/{name}.cfg", "--stop-at-first",
-           "--workers", "2", "--timeout", str(HARD_TIMEOUT - 10), "--out", str(out), "--md", str(out.with_suffix(".md"))]
+           "--workers", "4", "--timeout", str(HARD_TIMEOUT - 10), "--out", str(out), "--md", str(out.with_suffix(".md"))]
     if kind in ("inv", "prop", "trap"):
         cmd.append("--no-deadlock")
     p = subprocess.Popen(cmd, cwd=HERE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -105,5 +113,5 @@ if __name__ == "__main__":
         if pick and not exact and not any(s in c[0] for s in pick):
             continue
         name, status, states, exc, expect = run(*c)
-        ok = (status == "passed") if expect == "holds" else (status in ("safety",))
+        ok = (status == "passed") if expect == "holds" else (status in ("safety", "liveness"))
         print(f"{name:45s} {status:10s} {str(states):>10s} exc={exc} {'as-expected' if ok and not exc else 'CHECK'}", flush=True)

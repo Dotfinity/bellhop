@@ -1,7 +1,7 @@
 {
   "module": "hosting",
-  "specHash": "9cb2ea34d3cbc61533a6cd58982324c3035947bb82b28668ef057f7fb20dd591",
-  "generatedAt": "2026-11-06T21:40:00Z",
+  "specHash": "c057134bffdae0bdf5a154a82f99c79b9aaac9790fc95089e52b7163d82c0e20",
+  "generatedAt": "2026-11-07T12:00:00Z",
   "model": "model/hosting/Hosting.tla",
   "items": {
     "REQ-9": {
@@ -10,9 +10,9 @@
       "note": "ValidationFails (fail the host's start = StartupFailed, final)"
     },
     "REQ-12": {
-      "hash": "ce8af1be4114ef622f426b0067489396fb03198d9df1860a32937db8095a73dd",
+      "hash": "77b56e3e0f06f9a306b7953681798fed6ea7f4819fe133aa24a5968362e67453",
       "reviewed": false,
-      "note": "HostStarts; ValidateOptions + NoStoreChecksPass/NoStoreCheckFails (dashboard REQ-301/334, recurring REQ-210); SchemaTooOld/TooNew; StoreChecksPass/StoreCheckFails (redis REQ-502/505, recurring REQ-236); then AcquireMigrationLock/Migrate and ReconcileRecurring. Chk_NoStoreWriteBeforeOtherChecks holds (1 node 85,728; 2 nodes 881,138). Store checks on an unmigrated schema: F-1; redis checks vs connect: F-2"
+      "note": "HostStarts; ValidateOptions + NoStoreChecksPass/NoStoreCheckFails (dashboard REQ-301/334, recurring REQ-210); ConnectStore/ConnectCheckFails (connect includes redis REQ-500/502/505); SchemaTooOld/TooNew; StoreChecksPass/StoreCheckFails (recurring REQ-236: name and origin only, none on a store with no schema); then AcquireMigrationLock/Migrate and ReconcileRecurring. Chk_NoStoreWriteBeforeOtherChecks and Chk_ConnectChecksFirst hold (1 node 139,504; 2 nodes 2,483,294); new database migrates and runs (trap reached). Run-3 F-1 and F-2 resolved"
     },
     "REQ-13": {
       "hash": "386cb916d9322cd55c9dd504e16ea8d7a08d13c0447b8a470431a4eeb2e9b518",
@@ -85,9 +85,9 @@
       "note": "TimeoutPasses, no clock (A-1)"
     },
     "REQ-29": {
-      "hash": "43ff648b6b34872a98aa5b5d15824e061509ed1da9e90cf85edb1763104de724",
+      "hash": "e69478e31f81993982bb3e94578aa21c8ea9b06173603243cdb42f2738f79cb5",
       "reviewed": false,
-      "note": "CancelAndRelease (release attempted; lands only if reachable) + StopNode; Chk_DrainEnds holds on Hosting_Live.cfg (42,720; timed out on the full Hosting.cfg)"
+      "note": "CancelAndRelease (REQ-140 releases only jobs not timed out; attempted, lands only if reachable) + StopNode; timed-out jobs via JobTimesOut/TimedOutSettles. Chk_DrainEnds holds (Hosting_Live 50,016; Hosting_Drain 270; Hosting_DrainNotes 294). The sentence waits for an unsettled timed-out handler, the notes do not: F-1 (Chk_NoStopInGraceBeforeTimeout violated only under the notes' reading, 137)"
     },
     "REQ-30": {
       "hash": "265579fad1610aa70cf10cc10f0dc05d610525fc5b898951dbfeca500c81a380",
@@ -202,32 +202,32 @@
     "SCN-1": {
       "hash": "0242861c846d71afd75a30927dba2b09bd8362d8349547c3cf602d3f94ebbe56",
       "reviewed": false,
-      "note": "trap reached in 116 states (pass); path now includes both REQ-12 check groups and reconciliation"
+      "note": "trap reached in 188 states (pass)"
     },
     "SCN-2": {
       "hash": "d0c1b9c5d1ce5d47d8a5ff15129b85192147fbf3ba998cab4f5db96e6146b38e",
       "reviewed": false,
-      "note": "trap reached in 20 states (pass); Scn_InvalidOptionNeverClaims holds (1 node, 2 nodes full)"
+      "note": "trap reached in 28 states (pass)"
     },
     "SCN-3": {
       "hash": "1fc4f033f7fe9fb4216c34505f9befc289aa59d54a8087c6aae6fbf45422873e",
       "reviewed": false,
-      "note": "Scn_SchemaMismatchBlocksRunning holds (1 node 85,728; 2 nodes 881,138)"
+      "note": "Scn_SchemaMismatchBlocksRunning holds (1 node 139,504; 2 nodes 2,483,294)"
     },
     "SCN-4": {
       "hash": "30c6ab1ba1a6301b05ef347fcbe09fb5293df3b0b55067ffd28cd76f77f7b06f",
       "reviewed": false,
-      "note": "trap reached in 75 states (pass)"
+      "note": "trap reached in 151 states (pass)"
     },
     "SCN-5": {
       "hash": "6cc1f10f209dbdcd39aa51ed2a640ec06b99e234cf0f66231eef77a534916929",
       "reviewed": false,
-      "note": "trap reached in 115 states (pass)"
+      "note": "trap reached in 172 states (pass)"
     },
     "SCN-6": {
       "hash": "d402e537049f0870ca757b46ce808e014ed861faeabdfa5415f65ce35efc5751",
       "reviewed": false,
-      "note": "trap reached in 8 states (pass); node already Unhealthy at start"
+      "note": "trap reached in 12 states (pass)"
     }
   },
   "skipped": {

@@ -19,17 +19,23 @@ CONSTANTS Nodes,            \* Node instances (entity.bound = 2; 1 in the single
           DevVals,          \* environment is Development?
           AlertVals,        \* @req REQ-52  alerts registration (independent of client/worker)
           OkVals,           \* @req REQ-12  the other modules' startup checks: "pass", "failNoStore" (one that
-                            \* needs no store fails: dashboard REQ-301/REQ-334, recurring REQ-210) or "failStore"
-                            \* (one that needs the store fails: redis REQ-502/REQ-505, recurring REQ-236); A-19
+                            \* needs no store fails: dashboard REQ-301/REQ-334, recurring REQ-210), "failConnect"
+                            \* (a Redis check that is part of connecting fails: redis REQ-502/REQ-505) or
+                            \* "failStore" (a stored runtime-defined recurring job has a colliding name: recurring
+                            \* REQ-236); A-19
           MaxInFlight,      \* worker concurrency in the model (real value irrelevant)
           HealthyAfterPasses, \* @req REQ-50 (3 in the policy; 2 in the model)
           HealthEnv,        \* TRUE: stalls, thresholds and node-count changes may happen
+          TimedOutCounts,   \* @req REQ-29  TRUE: a handler whose timeout token was signalled (jobs REQ-137) is an
+                            \* in-flight job until it settles (the sentence); FALSE: the drain does not wait for
+                            \* it (REQ-29's notes). Both readings are explored (findings F-1)
           NULL
 
 ASSUME HealthyAfterPasses \in Nat \ {0}                     \* @req REQ-50
 ASSUME \A e \in ExpectedVals : e >= 1 /\ e \in Versions
 ASSUME RegVals \subseteq {"none", "client", "worker"}
-ASSUME OkVals \subseteq {"pass", "failNoStore", "failStore"}
+ASSUME OkVals \subseteq {"pass", "failNoStore", "failConnect", "failStore"}
+ASSUME TimedOutCounts \in BOOLEAN
 
 NodeStatus == {"none", "Starting", "Running", "Draining", "Stopped", "StartupFailed"}
 Final      == {"Stopped", "StartupFailed"}
@@ -42,15 +48,21 @@ CfgSet == [reg: RegVals, auto: AutoVals, valid: ValidVals, tool: ToolVals,
 NodeRec == [st: NodeStatus,
             validated: BOOLEAN,         \* REQ-12 options validated (store work only after this)
             prechecked: BOOLEAN,        \* REQ-12 the startup checks that need no store have passed
-            storeChecked: BOOLEAN,      \* REQ-12 the startup checks that need the store have passed
-            storeCheckBad: BOOLEAN,     \* history: the store checks ran on a schema the node does not accept
+            connected: BOOLEAN,         \* REQ-12 connected to the store (for Redis: EVAL and eviction checks passed)
+            storeChecked: BOOLEAN,      \* REQ-12 the startup checks that read stored data have passed
+            checkedEmpty: BOOLEAN,      \* history: recurring REQ-236 ran on a store with no Bellhop schema
             notifActive: BOOLEAN,       \* notification checks running on this node (REQ-59)
             otherBad: BOOLEAN,          \* history: wrote to the shared store while another startup check fails
             hostStopped: BOOLEAN,       \* the host has signalled stop
             workerActive: BOOLEAN,      \* worker loop + background duties started (REQ-18, REQ-40)
-            inFlight: 0..MaxInFlight,
+            inFlight: 0..MaxInFlight,   \* claimed jobs whose timeout token was not signalled
+            timedOut: 0..MaxInFlight,   \* claimed jobs whose timeout token was signalled (jobs REQ-137) and whose
+                                        \* handler has not settled under jobs REQ-138/REQ-186 (grace period)
             timeoutPassed: BOOLEAN,     \* REQ-28 ShutdownTimeout has passed
+            cancelDone: BOOLEAN,        \* REQ-29 remaining tokens cancelled, REQ-140 releases attempted
             released: 0..MaxInFlight,   \* jobs released back to the store at shutdown (jobs REQ-140)
+            stopInGrace: BOOLEAN,       \* history: stopped before ShutdownTimeout with a timed-out handler unsettled
+            leftToExpiry: 0..MaxInFlight, \* jobs still held at stop: recovered by lease expiry (jobs REQ-132/133)
             claimedEver: BOOLEAN,
             claimedAfterStop: BOOLEAN,
             reconciled: BOOLEAN,        \* REQ-12 code-defined recurring jobs reconciled
@@ -70,10 +82,11 @@ VARIABLES cfg, nd, schema, reachable, lock, fewAlive
 vars == <<cfg, nd, schema, reachable, lock, fewAlive>>
 
 \* @req Health.initial = Unhealthy (hosting F-11 resolution): a node is Unhealthy until REQ-58/REQ-35.
-Fresh == [st |-> "none", validated |-> FALSE, prechecked |-> FALSE, storeChecked |-> FALSE,
-          storeCheckBad |-> FALSE, notifActive |-> FALSE, otherBad |-> FALSE,
-          hostStopped |-> FALSE, workerActive |-> FALSE, inFlight |-> 0,
-          timeoutPassed |-> FALSE, released |-> 0, claimedEver |-> FALSE, claimedAfterStop |-> FALSE,
+Fresh == [st |-> "none", validated |-> FALSE, prechecked |-> FALSE, connected |-> FALSE,
+          storeChecked |-> FALSE, checkedEmpty |-> FALSE, notifActive |-> FALSE, otherBad |-> FALSE,
+          hostStopped |-> FALSE, workerActive |-> FALSE, inFlight |-> 0, timedOut |-> 0,
+          timeoutPassed |-> FALSE, cancelDone |-> FALSE, released |-> 0, stopInGrace |-> FALSE,
+          leftToExpiry |-> 0, claimedEver |-> FALSE, claimedAfterStop |-> FALSE,
           reconciled |-> FALSE, reconcileBad |-> FALSE, migrateBad |-> FALSE, ranUnmigrated |-> FALSE,
           memWarnings |-> 0, summaryLogged |-> FALSE, io |-> FALSE,
           health |-> "Unhealthy", passes |-> 0, stalled |-> FALSE, stallReported |-> FALSE,
@@ -104,9 +117,17 @@ SchemaCheckPasses(n) == ~(~cfg[n].auto /\ Sch(n) + 1 < cfg[n].exp) /\ ~(Sch(n) >
 \*              reconciled (REQ-12)": options validated, both groups of REQ-12 startup checks passed,
 \*              and a worker node has reconciled (A-2, A-19).
 StartupChecksPassed(n) ==
-  /\ nd[n].validated /\ nd[n].prechecked /\ nd[n].storeChecked
+  /\ nd[n].validated /\ nd[n].prechecked /\ nd[n].connected /\ nd[n].storeChecked
   /\ Accepted(n) /\ ~Pending(n)
   /\ HasWorker(n) => nd[n].reconciled
+\* A-19: the process will fail one of the other modules' startup checks. A REQ-236 collision cannot be
+\* found where the store had no Bellhop schema when the check ran (recurring REQ-236: none stored), and
+\* the in-memory store is not Redis, so it has no Redis connection check to fail.
+WillFailOther(n) ==
+  /\ cfg[n].ok # "pass"
+  /\ ~(cfg[n].ok = "failStore" /\ nd[n].checkedEmpty)
+  /\ ~(cfg[n].ok = "failConnect" /\ ~cfg[n].conf)
+
 \* @req REQ-56  a node that leaves Starting for any reason releases the migration lock first.
 ReleaseIfHeld(n) == IF lock = n THEN NULL ELSE lock
 
@@ -163,31 +184,52 @@ NoStoreCheckFails(n) ==
   /\ lock' = ReleaseIfHeld(n)
   /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
-\* @req REQ-12  "then connect to the store, check the schema (failing under REQ-23 or REQ-43) and run the
-\*              startup checks that need the store (redis REQ-502 and REQ-505, recurring REQ-236), and only
-\*              then migrate": they pass. They read the store as it is, before any migration.
-StoreChecksPass(n) ==
+\* @req REQ-12  "then connect to the store, which for Redis includes its EVAL and eviction-policy checks
+\*              (redis REQ-500, REQ-502, REQ-505)": the connection is established and, for Redis, the checks
+\*              pass. Only after the options were validated and the checks that need no store passed.
+ConnectStore(n) ==
   /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked
-  /\ Reach(n) /\ SchemaCheckPasses(n)
-  /\ cfg[n].ok # "failStore" /\ ~nd[n].storeChecked
-  /\ nd' = [nd EXCEPT ![n].storeChecked = TRUE, ![n].io = TRUE,
-                      ![n].storeCheckBad = nd[n].storeCheckBad \/ ~Accepted(n)]
+  /\ Reach(n) /\ ~nd[n].connected
+  /\ ~(cfg[n].conf /\ cfg[n].ok = "failConnect")
+  /\ nd' = [nd EXCEPT ![n].connected = TRUE, ![n].io = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-12  Cross-module, abstracted (A-19): one of redis REQ-502/REQ-505 or recurring REQ-236 fails
-\*              the host's start, after the schema check and before any migration or reconciliation.
-StoreCheckFails(n) ==
+\* @req REQ-12  with redis REQ-502/REQ-505 (A-19): a Redis check that is part of connecting fails the host's
+\*              start, before the schema check. Only a configured store can be Redis.
+ConnectCheckFails(n) ==
   /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked
+  /\ Reach(n) /\ ~nd[n].connected
+  /\ cfg[n].conf /\ cfg[n].ok = "failConnect"
+  /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE]
+  /\ lock' = ReleaseIfHeld(n)
+  /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
+
+\* @req REQ-12  "check the schema (failing under REQ-23 or REQ-43) and run the startup checks that read stored
+\*              data (recurring REQ-236, which reads a store that is not migrated yet), and only then migrate":
+\*              the schema check passes and REQ-236 finds no collision. The schema check and REQ-236 are one
+\*              step here (A-23).
+\* @req recurring REQ-236  judged by name and origin only; none stored where the store has no Bellhop schema.
+StoreChecksPass(n) ==
+  /\ nd[n].st = "Starting" /\ nd[n].connected
   /\ Reach(n) /\ SchemaCheckPasses(n)
-  /\ cfg[n].ok = "failStore"
-  /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE,
-                      ![n].storeCheckBad = nd[n].storeCheckBad \/ ~Accepted(n)]
+  /\ (cfg[n].ok # "failStore" \/ Sch(n) = 0) /\ ~nd[n].storeChecked
+  /\ nd' = [nd EXCEPT ![n].storeChecked = TRUE, ![n].io = TRUE, ![n].checkedEmpty = (Sch(n) = 0)]
+  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+
+\* @req recurring REQ-236  (A-19) a stored runtime-defined recurring job has the name of a code- or
+\*              configuration-defined one: fail the host's start, after the schema check and before any
+\*              migration or reconciliation. A store with no Bellhop schema stores none, so it cannot fail there.
+StoreCheckFails(n) ==
+  /\ nd[n].st = "Starting" /\ nd[n].connected
+  /\ Reach(n) /\ SchemaCheckPasses(n)
+  /\ cfg[n].ok = "failStore" /\ Sch(n) # 0
+  /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE]
   /\ lock' = ReleaseIfHeld(n)
   /\ UNCHANGED <<cfg, schema, reachable, fewAlive>>
 
 \* @req REQ-23  AutoMigrate off and schema more than one version older -> fail the host's start.
 SchemaTooOld(n) ==
-  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked   \* @req REQ-12 order
+  /\ nd[n].st = "Starting" /\ nd[n].connected                       \* @req REQ-12 order
   /\ Reach(n)
   /\ ~cfg[n].auto
   /\ Sch(n) + 1 < cfg[n].exp
@@ -197,7 +239,7 @@ SchemaTooOld(n) ==
 
 \* @req REQ-43  Stored schema newer than expected -> fail the host's start (AutoMigrate on or off).
 SchemaTooNew(n) ==
-  /\ nd[n].st = "Starting" /\ nd[n].validated /\ nd[n].prechecked   \* @req REQ-12 order
+  /\ nd[n].st = "Starting" /\ nd[n].connected                       \* @req REQ-12 order
   /\ Reach(n)
   /\ Sch(n) > cfg[n].exp
   /\ nd' = [nd EXCEPT ![n].st = "StartupFailed", ![n].io = TRUE]
@@ -225,7 +267,7 @@ Migrate(n) ==
   /\ schema' = IF schema < cfg[n].exp THEN cfg[n].exp ELSE schema
   /\ lock' = NULL
   /\ nd' = [nd EXCEPT ![n].migrateBad = nd[n].migrateBad \/ ~cfg[n].valid,
-                      ![n].otherBad = nd[n].otherBad \/ cfg[n].ok # "pass"]
+                      ![n].otherBad = nd[n].otherBad \/ WillFailOther(n)]
   /\ UNCHANGED <<cfg, reachable, fewAlive>>
 
 \* @req REQ-12  ...and only then [after every startup check], where the worker is registered and the
@@ -237,7 +279,7 @@ ReconcileRecurring(n) ==
   /\ ~nd[n].reconciled
   /\ nd' = [nd EXCEPT ![n].reconciled = TRUE, ![n].io = TRUE,
                       ![n].reconcileBad = ~Accepted(n),
-                      ![n].otherBad = nd[n].otherBad \/ cfg[n].ok # "pass"]
+                      ![n].otherBad = nd[n].otherBad \/ WillFailOther(n)]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
 \* @req REQ-18  Store reachable, schema accepted, no migration pending, startup checks passed and, where
@@ -264,7 +306,7 @@ Claim(n) ==
   /\ nd[n].st = "Running"
   /\ nd[n].workerActive
   /\ Reach(n)
-  /\ nd[n].inFlight < MaxInFlight
+  /\ nd[n].inFlight + nd[n].timedOut < MaxInFlight
   /\ nd' = [nd EXCEPT ![n].inFlight = @ + 1, ![n].claimedEver = TRUE, ![n].io = TRUE,
                       ![n].claimedAfterStop = @ \/ nd[n].hostStopped]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
@@ -274,6 +316,23 @@ JobFinishes(n) ==
   /\ nd[n].st \in {"Running", "Draining"}
   /\ nd[n].inFlight > 0
   /\ nd' = [nd EXCEPT ![n].inFlight = @ - 1]
+  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+
+\* jobs REQ-137 (abstracted, A-24): a job runs longer than its timeout; its timeout token is signalled.
+\* Only before the shutdown cancel: REQ-140 reads the timeout token at the release (A-24).
+JobTimesOut(n) ==
+  /\ nd[n].st \in {"Running", "Draining"} /\ ~nd[n].cancelDone
+  /\ nd[n].inFlight > 0
+  /\ nd' = [nd EXCEPT ![n].inFlight = @ - 1, ![n].timedOut = @ + 1]
+  /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
+
+\* jobs REQ-138/REQ-186 (abstracted, A-24): the timed-out handler throws OperationCanceledException within
+\* TimeoutGracePeriod, or the grace period ends and it is abandoned; the job is failed or dead-lettered and
+\* leaves the node's in-flight set. Not obliged here (no clock).
+TimedOutSettles(n) ==
+  /\ nd[n].st \in {"Running", "Draining"}
+  /\ nd[n].timedOut > 0
+  /\ nd' = [nd EXCEPT ![n].timedOut = @ - 1]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
 \* ------------------------------------------------------------------ shutdown
@@ -296,21 +355,29 @@ TimeoutPasses(n) ==
   /\ nd' = [nd EXCEPT ![n].timeoutPassed = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-29  "the remaining jobs' tokens were cancelled and the release of their leases was attempted"
-\* (jobs REQ-140, A-7). The release is a store write: it lands only if the store is reachable; a failed
-\* release is left to lease expiry (jobs REQ-132), outside this model.
+\* @req REQ-29  "the remaining jobs' tokens were cancelled and the lease releases that jobs REQ-140 calls for
+\* were attempted" (jobs REQ-139, REQ-140, A-7). REQ-140 releases only jobs whose timeout token was not
+\* signalled; a timed-out job keeps its lease. The release is a store write: it lands only if the store is
+\* reachable; a failed release is left to lease expiry (jobs REQ-132), outside this model.
 CancelAndRelease(n) ==
   /\ nd[n].st = "Draining"
-  /\ nd[n].timeoutPassed
-  /\ nd[n].inFlight > 0
-  /\ nd' = [nd EXCEPT ![n].released = IF Reach(n) THEN @ + nd[n].inFlight ELSE @, ![n].inFlight = 0]
+  /\ nd[n].timeoutPassed /\ ~nd[n].cancelDone
+  /\ nd[n].inFlight + nd[n].timedOut > 0
+  /\ nd' = [nd EXCEPT ![n].released = IF Reach(n) THEN @ + nd[n].inFlight ELSE @,
+                      ![n].leftToExpiry = IF Reach(n) THEN @ ELSE @ + nd[n].inFlight,
+                      ![n].inFlight = 0, ![n].cancelDone = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-29  Draining, every in-flight job finished (or timed out, cancelled, release attempted) -> Stopped.
+\* @req REQ-29  While draining, "when every in-flight job has finished, or ShutdownTimeout has passed, the
+\* remaining jobs' tokens were cancelled and the [REQ-140] lease releases were attempted" -> Stopped.
+\* TimedOutCounts decides whether a timed-out handler that has not settled is an in-flight job.
+AllFinished(n) == nd[n].inFlight = 0 /\ (TimedOutCounts => nd[n].timedOut = 0)
 StopNode(n) ==
   /\ nd[n].st = "Draining"
-  /\ nd[n].inFlight = 0
-  /\ nd' = [nd EXCEPT ![n].st = "Stopped", ![n].workerActive = FALSE, ![n].notifActive = FALSE]
+  /\ AllFinished(n) \/ (nd[n].timeoutPassed /\ nd[n].cancelDone)
+  /\ nd' = [nd EXCEPT ![n].st = "Stopped", ![n].workerActive = FALSE, ![n].notifActive = FALSE,
+                      ![n].stopInGrace = ~nd[n].timeoutPassed /\ nd[n].timedOut > 0,
+                      ![n].leftToExpiry = @ + nd[n].timedOut, ![n].timedOut = 0]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
 \* ------------------------------------------------------------------ health
@@ -383,10 +450,12 @@ Archive(n) ==
 
 NodeStep(n) ==
   \/ HostStarts(n) \/ ValidateOptions(n) \/ ValidationFails(n)
-  \/ NoStoreChecksPass(n) \/ NoStoreCheckFails(n) \/ StoreChecksPass(n) \/ StoreCheckFails(n)
+  \/ NoStoreChecksPass(n) \/ NoStoreCheckFails(n) \/ ConnectStore(n) \/ ConnectCheckFails(n)
+  \/ StoreChecksPass(n) \/ StoreCheckFails(n)
   \/ SchemaTooOld(n) \/ SchemaTooNew(n)
   \/ AcquireMigrationLock(n) \/ Migrate(n) \/ ReconcileRecurring(n)
-  \/ MarkRunning(n) \/ Claim(n) \/ JobFinishes(n) \/ HostStops(n) \/ TimeoutPasses(n)
+  \/ MarkRunning(n) \/ Claim(n) \/ JobFinishes(n) \/ JobTimesOut(n) \/ TimedOutSettles(n)
+  \/ HostStops(n) \/ TimeoutPasses(n)
   \/ CancelAndRelease(n) \/ StopNode(n) \/ HealthCheck(n)
   \/ Stall(n) \/ Unstall(n) \/ ToggleDegraded(n) \/ Archive(n)
 
@@ -478,9 +547,20 @@ Chk_ReconciledBeforeRunning ==
 \* shared store first (migrate or reconcile).
 Chk_NoStoreWriteBeforeOtherChecks == \A n \in Nodes : ~nd[n].otherBad
 
-\* A-22 from REQ-12 with REQ-23/REQ-32: the startup checks that read the store (recurring REQ-236 reads the
-\* stored recurring jobs) run only on a schema the node accepts, i.e. one this library version can read.
-Chk_StoreChecksOnAcceptedSchema == \A n \in Nodes : ~nd[n].storeCheckBad
+\* A-22 retired: recurring REQ-236 now says what it reads on an unmigrated store (name and origin only;
+\* none where there is no Bellhop schema), so run 3's Chk_StoreChecksOnAcceptedSchema is gone.
+\* Trap (expected violated): a node started on a new database (no Bellhop schema) migrates and runs.
+Chk_NewDatabaseNotRunning == ~(\E n \in Nodes : nd[n].st = "Running" /\ nd[n].checkedEmpty)
+
+\* A-25 from REQ-12 (run 3 F-2): a node whose Redis connection checks fail never checks the schema, reads
+\* stored data, migrates or reconciles; it fails the start under REQ-502/REQ-505, not REQ-23/REQ-43.
+Chk_ConnectChecksFirst ==
+  \A n \in Nodes : (cfg[n].conf /\ cfg[n].ok = "failConnect") =>
+                     (~nd[n].connected /\ ~nd[n].storeChecked /\ ~nd[n].reconciled)
+
+\* A-24 from REQ-29 with REQ-28 and jobs REQ-138: a node does not stop before ShutdownTimeout while a
+\* timed-out handler has not settled under jobs REQ-138/REQ-186.
+Chk_NoStopInGraceBeforeTimeout == \A n \in Nodes : ~nd[n].stopInGrace
 
 \* A-14 from SCN-1 "exactly one warning": the in-memory warning is logged at most once per start.
 Chk_OneMemoryWarning == \A n \in Nodes : nd[n].memWarnings <= 1
@@ -505,7 +585,8 @@ Init_SCN4 ==
   /\ schema \in InitSchemaVals /\ \A n \in Nodes : schema = cfg[n].exp
   /\ reachable = TRUE /\ lock = NULL /\ fewAlive = FALSE
   /\ nd = [n \in Nodes |-> [Fresh EXCEPT !.st = "Running", !.validated = TRUE, !.workerActive = TRUE,
-                                         !.prechecked = TRUE, !.storeChecked = TRUE, !.reconciled = TRUE,
+                                         !.prechecked = TRUE, !.connected = TRUE, !.storeChecked = TRUE,
+                                         !.reconciled = TRUE,
                                          !.inFlight = 2,
                                          !.claimedEver = TRUE, !.io = TRUE, !.summaryLogged = TRUE]]
 Spec_SCN4 == Init_SCN4 /\ [][Next]_vars
