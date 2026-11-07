@@ -6,6 +6,7 @@
 # The last value is RerouteOn: jobs REQ-125 (Unroutable -> Enqueued) is explored only in the *R sets,
 # so that the run-1 overlap fixes and the Unroutable rules (REQ-239, REQ-240) are checked separately.
 # Run 3: REQ-240 is a requirement now, so the run-2 FixCancelUnroutable switch is gone.
+# Run 4: MISALL is MAIN with all three misfire policies, for REQ-242's missed-instant record.
 consts() {
   case $1 in
     MAIN)   set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue"}' '{"RunOnce", "Skip"}' '{"Orphan"}' FALSE ;;
@@ -19,6 +20,7 @@ consts() {
     PROBE)  set -- "{j1}" "{o1}" "{a}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
     QUEUE1R) set -- "{j1}" "{o1, o2, o3}" "{a}" '{"v1"}' "{}" "{}" "{}" "{}" 1 '{"Queue"}' '{"RunOnce"}' '{"Orphan"}' TRUE ;;
     ALLOW3) set -- "{j1}" "{o1, o2, o3}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Allow", "CancelPrevious"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
+    MISALL) set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue"}' '{"RunOnce", "Skip", "RunAll"}' '{"Orphan"}' FALSE ;;
     SETTLE3) set -- "{j1}" "{o1}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{j1}" "{j1}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
   esac
   printf 'CONSTANTS\n  Names = %s\n  OccIds = %s\n  Nodes = %s\n  Releases = %s\n  DeclV1 = %s\n  DeclV2 = %s\n  DeclV3 = %s\n  Override = %s\n  MaxQueued = %s\n  OverlapPolicies = %s\n  MisfirePolicies = %s\n  OrphanPolicies = %s\n  RerouteOn = %s\n  NULL = NULL\n' "$@"
@@ -35,17 +37,18 @@ V='expected VIOLATED; run with --stop-at-first, the trace is the example.'
 P='Probe (modeling aid, not a requirement):'
 R='regression check for a run-1 finding; expected to hold.'
 R2='regression check for a run-2 finding; expected to hold.'
-MAINCHK="TypeInv Inv_NoScheduleWhilePaused Inv_NoScheduleInMaintenance Inv_MaxQueued Scn_SecondCasImpossible Prop_NoScheduledAdvanceInMaintenance Prop_PauseOrphanRemoveSkipsWaiting Prop_SkipOnlyWhenInTheWay"
+MAINCHK="TypeInv Inv_NoScheduleWhilePaused Inv_NoScheduleInMaintenance Inv_MaxQueued Scn_SecondCasImpossible Prop_NoScheduledAdvanceInMaintenance Prop_PauseOrphanRemoveSkipsWaiting Prop_SkipOnlyWhenInTheWay Prop_MissRecordOnlyByMissedTrigger Prop_MissedTriggerRecordsOnce"
 cfg Recurring.cfg               MAIN   "Main run: triggering, misfire, maintenance, overlap with 2 slots; $H" $MAINCHK Inv_NoOverlapProcessing
 cfg Recurring_MainR.cfg         MAINR  "Main run with jobs REQ-125 explored (REQ-240 makes INV-204 checkable here too); $H" $MAINCHK Inv_NoOverlapProcessing
+cfg Recurring_Misfire.cfg       MISALL "REQ-242 missed-instant record under all three misfire policies, plus the main checks; $H" $MAINCHK Inv_NoOverlapProcessing
 cfg Recurring_Defs.cfg          DEFS   "Definitions and reconciliation, no occurrence slots; $H" TypeInv Scn_CodeJobNotEditable Scn_CodeJobNotRemovable Scn_NoOrphanWhileDeclared Scn_StoredNameCannotBeAdded Scn_RuntimeNameBlocksStart Prop_PauseOrphanRemoveSkipsWaiting
 cfg Recurring_OverlapQueue.cfg  QUEUE1 "Overlap Queue(1), 3 slots; $H" TypeInv Inv_MaxQueued Prop_PauseOrphanRemoveSkipsWaiting Prop_SkipOnlyWhenInTheWay
 cfg Recurring_OverlapQueue2.cfg QUEUE2 "Overlap Queue(2), 3 slots; $H" TypeInv Inv_MaxQueued Prop_SkipOnlyWhenInTheWay
 cfg Recurring_OverlapAll.cfg    ALL    "Overlap, all four policies, 2 slots; $H" TypeInv Inv_MaxQueued Inv_NoOverlapProcessing Prop_SkipOnlyWhenInTheWay
 cfg Recurring_F_RunningHandlers.cfg MAIN   "REQ-238 (info, run-1 F-3): an abandoned or lease-lost handler still runs beside the next job; $V" Inv_NoOverlapRunning
 cfg Recurring_F_WaitingRace.cfg     QUEUE1 "Run-1 F-1, INV-204 Queue(1) race; $R" Inv_NoOverlapProcessing
-cfg Recurring_F_RerouteOverlap.cfg  ALLR   "Run-2 F-1: INV-204 and the REQ-239 skip rule with jobs REQ-125 and REQ-240, all four policies; $R2" Inv_NoOverlapProcessing Prop_SkipOnlyWhenInTheWay
-cfg Recurring_F_RerouteQueue.cfg    QUEUE1R "Run-2 F-1: INV-204, REQ-233, REQ-237 and the REQ-239 skip rule with jobs REQ-125 and REQ-240, Queue(1), 3 slots; $R2" TypeInv Inv_MaxQueued Inv_NoOverlapProcessing Prop_PauseOrphanRemoveSkipsWaiting Prop_SkipOnlyWhenInTheWay
+cfg Recurring_F_RerouteOverlap.cfg  ALLR   "Run-2 F-1: INV-204 and the REQ-239 skip rule with jobs REQ-125 and REQ-240, all four policies; $R2" Inv_NoOverlapProcessing Prop_SkipOnlyWhenInTheWay Note240_OneUnroutableSkipQueue
+cfg Recurring_F_RerouteQueue.cfg    QUEUE1R "Run-2 F-1: INV-204, REQ-233, REQ-237 and the REQ-239 skip rule with jobs REQ-125 and REQ-240, Queue(1), 3 slots; $R2" TypeInv Inv_MaxQueued Inv_NoOverlapProcessing Prop_PauseOrphanRemoveSkipsWaiting Prop_SkipOnlyWhenInTheWay Note240_OneUnroutableSkipQueue
 cfg Recurring_P_QueueTwoWaiters.cfg QUEUE2 "Run-1 F-2: $P Queue(2) newer waiting occurrence beside an older unfinished one; $R" Probe_NewerWaiterStartsBesideOlder Inv_NoOverlapProcessing
 cfg Recurring_P_StaleDefinition.cfg PROBE  "Run-1 F-5: $P restored orphan keeps a stale definition; $R" Probe_StaleDefinitionAfterRestore
 cfg Recurring_P_RuntimeTakenOver.cfg PROBE "Run-1 F-6: $P runtime job rewritten by code; $R" Probe_RuntimeJobTakenOverByCode
@@ -55,3 +58,11 @@ cfg Recurring_Liv_Settles.cfg       PROBE2 "Run-2 F-2: REQ-241 settling under we
 cfg Recurring_Liv_Settles3.cfg      SETTLE3 "Run-2 F-2: REQ-241 settling, two nodes on three releases, runtime override allowed; $R2" TypeInv Prop_StaleOnlyWhenNodeStops Liv_DefinitionSettles
 cfg Recurring_P_Req225Unroutable.cfg ALLOW3 "Run 3 (A-18): $P a REQ-225 start (Allow/CancelPrevious) can meet an earlier Unroutable job; $V" Probe_Req225StartMeetsUnroutable
 cfg Recurring_P_TriggerNowSuperseded.cfg MAIN "Run 3: $P REQ-240 cancels an Unroutable trigger-now run when a scheduled occurrence starts; $V" ProbeAct_TriggerNowNeverSuperseded
+cfg Recurring_P_OneUnroutable.cfg   ALL    "Run 4: $P REQ-240's notes say a recurring job never holds two Unroutable jobs; all four policies; $V" Probe_OneUnroutablePerJob
+cfg Recurring_P_OverdueDropped.cfg  PROBE  "Run 4: $P overdue instants of an active job leave the schedule without a trigger (REQ-204 schedule change), so REQ-242 writes no record; $V" ProbeAct_OverdueLeavesOnlyByTrigger
+cfg Recurring_P_CatchUpSkipped.cfg  MAIN   "Run 4: $P a RunOnce catch-up occurrence recorded by REQ-242 is skipped by the overlap policy; $V" ProbeAct_CatchUpNeverSkipped
+# Run 4: the 3-slot Queue cfgs check nothing about REQ-242, so they use VIEW ViewNoRec (A-22) to stay at run-3 size.
+for f in Recurring_OverlapQueue.cfg Recurring_OverlapQueue2.cfg Recurring_F_WaitingRace.cfg Recurring_F_RerouteQueue.cfg Recurring_P_QueueTwoWaiters.cfg; do
+  printf 'VIEW ViewNoRec
+' >> $f
+done

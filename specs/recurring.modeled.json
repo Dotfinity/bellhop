@@ -1,7 +1,7 @@
 {
   "module": "recurring",
-  "specHash": "77018f6c8a5075edb339db2f3441e69eca2ac5114a1f29b88506a909a89ec473",
-  "generatedAt": "2026-11-06T21:12:21Z",
+  "specHash": "5c02192f98626fb02a908c6263bc6066f651184a484a85d701eb927a5b0b1779",
+  "generatedAt": "2026-11-07T18:27:41Z",
   "model": "model/recurring/Recurring.tla",
   "items": {
     "REQ-201": {
@@ -165,9 +165,9 @@
       "note": "same action as REQ-221"
     },
     "REQ-236": {
-      "hash": "c01b9fc5273d890bcc590c94178ca50333183d27abb349222d24bd87ec84691d",
+      "hash": "2aaed2c130a345978c61c57e49dab8789e3dd3f715892637b3bc64eda0133a94",
       "reviewed": false,
-      "note": "NodeStart guard; 'fail the host's start' abstracted to the node staying down (A-16); configuration-defined jobs not modeled (A-14). Run 3: wording change only, re-checked in Defs (Scn_RuntimeNameBlocksStart holds)"
+      "note": "NodeStart guard on stored origin only (A-14, A-16); run 4: the new 'name and origin only' and 'none stored without a schema' wording matches the model's initial store (A-24); Defs passes 44,552 states"
     },
     "REQ-237": {
       "hash": "ad976cd839222c75ddd3156ed51b4d38c91b6945d1a403bb56fd5931bbfae600",
@@ -180,14 +180,19 @@
       "note": "DoneForOverlap; with jobs REQ-125 and REQ-240, INV-204 holds (F_RerouteOverlap, F_RerouteQueue, MainR)"
     },
     "REQ-240": {
-      "hash": "c1e457de792c62f9bd688f8e3aaf1ead5fa7965ba232fda6daa563109df7c1a5",
+      "hash": "3b7e380eb2a6cf7228ada94454344a77fd95f6e3b2a9e7cc912f6778ee5e7f47",
       "reviewed": false,
-      "note": "StartJob / CancelPrevious branch: earlier Unroutable jobs cancelled in the start step, on every start (REQ-221, REQ-224, REQ-225; A-18, run-3 F-1); reason Superseded not modeled"
+      "note": "applied to every start (REQ-221, REQ-224, REQ-225), confirmed by the owner (run-3 F-1, A-18); INV-204 and the notes' one-Unroutable claim hold for Skip/Queue (653,248 and 7.4M states); the claim fails under Allow/CancelPrevious (run-4 F-3); trigger-now superseded as accepted (run-3 F-2)"
     },
     "REQ-241": {
       "hash": "359c92303bfac13c34e9c67cad41f49eb2efb4c92cb1d173c67a612c16f00f2e",
       "reviewed": false,
       "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check)"
+    },
+    "REQ-242": {
+      "hash": "b1b25065f578d3d2eabd1656e9c5d215b8c7e83f07fcdf931e562e4694b3ee72",
+      "reviewed": false,
+      "note": "missRec, written only in the Trigger step (same CAS, A-2) when an instant was missed (A-23); count only, content and retention not modeled (A-21); both properties pass under all three misfire policies (722,628 states); see run-4 F-1 (drops without a trigger) and F-2 (catch-up skipped)"
     },
     "INV-206": {
       "hash": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",
