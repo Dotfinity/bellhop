@@ -1,172 +1,187 @@
 # Findings: Bellhop notifications, HTTP jobs, outbound HTTP and the outbox
 
-<!-- refiner-findings v1 | module: integrations | specHash: 8d15657c8cd56fbaef557cb0f68bc07fc82d84921fd14b0a0ec8a1f2a945affe | run: 2026-11-06 | previous: model/integrations/previous.findings.md (run 2, specHash 3b92b190e27a) -->
+<!-- refiner-findings v1 | module: integrations | specHash: 138efb1f8daa4ba9b02b768d3a815d1b75a018522437d5962b545f588738c03f | run: 2026-11-07 | previous: model/integrations/previous.findings.md (run 3, specHash 8d15657c8cd5) -->
 
-**Run:** 2026-11-06 (run 3, from `model/integrations/handoff.json`: INV-412 added, REQ-434 modified, SCN-406 added, nothing impacted) · **Requirements file:** `specs/integrations.json` (specHash `8d15657c8cd5`) · **Models:** `model/integrations/IntegrationsAlerts.tla` (INV-412, SCN-406), `IntegrationsAlertEvents.tla` (new), `IntegrationsHttp.tla` (REQ-434); `IntegrationsNotifications.tla` and `IntegrationsOutbox.tla` byte-for-byte unchanged · **TLC:** 2.19, Java 25 · **Result:** 3 findings: 0 contradictions · 1 gap · 0 unprovable · 2 ambiguities · 0 modeling notes. All 3 run-2 findings are closed: F-14 and F-15 resolved, F-16 accepted by the owner.
+**Run:** 2026-11-07 (run 4, from `model/integrations/handoff.json`: INV-412 modified, INV-413 added, NotificationRule modified (`name`), REQ-403 modified (mentions recurring `missedInstants`); 14 items impacted through NotificationRule) · **Requirements file:** `specs/integrations.json` (specHash `138efb1f8daa`) · **Models:** `model/integrations/IntegrationsAlertEvents.tla` (INV-412, INV-413, recurring REQ-242; regenerated), `IntegrationsAlerts.tla` (INV-413 and the store writes of INV-412/INV-413 across a lease handover; extended); `IntegrationsNotifications.tla`, `IntegrationsHttp.tla` and `IntegrationsOutbox.tla` byte-for-byte unchanged, rerun for the impacted items · **TLC:** 2.19, Java 25 · **Result:** 3 findings: 0 contradictions · 1 gap · 0 unprovable · 2 ambiguities · 0 modeling notes. All 3 run-3 findings are resolved.
 
-Every property ran in its own TLC run with `--stop-at-first --workers 2`, and each run was killed after 170 s if it had not finished (none needed it). Deadlock checking was a separate `TypeInv`-only run wherever a deadlock would be a finding. No run threw a TLC exception, and no run timed out. `model/integrations/run_all.py` reruns everything (see *Reproduce*). The liveness traces below are the ones TLC printed. They are not always the shortest, so the prose keeps only the steps that matter.
+Every property ran in its own TLC run with `--stop-at-first --workers 2`, and each run was killed after 170 s if it had not finished. Deadlock checking was a separate `TypeInv`-only run wherever a deadlock would be a finding. No run threw a TLC exception. `model/integrations/run_all.py` reruns everything (see *Reproduce*). The prose keeps only the steps of each trace that matter.
 
 | Configuration | What it checks | Result | Distinct states |
 |---|---|---|---|
-| `IntegrationsNotifications.cfg` | cooldown rules (INV-409, INV-410, REQ-433); cap 1 | not rerun: model unchanged and nothing in it is in the handoff. Run 2: INV-400 ✓, INV-407 ✓, deadlock ✓ | 176,927 (run 2) |
-| `…_cap2.cfg` | cap 2, 4 delivery slots | not rerun (as above). Run 2: INV-400 ✓, INV-407 ✓, deadlock ✓ | 7,683,747 (run 2) |
-| `…_SCN400.cfg` | SCN-400 reachable | not rerun (as above). Run 2: trap violated as expected ✓ | 30 (run 2) |
-| `IntegrationsAlerts.cfg` (new) | lease + INV-412 (events found in the store, marked handled in the delivery's write) | INV-412 one delivery per event ✓, INV-412 every event alerted ✓, SCN-405 ✓ | 445 |
-| `…_noInv412Replay.cfg` | counterfactual: INV-412 dropped, each node remembers what it handled | one delivery per event ✗ (7 steps), as expected: INV-412 carries this | 1,214 |
-| `…_noInv412FromNow.cfg` | counterfactual: INV-412 dropped, a new holder starts from now | every event alerted ✗ (stuttering, 9 steps), as expected | 954 |
+| `IntegrationsAlertEvents.cfg` (regenerated) | as written: INV-412 per recorded change, INV-413 by name, REQ-242 miss records; one job dead-lettered, requeued and dead-lettered again; two missed instants | one delivery per event ✓, every dead-letter alerted ✓, **every missed instant alerted ✓ (was ✗)**, no alert for an event before the rule ✓ | 230 |
+| `…_noReq242.cfg` (new) | counterfactual: REQ-242 dropped, only the last outcome | every missed instant alerted ✗ (stuttering, 6 steps), as expected: REQ-242 carries this | 241 |
+| `…_perJob.cfg` | counterfactual: handled mark on the job | every dead-letter alerted ✗ (stuttering, 6 steps), as expected: INV-412's where-clause rules this out | 192 |
+| `…_newRule.cfg` (replaces `…_newRuleAdded`) | INV-413: rule added after events happened | all ✓ | 509 |
+| `…_noInv413.cfg` (replaces `…_newRuleStoreStart`) | counterfactual: INV-413 dropped | no alert for an event before the rule ✗ (5 steps), as expected | 1,488 |
+| `…_readd.cfg` (new) | rule removed and added back, marks kept by name (INV-413 notes) | one delivery ✓, both liveness ✓; no alert for an event while removed ✗ (7 steps): accepted, see *Accepted* | 2,112 |
+| `…_editTrigger.cfg` (new) | rule's trigger edited, name kept | **no alert for an event before the rule watched it ✗ (5 steps)**: F-22 | 931 |
+| `…_editTriggerKeyed.cfg` (new) | F-22 option 1: INV-413 keyed by name and trigger settings | all ✓ | 1,240 |
+| `…_newSystem.cfg` (new) | rule in code from the start, store records no rule name yet | one delivery ✓; **every event while the rule is configured alerted ✗ (stuttering, 7 steps)**: F-21 | 230 |
+| `…_newSystemCatchUp.cfg` (new) | F-21 option 2: a store with no rule names starts every rule at the beginning | all ✓ | 480 |
+| `IntegrationsAlerts.cfg` | lease + INV-412, rule already recorded, every write one step | INV-412 one delivery per event ✓, every event alerted ✓, SCN-405 ✓ | 445 |
+| `…_newRule.cfg` (new) | INV-413 across a handover, every write one conditional step | all ✓ | 984 |
+| `…_newRuleLiteral.cfg` (new) | INV-413's write as written: read, then an unchecked write | one delivery ✓, SCN-405 ✓, **every event after the rule's start alerted ✗ (stuttering, 12 steps)**: F-20 | 1,887 |
+| `…_newRuleFenced.cfg` (new) | F-20 option 3: INV-413's write checks the lease only | one delivery ✓, SCN-405 ✓, **every event alerted ✗ (stuttering, 14 steps)** | 1,700 |
+| `…_staleWrite.cfg` (new) | INV-412's write as written: read, then a write that checks the lease only | **one delivery per event ✗ (12 steps)**: F-20; every event alerted ✓, SCN-405 ✓ | 1,029 |
+| `…_noInv412Replay.cfg` | counterfactual: INV-412 dropped, node memory replays | one delivery per event ✗ (7 steps), as expected | 1,214 |
+| `…_noInv412FromNow.cfg` | counterfactual: INV-412 dropped, node memory from now | every event alerted ✗ (stuttering, 8 steps), as expected | 954 |
 | `…_SCN404.cfg` | SCN-404 reachable | trap violated as expected ✓ (5 steps) | 13 |
-| `…_SCN406.cfg` (new) | SCN-406 reachable, from its given | trap violated as expected ✓ (3 steps) | 19 |
-| `IntegrationsAlertEvents.cfg` (new) | what the store records per event; rule exists from the start; a missed instant's only store trace is the last outcome | one delivery per event ✓, every dead-letter alerted ✓, **every missed instant alerted ✗ (stuttering, 7 steps)** | 91 |
-| `…_missDurable.cfg` (new) | F-17 option 1: missed instants recorded in the store | all ✓ | 91 |
-| `…_newRuleStoreStart.cfg` (new) | rule added later, catches up on the store | **no alert for an event before the rule ✗ (4 steps)**, others ✓ | 480 |
-| `…_newRuleAdded.cfg` (new) | F-18 option 1: rule added later, starts at the store's present | all ✓ | 230 |
-| `…_perJob.cfg` (new) | handled mark kept on the job; the job is dead-lettered twice | **every dead-letter alerted ✗ (stuttering, 6 steps)**, others ✓ | 78 |
-| `IntegrationsHttp.cfg` | main | INV-401 ✓, INV-402 ✓, INV-403 ✓, INV-404 ✓, SCN-401 ✓, deadlock ✓, **redirect probe ✓ (was ✗)**; run-1 check `Chk_NoPayloadSecretAtAll` ✗ (4 steps, expected, accepted in INV-404's notes) | 5,392 |
-| `…_wildcard.cfg` | private host allowed only through a wildcard | INV-401 ✓, INV-402 ✓, deadlock ✓ | 748 |
-| `…_transport.cfg` | allowed host only, MaxRedirects 1 | INV-401 ✓, INV-403 ✓, redirect probe ✓ (added), deadlock ✓ | 2,313 |
-| `…_SCN402.cfg` | SCN-402 reachable | trap violated as expected ✓ (5 steps) | 38 |
-| `IntegrationsOutbox.cfg` | REQ-432 + REQ-435 + REQ-436, one crash, one lease pause | INV-406 ✓, LIV-400 ✓ | 199 |
-| `…_noRetentionAssumption.cfg` | REQ-436 dropped | INV-406 ✗ (10 steps): the assumption carries the guarantee, as REQ-436 says | 68 |
-| `…_operatorDelete.cfg` | an operator deletes the job in the crash window | INV-406 ✗ (9 steps): accepted (REQ-436 notes, run-2 F-16) | 64 |
-| `…_operatorDeletePause.cfg` (new) | the same, with a lease pause instead of a crash | INV-406 ✗ (9 steps): same effect, see *Accepted* | 84 |
-| `…_SCN403.cfg` | SCN-403 reachable | trap violated as expected ✓ (9 steps) | 58 |
+| `…_SCN406.cfg` | SCN-406 reachable, from its given | trap violated as expected ✓ (3 steps) | 21 |
+| `IntegrationsNotifications.cfg` | cooldown rules (INV-409, INV-410, REQ-433); cap 1; rerun for the items impacted through NotificationRule | INV-400 ✓, INV-407 ✓, failed-then-silent probe ✓, deadlock ✓ (unchanged) | 176,927 |
+| `…_cap2.cfg` | cap 2, 4 delivery slots; rerun | INV-400 ✓, INV-407 ✓, deadlock ✓ (unchanged) | 7,683,747 |
+| `…_SCN400.cfg` | SCN-400 reachable; rerun | trap violated as expected ✓ (4 steps) | 22 |
+| `IntegrationsHttp.cfg` | main; regression rerun, model unchanged | INV-401 ✓, INV-402 ✓, INV-403 ✓, INV-404 ✓, SCN-401 ✓, redirect probe ✓, deadlock ✓; `Chk_NoPayloadSecretAtAll` ✗ (4 steps, accepted) | 5,392 |
+| `…_wildcard.cfg` / `…_transport.cfg` / `…_SCN402.cfg` | regression rerun | all as in run 3 ✓; SCN-402 trap violated as expected (5 steps) | 748 / 2,313 / 41 |
+| `IntegrationsOutbox.cfg` and its four variants | regression rerun, model unchanged | INV-406 ✓, LIV-400 ✓; `…_noRetentionAssumption` ✗ (10 steps, expected), `…_operatorDelete` and `…_operatorDeletePause` ✗ (9 steps each, accepted); SCN-403 trap violated as expected (9 steps) | 199 / 68 / 66 / 89 / 57 |
 
 ## Changes since last run
 
 | Finding | Status | Fingerprint |
 |---|---|---|
-| F-14 | resolved | contradiction · Probe_RedirectOneRule · INV-403,REQ-416,REQ-421,REQ-422,REQ-434 |
-| F-15 | resolved | ambiguity · Chk_OneDeliveryPerEvent · INV-411,REQ-400,REQ-401,REQ-403,REQ-438 |
-| F-16 | resolved | gap · Inv_OneJobPerRow/operatorDelete · INV-406,REQ-432,REQ-436,jobs.REQ-144 |
-| F-17 | new | gap · Liv_MissedAlerted · INV-412,REQ-403,recurring.REQ-217,recurring.REQ-218,recurring.REQ-220,recurring.REQ-231 |
-| F-18 | new | ambiguity · Chk_NoAlertForEventBeforeRule · INV-412,REQ-400,REQ-401,REQ-403,REQ-410 |
-| F-19 | new | ambiguity · Liv_DeadLetterAlerted/perJob · INV-412,REQ-400,REQ-401,jobs.REQ-141,jobs.REQ-143 |
+| F-17 | resolved | gap · Liv_MissedAlerted · INV-412,REQ-403,recurring.REQ-217,recurring.REQ-218,recurring.REQ-220,recurring.REQ-231 |
+| F-18 | resolved | ambiguity · Chk_NoAlertForEventBeforeRule · INV-412,REQ-400,REQ-401,REQ-403,REQ-410 |
+| F-19 | resolved | ambiguity · Liv_DeadLetterAlerted/perJob · INV-412,REQ-400,REQ-401,jobs.REQ-141,jobs.REQ-143 |
+| F-20 | new | gap · Liv_EventAlerted/newRuleLiteral · INV-411,INV-412,INV-413,REQ-438 |
+| F-21 | new | ambiguity · Chk_ConfiguredEventAlerted/newSystem · INV-412,INV-413 |
+| F-22 | new | ambiguity · Chk_NoAlertForEventBeforeRule/editTrigger · INV-412,INV-413,REQ-401,REQ-403,REQ-410 |
 
 3 resolved, 3 new, 0 still open
 
-How each run-2 finding was re-checked:
+How each run-3 finding was re-checked:
 
-| Run 2 | Evidence in run 3 |
+| Run 3 | Evidence in run 4 |
 |---|---|
-| F-14 (unfollowed redirect: retry or dead-letter) | REQ-434 no longer lists the redirect rules, so the model's `RedirectRefused` step is gone. `Probe_RedirectOneRule` (an unfollowed redirect has exactly one way on, as a response, and REQ-434 does not apply to it) now holds in `IntegrationsHttp.cfg` (5,392 states, MaxRedirects 0) and in `…_transport.cfg` (2,313 states, MaxRedirects 1, a redirect to another host or past the limit). The deadlock runs pass in all three HTTP cfgs, so no job is left stuck. |
-| F-15 (edge events across a lease handover) | INV-412 is run 2's "storeCursor" reading. `Inv_OneDeliveryPerEvent` and `Liv_EventAlerted` hold in `IntegrationsAlerts.cfg` (445 states). SCN-406 is reachable (3 steps). Without INV-412, the two node-memory readings still fail (`…_noInv412Replay.cfg` duplicate, 7 steps; `…_noInv412FromNow.cfg` loss, 9 steps), so INV-412 is what carries the guarantee. INV-412 raises new questions about the events themselves: see F-17, F-18 and F-19. |
-| F-16 (operator delete in the relay crash window) | Accepted in REQ-436's notes. The same 9-step trace still appears (`…_operatorDelete.cfg`), and it is now listed under *Accepted*, not as a finding. |
+| F-17 (a missed occurrence has no lasting record) | Recurring REQ-242 writes one record per trigger in the compare-and-set that advances nextRunAt. `Liv_MissedAlerted` now holds in the main `IntegrationsAlertEvents.cfg` (230 states), with no handover and the next occurrence finishing before the holder looks. With REQ-242 dropped it fails again (`…_noReq242.cfg`, 6 steps). Across restarts and lease handovers, a REQ-242 record is one more event "the job store records", which is what `IntegrationsAlerts.cfg` checks: one delivery per event and every event alerted, with a crash, a restart and a lease lapse under a running holder (445 states). |
+| F-18 (where a rule added later starts) | INV-413. A rule added after events happened alerts none of them and every later one (`IntegrationsAlertEvents_newRule.cfg`, 509 states; across a handover, `IntegrationsAlerts_newRule.cfg`, 984 states, with each write one conditional step). Without INV-413 the old flood comes back (`…_noInv413.cfg`, 5 steps). Three edges of the new sentence are F-20, F-21 and F-22. |
+| F-19 (what one event is) | INV-412's where-clause. A job dead-lettered, requeued and dead-lettered again gets two deliveries, one per dead-letter (`IntegrationsAlertEvents.cfg`, 230 states). Keeping the mark on the job fails again (`…_perJob.cfg`, 6 steps). Duplicates are bounded as the notes say: `Inv_OneDeliveryPerEvent` holds per recorded change, so a job gets at most one delivery per rule per time it is dead-lettered, which is 1 plus the number of operator requeues. |
 
 ## Accepted (not findings)
 
-- **Operator delete during a relay crash window** (REQ-436 notes, run-2 F-16). `IntegrationsOutbox_operatorDelete.cfg`, `Inv_OneJobPerRow` ✗, 9 steps: n2 takes the relay lease and enqueues job o1 (REQ-435, REQ-432); an operator deletes o1 (jobs REQ-144); n2 crashes before deleting the row; n1 takes the lease and enqueues o1 again. This is the path REQ-436's notes describe.
-- **Same effect without a crash** (new probe, `IntegrationsOutbox_operatorDeletePause.cfg`, 9 steps): the relay that enqueued o1 is still running but misses its lease renewal (a long pause, A-11); n1 takes the lease and enqueues o1 again after the operator's delete. The window (at most LeaseDuration) and the consequence (one extra job, nothing lost) are the same as in the accepted case. Only the wording of the note differs: it says "has crashed". Not raised as a finding. If you want the note to be exact, write "has crashed or lost its relay lease".
-- **INV-404 covers three headers and URL user info only** (run-1 F-10, accepted in INV-404's notes). `Chk_NoPayloadSecretAtAll` ✗, 4 steps, as before.
+- **Removing and re-adding a rule alerts what happened while it was away** (INV-413 notes: "continues where it stopped and skips nothing"). `IntegrationsAlertEvents_readd.cfg`, `Chk_NoAlertForEventBeforeRule` ✗, 7 steps: d1 is dead-lettered; the holder first sees R and marks d1 (INV-413); R is removed (or the lease moves to a node of the previous version during a rolling deploy); d2 is dead-lettered; R comes back and d2 is alerted. This is what the notes ask for. The consequence to be aware of: a rule that is removed for weeks and then restored alerts the stored backlog of that period, capped by MaxDeliveriesPerCooldown plus a digest (INV-409, REQ-414). Both liveness properties hold (2,112 states).
+- **A renamed rule is a new rule** (INV-413 notes). It is a removal plus an addition, so it starts the first time the holder sees the new name (`…_newRule.cfg`). Events between the last evaluation under the old name and the first under the new one are alerted by neither.
+- **Operator delete during a relay crash window** (REQ-436 notes, run-2 F-16), and the same effect with a lease pause instead of a crash. `IntegrationsOutbox_operatorDelete.cfg` and `…_operatorDeletePause.cfg`, `Inv_OneJobPerRow` ✗, 9 steps each, unchanged.
+- **INV-404 covers three headers and URL user info only** (run-1 F-10). `Chk_NoPayloadSecretAtAll` ✗, 4 steps, unchanged.
 
 ## Summary
 | # | Kind | Severity | Requirements | One line |
 |---|---|---|---|---|
-| F-17 | gap | high | INV-412, REQ-403, recurring REQ-217, REQ-218, REQ-220, REQ-231 | INV-412 makes the alerts node find a missed occurrence in the job store, but nothing in the store records one for long, so a missed occurrence can go unalerted with no handover at all |
-| F-18 | ambiguity | medium | INV-412, REQ-400, REQ-401, REQ-403, REQ-410 | A rule added or renamed after events happened: INV-412 lets it alert every once-only event still stored (up to 30 days of dead-letters), or none of them |
-| F-19 | ambiguity | low | INV-412, REQ-400, REQ-401, jobs REQ-141, jobs REQ-143 | "An event that happens once": if the handled mark is kept on the job, a requeued job that is dead-lettered again, or reaches attempt N again, is never alerted |
+| F-20 | gap | high | INV-411, INV-412, INV-413, REQ-438 | A holder whose lease lapsed between reading and writing can still land its write: INV-413's write checks nothing and skips an event; INV-412's write checks only that the node holds the lease, and a node that took it back alerts an event twice |
+| F-21 | ambiguity | medium | INV-412, INV-413 | A rule starts at its first evaluation, not when it is configured: on a new system, events before the first alerts node takes the lease are never alerted, although INV-412's notes promise they are |
+| F-22 | ambiguity | medium | INV-412, INV-413, REQ-410, REQ-401, REQ-403 | INV-413 knows a rule by name only, so editing its trigger, threshold or tolerance alerts every stored event that now matches: the flood INV-413 was written to prevent |
 
 ---
 
-## F-17 · gap · high — A missed occurrence has no lasting record in the job store, so INV-412 cannot find it
-<!-- finding: gap | Liv_MissedAlerted | INV-412,REQ-403,recurring.REQ-217,recurring.REQ-218,recurring.REQ-220,recurring.REQ-231 -->
+## F-20 · gap · high — A write decided before the lease lapsed still lands
+<!-- finding: gap | Liv_EventAlerted/newRuleLiteral | INV-411,INV-412,INV-413,REQ-438 -->
 
 **Requirements involved**
-- INV-412: *Where a rule watches an event that happens once: … or a recurring occurrence missed or late (REQ-403), the system shall **find those events from what the job store records** and mark each one handled for that rule in the same store write that creates its delivery …* Its notes: *"Events that happen while no node holds the lease, or while no alerts node runs at all, are alerted when a holder next runs."*
-- REQ-403: *Where a rule watches recurring jobs, when a recurring job's occurrence is missed, starts later than the rule's tolerance after its due time, or has not started when the rule's tolerance after its due time has passed, the system shall create a delivery …* Its notes: *"Missed occurrences come from recurring REQ-220."*
-- recurring REQ-220: *When a recurring job is triggered after one or more due instants were missed, the system shall log how the missed instants were handled and why, and raise the recurring-missed event.* jobs REQ-169 raises such events *"on the node that made the transition"*, in memory, after the store write.
-- recurring REQ-218 (misfire Skip): *… create no occurrence for the missed instants … and advance nextRunAt to the next future occurrence.* REQ-217 (RunOnce, the default per REQ-201): *create a single occurrence for all missed instants …*
-- recurring REQ-231: *When an occurrence's job succeeds, is dead-lettered or is cancelled, or an occurrence is skipped, the system shall record that outcome as the recurring job's last outcome.*
+- INV-411: *The system shall evaluate notification rules, create their deliveries and send deliveries only on a running node that has the alerts registration and holds the notification lease, **checking the lease in the same store write that creates or updates the delivery**.*
+- INV-412: *… the system shall find those events from what the job store records and mark each one handled for that rule in the same store write that creates its delivery, so that a node that takes over the notification lease **neither alerts an event again nor skips one**.*
+- INV-413: *… when the notification lease holder evaluates a rule whose name the job store has no record of, the system shall record the rule's name in the store and mark every such event the store already records as handled for that rule, without creating deliveries for them.*
+- REQ-438: the lease is taken for LeaseDuration and renewed every HeartbeatInterval.
 
-**What happens** (TLC, `Liv_MissedAlerted`, `IntegrationsAlertEvents.cfg`, 7 steps ending in stuttering; one alerts node holds the lease throughout, there is no handover)
-1. Rule R watches recurring jobs (REQ-403), with a tolerance of 15 minutes. The hourly job `report` has misfire policy Skip.
-2. `report` is due at 03:00. The workers are restarting, and the trigger runs at 03:10, more than MisfireThreshold (60 s, recurring REQ-234) late. So 03:00 is missed. Skip creates no occurrence and moves nextRunAt to 04:00 (REQ-218). The last outcome becomes "skipped" (REQ-231). The miss is logged and the recurring-missed event is raised in memory on the worker (REQ-220, jobs REQ-169). That worker is not the lease holder, and only the holder may create a delivery (INV-411).
-3. The holder has not yet looked at R. No requirement says how soon after an event it must. In TLC's trace, the next step comes first; two dead-letters that also happen in the trace are alerted normally (REQ-400).
-4. The 04:00 occurrence runs on time and succeeds. The last outcome becomes "succeeded" (REQ-231).
-5. The holder now reads the store, as INV-412 requires. nextRunAt is 05:00 and the last outcome is "succeeded". **Nothing in the store says that 03:00 was missed, so the miss is never alerted.** The "has not started" branch of REQ-403 cannot catch it either: it reads the stored nextRunAt (REQ-403 notes), which moved past 03:00 at 03:10, before the 15-minute tolerance ran out.
+**What happens**
 
-With misfire **RunOnce, the default**, there is not even a "skipped" outcome. The trigger creates one ordinary occurrence for the missed instants (REQ-217), and no requirement records that the occurrence is a catch-up or which instants it covers. A miss that is detected between MisfireThreshold and the rule's tolerance therefore leaves no trace in the store at all, even when the holder never stops running.
+*INV-413's write* (TLC, `Liv_EventAlerted`, `IntegrationsAlerts_newRuleLiteral.cfg`, 12 steps ending in stuttering). Rule R has just been deployed, and the store has no record of it.
+1. a1 takes the notification lease (REQ-438). It evaluates R and finds no record of its name (INV-413), and starts its write.
+2. Job d2 is dead-lettered. It happened before R's start, so it is not owed an alert.
+3. a1 stalls (a long GC pause) past LeaseDuration. Its lease lapses, and a2 takes it (REQ-438).
+4. a2 evaluates R, finds no record either, and starts its own INV-413 write.
+5. a1 wakes up and its write lands: R is recorded, d2 is marked handled. INV-411 checks the lease only in writes that create or update a delivery, and this write creates none.
+6. Job d1 is dead-lettered. R is now recorded, so d1 is owed an alert (INV-412).
+7. a2's write lands: it marks every event the store records as handled, now including d1. **d1 is never alerted**, and a2 still holds the lease the whole time.
 
-With every missed instant recorded in the store (`…_missDurable.cfg`), every miss is alerted exactly once (91 states).
+Checking the lease in INV-413's write is not enough (`…_newRuleFenced.cfg`, 14 steps). a1 reads "no record" and stalls. a2 takes the lease and records R, and then d1 is dead-lettered. a2 crashes and its lease expires. a1 is still running, so it takes the lease back, and its old write now passes the lease check and marks d1.
 
-**Why** Before INV-412, REQ-403 got missed occurrences from REQ-220's in-memory event. INV-412 now requires the holder to find them in the store, but no recurring requirement writes them there. The last outcome is one field that the next outcome overwrites. It is enough only if the holder reads it before the next occurrence finishes, which is not the case for a job that runs every minute, or when no alerts node runs for one period. INV-412's notes promise to alert exactly those events when a holder comes back. Dead-letters and failed attempts do not have this problem, because the job's state history records each transition (jobs INV-116). A late start is also in the history, assuming the occurrence job keeps its due instant (`scheduledAt`).
+*INV-412's write* (TLC, `Inv_OneDeliveryPerEvent`, `IntegrationsAlerts_staleWrite.cfg`, 12 steps). R is long established.
+1. d1 is dead-lettered. a1 holds the lease, finds d1 unhandled for R, and starts the write that creates its delivery.
+2. a1 stalls past LeaseDuration, and a2 takes the lease. a2 finds d1 unhandled, creates its delivery and marks it handled (INV-412).
+3. a2 crashes and its lease expires. a1 takes the lease back (REQ-438).
+4. a1's write lands. It checks the lease, as INV-411 requires, and a1 does hold it again. **d1 gets a second delivery.**
 
-**Options**
-1. *(recommended)* **The trigger records the miss in the store.** A new recurring requirement: the same compare-and-set that advances nextRunAt (recurring REQ-216) also records the missed instants and how the misfire policy handled them, and that record is kept as long as a dead-lettered job (jobs REQ-104). INV-412 then finds it like any other event, and REQ-220's log line and in-memory event stay as they are. This is a recurring-module change.
-2. **Drop the "missed" branch from INV-412 and rely on "has not started".** Missed occurrences are alerted only when the tolerance passes before the trigger runs. Misses caught by the trigger earlier than that are not alerted. Write this in REQ-403's notes. It is cheaper, but a rule with a long tolerance then reports almost no misses.
-3. **Accept and document.** Missed-occurrence alerts are best effort: they are lost when the next occurrence finishes before the holder evaluates the rule, and always lost under RunOnce. This contradicts INV-412's notes, which would need to change.
+When every write succeeds only if what it read still holds, everything passes (`IntegrationsAlerts.cfg`, 445 states; `…_newRule.cfg`, 984 states).
 
-**Ready to apply (option 1)** (in `recurring.json`; the next free id there is REQ-242)
-```json
-{ "id": "REQ-242", "kind": "invariant", "status": "proposed", "strength": "must", "entity": "RecurringJob",
-  "ears": { "when": "a recurring job is triggered after one or more due instants were missed",
-    "shall": "record the missed instants and how the misfire policy handled them in the job store, in the same compare-and-set that advances nextRunAt, and keep that record for RetentionDeadLettered" },
-  "mentions": ["RecurringJob.nextRunAt", "RecurringJob.misfirePolicy"],
-  "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220"],
-  "rationale": "integrations INV-412 makes the notification lease holder find missed occurrences in the job store; the last outcome (REQ-231) is overwritten by the next one, and RunOnce leaves no trace of a miss.",
-  "notes": "refiner-model 2026-11-06 integrations run 3 F-17." }
-```
-and in `integrations.json`, REQ-403's notes: *"Missed occurrences are read from the store record of recurring REQ-242 (INV-412), not from REQ-220's in-memory event."*
-
----
-
-## F-18 · ambiguity · medium — Where does a rule added after events happened start?
-<!-- finding: ambiguity | Chk_NoAlertForEventBeforeRule | INV-412,REQ-400,REQ-401,REQ-403,REQ-410 -->
-
-**Requirements involved**
-- INV-412: *… shall find those events from what the job store records and mark each one handled **for that rule** in the same store write that creates its delivery …*
-- REQ-400: *Where a rule watches dead-lettering, when a job is dead-lettered, the system shall create a delivery for that rule with the job as subject.* (REQ-401 and REQ-403 have the same shape.)
-- REQ-410: *The system shall load rules from configuration and from code, use the code definition when a rule with the same name exists in both …* Rules are identified by name.
-- jobs REQ-104: dead-lettered jobs are kept 30 days by default, and with them their state history.
-
-**What happens** (TLC, `Chk_NoAlertForEventBeforeRule`, `IntegrationsAlertEvents_newRuleStoreStart.cfg`, 4 steps)
-1. Job d1 is dead-lettered while no rule watches dead-lettering (jobs REQ-131). It stays in the store with its history (jobs INV-116, REQ-104).
-2. A developer adds rule R, which watches dead-lettering, and deploys (REQ-410).
-3. The lease holder evaluates R (INV-411). It finds d1 in the store, with no handled mark for R, so (INV-412) **it creates a delivery for d1, a dead-letter from before R existed.** On a real store, that means every dead-letter of the last 30 days: MaxDeliveriesPerCooldown alerts plus a digest naming the rest (INV-409, REQ-413, REQ-414). Renaming a rule has the same effect, because the new name has no marks.
-
-The other reading, where a new rule's marks start at the store's present (`…_newRuleAdded.cfg`), never alerts an older event, and it still alerts every later one (230 states). Both readings fit INV-412's sentence. The where-clause of REQ-400 ("where a rule watches dead-lettering, when a job is dead-lettered") suggests the second, and INV-412's notes ("alerted when a holder next runs") suggest catching up. A catch-up flood on the first deploy and silence about old dead-letters are both possible, and the sentences do not say which one is intended.
-
-A related point: during a rolling deploy the lease can move between a node that has R and a node that does not. If R's marks were dropped whenever a holder without R ran, R would start again from the present each time and skip the events in between.
+**Why** INV-411's fence answers "does this node hold the lease now?". The question that matters is "is what this node read still true?". The two differ for a write that was decided before a lease lapse and lands after it, either because no one took the lease from the node or because the node took it back. INV-413's write is not covered by the fence at all. The jobs and recurring modules already answer the same question with a compare-and-set on the value that was read (recurring REQ-216 on nextRunAt). The notification writes are the only store writes in these modules that act on an earlier read without one. Severity is high because a reachable state breaks INV-412, a `must`. The window is narrow: a pause longer than LeaseDuration, during a new rule's first evaluation or an event's delivery.
 
 **Options**
-1. *(recommended)* **A rule starts at the store's present the first time its name is seen**, and its handled marks are kept by name from then on. Removing and re-adding a rule, or a rolling deploy, continues where it stopped. A renamed rule is a new rule. There is no flood on the first deploy, and no event is skipped once the rule exists.
-2. **A new rule catches up on everything still stored.** Document that the first deploy of a rule, or a rename, alerts up to MaxDeliveriesPerCooldown old events plus a digest.
-3. **Catch up a bounded window**, for example one rule cooldown back. This is a compromise, and it needs a number.
-
-**Ready to apply (option 1)**
-```json
-{ "id": "INV-412", "notes": "refiner-model 2026-11-06 run 2 F-15 (recommended option; …existing text kept…). Run 3 F-18 (recommended option): a rule whose name is seen for the first time starts with every event already in the store marked handled; its marks are kept by rule name, so removing and re-adding the rule, or a rolling deploy in which the lease moves between nodes with and without it, continues where it stopped. A renamed rule is a new rule." }
-```
-
----
-
-## F-19 · ambiguity · low — "An event that happens once" is not once per job
-<!-- finding: ambiguity | Liv_DeadLetterAlerted/perJob | INV-412,REQ-400,REQ-401,jobs.REQ-141,jobs.REQ-143 -->
-
-**Requirements involved**
-- INV-412: *Where a rule watches **an event that happens once**: a job dead-lettered (REQ-400), an attempt that makes the Nth failure (REQ-401) … shall … mark **each one** handled for that rule …* Its notes: *"How the store records events and the handled mark, for example a per-rule position in a store-assigned sequence of state changes, is an implementation choice."*
-- jobs REQ-141: *When an operator requeues a dead-lettered job …, the system shall enqueue the job again with its attempt number reset to zero …* (REQ-143 does the same for succeeded and cancelled jobs, keeping their history.)
-- REQ-401's notes: *"The count is the job's attempt number, so an operator requeue (jobs REQ-141) starts it again."*
-
-**What happens** (TLC, `Liv_DeadLetterAlerted`, `IntegrationsAlertEvents_perJob.cfg`, 6 steps ending in stuttering, with the handled mark kept on the job)
-1. Job j1 is dead-lettered (jobs REQ-131).
-2. An operator requeues j1 (jobs REQ-141), and it is dead-lettered again.
-3. The holder creates the delivery for the first dead-letter and marks j1 handled for R (INV-412).
-4. **The second dead-letter is never alerted**, because j1 is already marked. REQ-400 asks for a delivery each time a job is dead-lettered. The same happens with REQ-401: after the requeue the count starts again (REQ-401 notes), the Nth failure happens a second time, and a mark on the job hides it.
-
-With the mark kept per recorded state change (`IntegrationsAlertEvents.cfg`, the same two dead-letters of one job), both are alerted (91 states).
-
-**Why** "Happens once" describes the kind of trigger (an edge, as opposed to the state-based REQ-402, REQ-404 and REQ-405), but read literally it says each job is dead-lettered once. A flag on the job row is the simplest way to "mark it handled in the same store write", and the notes leave the choice open. Severity is low because REQ-400 and REQ-401's notes point to the intended reading.
-
-**Options**
-1. *(recommended)* **Say what one event is.** Each recorded state change (a dead-letter transition, a failed attempt, a missed or late due instant) is its own event, so a requeued job can produce new ones. Reword INV-412's where-clause.
-2. **One alert per job and kind, ever.** Keep the mark on the job, and document that a requeued job's later dead-letters and Nth failures are not alerted. This goes against REQ-401's notes.
+1. *(recommended)* **Make both writes conditional on what they read.** INV-412's write creates the delivery only if the event is still not marked handled for the rule. INV-413's write records the name only if the store still has no record of it, and it checks the lease like the other notification writes. A write that fails because the state moved on is dropped, and the next evaluation reads again. This uses the existing compare-and-set pattern and needs no new concept.
+2. **Fence with the lease term.** Every notification write carries the lease term it read under, and fails if the lease has been taken since, even by the same node. This fixes both traces, but it adds a term number to the notification lease, which no other lease in Bellhop has (REQ-435 relay, jobs REQ-164 cleanup).
+3. **Extend INV-411's lease check to INV-413's write only.** This is not enough: `…_newRuleFenced.cfg` still loses d1 (14 steps), and the INV-412 duplicate remains.
 
 **Ready to apply (option 1)**
 ```json
 { "id": "INV-412", "ears": {
     "where": "a rule watches an event that is a single recorded state change: a job dead-lettered (REQ-400), an attempt that makes the Nth failure (REQ-401), or a recurring occurrence missed or late (REQ-403); a job that is requeued (jobs REQ-141, REQ-143) can produce such an event again",
-    "shall": "find those events from what the job store records and mark each one handled for that rule in the same store write that creates its delivery, so that a node that takes over the notification lease neither alerts an event again nor skips one" } }
+    "shall": "find those events from what the job store records and, for each one, create its delivery and mark it handled for that rule in one store write that succeeds only if the event is not yet marked handled for that rule, so that a node that takes over the notification lease neither alerts an event again nor skips one" },
+  "notes": "…existing text kept… refiner-model 2026-11-07 run 4 F-20 (recommended option): the write is conditional on what was read, as recurring REQ-216's compare-and-set is, because INV-411's lease check passes for a node that took the lease back after a pause." }
+{ "id": "INV-413", "ears": {
+    "where": "a rule watches an event that is a single recorded state change (INV-412)",
+    "when": "the notification lease holder evaluates a rule whose name the job store has no record of",
+    "shall": "in one store write that checks the notification lease and succeeds only if the store still has no record of the name, record the rule's name and mark every such event the store records as handled for that rule, without creating deliveries for them" } }
 ```
+
+---
+
+## F-21 · ambiguity · medium — A rule starts at its first evaluation, so a new system can swallow its first events
+<!-- finding: ambiguity | Chk_ConfiguredEventAlerted/newSystem | INV-412,INV-413 -->
+
+**Requirements involved**
+- INV-413: *… when the notification lease holder evaluates a rule whose name the job store has no record of, the system shall record the rule's name in the store and mark every such event the store already records as handled for that rule, without creating deliveries for them.* Its notes: *"a rule starts at the store's present the first time its name is seen."*
+- INV-412's notes: *"Events that happen while no node holds the lease, **or while no alerts node runs at all, are alerted when a holder next runs**."*
+
+**What happens** (TLC, `Chk_ConfiguredEventAlerted`, `IntegrationsAlertEvents_newSystem.cfg`, 7 steps ending in stuttering)
+1. A new Bellhop system is deployed with rule R in code (REQ-410). The store has no rule names yet.
+2. Job d1 is dead-lettered, and recurring job `report` misses an instant (recurring REQ-242 records it). No alerts node holds the notification lease yet. For example, the only alerts node is the dashboard host, which is deployed an hour after the workers.
+3. The alerts node starts, takes the lease and evaluates R for the first time. The store has no record of R, so INV-413 marks d1 and the miss record as handled, with no delivery.
+4. **d1 and the missed instant are never alerted**, although R was configured when they happened. Later events (d2) are alerted normally.
+
+**Why** INV-413 places a rule's start at its first evaluation by a lease holder, which is the only moment the store can see. Its notes and rationale are about rules added to a running system, where starting at the present avoids a flood. On a system whose rules have been there from the start, the same sentence drops whatever happened before the first alerts node ran. That is exactly the case INV-412's notes say is alerted. Both sentences can be read as governing it. For a rule added to a running system, events between its deploy and its first evaluation are dropped the same way. That follows from the notes ("the first time its name is seen") and is not counted here.
+
+**Options**
+1. *(recommended)* **Accept it and say so.** A rule starts at its first evaluation by a lease holder. On a new system that is normally within one HeartbeatInterval of the first alerts node starting, and only an alerts node that starts later than the workers leaves a gap. Correct INV-412's notes so they do not promise more, and add the case to INV-413's notes. Nothing new to build.
+2. **A store with no rule names starts every rule at the beginning.** The first evaluation on a store that records no rule name at all marks nothing, so everything still stored is alerted. Later rules start at the present. Model-checked: `…_newSystemCatchUp.cfg`, all ✓ (480 states). The cost is that the first upgrade of an existing installation to a version with notification rules also has no rule names. It then alerts the stored backlog once: up to 30 days of dead-letters (jobs REQ-104), capped by MaxDeliveriesPerCooldown plus a digest (INV-409, REQ-414).
+3. **Record rule names when any node starts**, not only when the lease holder evaluates them, so a rule starts at its deploy. This moves the start close to the deploy, but it gives workers and clients a notification write that INV-411 keeps on alerts nodes. Not model-checked.
+
+**Ready to apply (option 1)**
+```json
+{ "id": "INV-412", "notes": "…replace \"Events that happen while no node holds the lease, or while no alerts node runs at all, are alerted when a holder next runs\" with: Events that happen while no node holds the lease, or while no alerts node runs at all, are alerted when a holder next runs, for rules the store already records; events before a rule's first evaluation are not (INV-413)…" }
+{ "id": "INV-413", "notes": "…existing text kept… refiner-model 2026-11-07 run 4 F-21 (recommended option): the start is the first evaluation by a lease holder, not the deploy. On a new system, events before the first alerts node takes the notification lease are not alerted; run the alerts registration with the first deployment to avoid the gap." }
+```
+
+---
+
+## F-22 · ambiguity · medium — Editing a rule's trigger keeps its name and alerts the stored backlog
+<!-- finding: ambiguity | Chk_NoAlertForEventBeforeRule/editTrigger | INV-412,INV-413,REQ-410,REQ-401,REQ-403 -->
+
+**Requirements involved**
+- INV-413: *… when the notification lease holder evaluates a rule **whose name** the job store has no record of …* Its rationale: *"Without it, deploying a new rule alerts every once-only event still stored, up to 30 days of dead-letters (jobs REQ-104) …"*. Its notes: *"A renamed rule is a new rule."*
+- REQ-410: rules are identified by name, and the code definition wins.
+- REQ-401: *Where a rule watches repeated failures with threshold N …*. REQ-403: *… starts later than the rule's tolerance after its due time …*. NotificationRule has a `trigger`, a `threshold` and a `tolerance`.
+
+**What happens** (TLC, `Chk_NoAlertForEventBeforeRule`, `IntegrationsAlertEvents_editTrigger.cfg`, 5 steps)
+1. Rule R watches dead-lettering. The holder has evaluated it, so the store records R's name (INV-413).
+2. Recurring job `report` misses an instant (recurring REQ-242). R does not watch recurring jobs, so this is not R's event.
+3. A developer changes R's trigger to recurring jobs and keeps the name `ops-alerts` (REQ-410), then deploys.
+4. The holder evaluates R. The store has a record of the name, so INV-413 does not apply. INV-412 finds a stored miss record that is not marked handled for R. **It alerts the miss from before the edit**, and on a real store every miss record of the last RetentionDeadLettered.
+
+The same happens without a trigger change. Lowering REQ-401's threshold from 5 to 3 makes every job in the store whose attempt 3 failed a new, unmarked event. Lowering REQ-403's tolerance makes old late starts late. When INV-413 knows a rule by its name and the settings that decide its events, the edited rule starts at the store's present like a renamed one (`…_editTriggerKeyed.cfg`, all ✓, 1,240 states).
+
+**Why** INV-413 was written to stop a new rule from alerting the stored backlog. A rule whose trigger, threshold or tolerance changes watches a new set of events, but under the same name, so the backlog comes back through an edit. Both readings fit "a rule whose name …": the edited rule as the old rule (catch up) or as a new one (start now). The notes settle renames but not edits.
+
+**Options**
+1. *(recommended)* **Know a rule by its name and the settings that decide its events** (trigger, threshold, tolerance). An edit to any of them starts the rule again at the store's present, as a rename does. Changing the channel, template or cooldown does not. It is one phrase in INV-413's when-clause, and the behaviour matches the rename rule already in the notes.
+2. **Accept the catch-up and document it.** An edited trigger, a lower threshold or a lower tolerance alerts the matching stored events once, capped by MaxDeliveriesPerCooldown plus a digest (INV-409, REQ-414).
+
+**Ready to apply (option 1)**
+```json
+{ "id": "INV-413", "ears": {
+    "where": "a rule watches an event that is a single recorded state change (INV-412)",
+    "when": "the notification lease holder evaluates a rule whose name, trigger, threshold and tolerance together the job store has no record of",
+    "shall": "in one store write that checks the notification lease and succeeds only if the store still has no record of them, record the rule's name, trigger, threshold and tolerance in the store and mark every such event the store records as handled for that rule, without creating deliveries for them" },
+  "mentions": ["NotificationRule.name", "NotificationRule.trigger", "NotificationRule.threshold", "NotificationRule.tolerance", "Delivery.rule"],
+  "notes": "…existing text kept… refiner-model 2026-11-07 run 4 F-22 (recommended option): a rule whose trigger, threshold or tolerance is edited is a new rule, like a renamed one; changing its channel, template or cooldown is not." }
+```
+(This snippet already includes F-20 option 1's write condition. If F-20 is decided differently, keep only the when-clause and the mentions.)
 
 ---
 
@@ -177,7 +192,7 @@ These are decisions taken where the sentences were silent. Each one shapes the r
 |---|---|---|
 | A-1 | REQ-400…REQ-406 are abstracted to "the rule fires for subject s" at any moment in the cooldown model. What they watch belongs to jobs, recurring and hosting. The alerts model makes two kinds explicit: edge events (REQ-400, REQ-401, REQ-403) and the state-based node-lost trigger (REQ-404, with NodeLostAfter from hosting REQ-60 as a nondeterministic "goes stale"). | REQ-400…REQ-406 |
 | A-2 | Backoff has no clock: the next attempt may come at any later moment. | REQ-408, REQ-412 |
-| A-3 | Cooldowns, NodeLostAfter, tolerance, MisfireThreshold and retention end as nondeterministic events. The model cannot judge durations: retry span vs cooldown, retention vs relay recovery (REQ-436), how soon the holder evaluates a rule vs how often a recurring job runs (F-17). | INV-400, INV-407, INV-410, REQ-414, REQ-436, F-17 |
+| A-3 | Cooldowns, NodeLostAfter, tolerance, MisfireThreshold, retention and LeaseDuration end as nondeterministic events. The model cannot judge durations: retry span vs cooldown, retention vs relay recovery (REQ-436), how long a pause must be to let a stale write land (F-20). | INV-400, INV-407, INV-410, REQ-414, REQ-436, F-20 |
 | A-4 | Closed deliveries and finished HTTP jobs are archived and free their slot. | all |
 | A-5 | A digest delivery has no subject and is not counted (INV-409's "non-digest"). When both the subject cooldown and the cap apply, the delivery is deduplicated, not capped (INV-409 notes). | INV-409, REQ-414 |
 | A-6 | Job lifecycle around an HTTP call: claim, then retry while attempt < maxAttempts, else dead-letter (jobs REQ-123/129/131). Lease expiry, job timeouts (REQ-138) and cancellation are not modeled; the HTTP request timeout is one response outcome. A job may list a 3xx status as accepted. | REQ-421, REQ-422, REQ-434, SCN-402 |
@@ -185,24 +200,27 @@ These are decisions taken where the sentences were silent. Each one shapes the r
 | A-8 | "Attempts made" in REQ-408/REQ-415 includes the attempt just rejected, so total attempts = NotificationMaxAttempts (REQ-412). | REQ-408, REQ-415, REQ-433 |
 | A-9 | In the cooldown model, delivery creation is serialised, which is what INV-411's fenced write gives. The lease itself is modeled in `IntegrationsAlerts.tla`. | INV-409, INV-411 |
 | A-10 | At most one crash per behaviour (relay node, or alerts node). | LIV-400, REQ-435, REQ-438 |
-| A-11 | At most one lease expiry under a running holder (a missed renewal, e.g. a long pause). An alerts node's later writes are fenced (INV-411). The relay's row delete is not fenced (REQ-432 does not say), but it is idempotent. | REQ-432, REQ-435, REQ-438, INV-412 |
-| A-12 | A crashed node is restarted by its host (fair) as a new instance that does not inherit its old lease. The old lease must expire first. | REQ-438, INV-412 |
+| A-11 | At most one lease expiry under a running holder (a missed renewal, e.g. a long pause). An alerts node's delivery writes check the lease (INV-411). The relay's row delete is not fenced (REQ-432 does not say), but it is idempotent. | REQ-432, REQ-435, REQ-438, INV-412, F-20 |
+| A-12 | A crashed node is restarted by its host (fair) as a new instance that does not inherit its old lease. The old lease must expire first. A paused node that is still running may take the lease again once it is free. | REQ-438, INV-412, F-20 |
 | A-13 | REQ-436 is encoded as a guard: retention never removes a job while the outbox row it came from is still pending. `…_noRetentionAssumption.cfg` shows the guarantee depends on it. | REQ-436, INV-406 |
-| A-14 | Bounds: 1 rule, 2 subjects, 3 delivery slots (4 in `…_cap2`), NotificationMaxAttempts 2, MaxDeliveriesPerCooldown 1 (2 in `…_cap2`). 2 alerts nodes, 2 edge events. 2 dead-letters and 2 due instants of one recurring job in `IntegrationsAlertEvents`. 1 HTTP job, up to 3 hosts, maxAttempts 2, MaxRedirects 0 (1 in `…_transport`). 1 outbox row, 2 worker nodes. | all |
-| A-15 | `IntegrationsAlertEvents` has one alerts node holding the lease throughout. Handovers are covered by `IntegrationsAlerts`, and F-17 needs none. Rule evaluation is fair (it happens if it stays possible) but has no deadline. | INV-411, INV-412, F-17 |
-| A-16 | Dead-letters and failed attempts are found through the job's state history (jobs INV-116). A late start is findable if the occurrence job keeps its due instant (`scheduledAt`), so it is not modeled. Missed instants are modeled for misfire Skip, whose only stored trace is the last outcome (REQ-231). RunOnce leaves less, see F-17. | INV-412, REQ-403, F-17 |
-| A-17 | A rule is identified by its name (REQ-410). "Rule added" is one nondeterministic event, not fair. Removal and rolling deploys are not modeled, only described in F-18. | F-18 |
-| A-18 | In `IntegrationsAlertEvents` a requeue (jobs REQ-141) is folded into the second dead-letter of the same job. Retention (jobs REQ-145) and operator deletes are not modeled; INV-412's notes accept that a removed job is no longer alerted. | F-19, INV-412 |
+| A-14 | Bounds: 1 rule, 2 subjects, 3 delivery slots (4 in `…_cap2`), NotificationMaxAttempts 2, MaxDeliveriesPerCooldown 1 (2 in `…_cap2`). 2 alerts nodes, 2 edge events. 2 dead-letters and 2 triggers of one recurring job in `IntegrationsAlertEvents`, up to 2 configuration changes. 1 HTTP job, up to 3 hosts, maxAttempts 2, MaxRedirects 0 (1 in `…_transport`). 1 outbox row, 2 worker nodes. | all |
+| A-15 | `IntegrationsAlertEvents` has one alerts node holding the lease throughout, and each store write is one step. Handovers and writes split into a read and a later write are in `IntegrationsAlerts` (F-20). Rule evaluation, including INV-413's first evaluation, is fair (it happens if it stays possible) but has no deadline. | INV-411, INV-412, INV-413 |
+| A-16 | Dead-letters and failed attempts are found through the job's state history (jobs INV-116). A late start is findable if the occurrence job keeps its due instant (`scheduledAt`), so it is not modeled. A missed instant is found through recurring REQ-242's record, one per trigger. | INV-412, REQ-403 |
+| A-17 | A rule is identified by its name (REQ-410, INV-413). Adding, removing and editing a rule are nondeterministic events, not fair, except in `…_readd.cfg`, where the re-add is fair so that "continues where it stopped" can be checked. A rolling deploy that moves the lease between nodes with and without the rule is the same as a removal and a re-add. | INV-413, F-21, F-22 |
+| A-18 | In `IntegrationsAlertEvents` a requeue (jobs REQ-141) is folded into the second dead-letter of the same job. Retention (jobs REQ-145) and operator deletes are not modeled; INV-412's notes accept that a removed job is no longer alerted. | INV-412 |
+| A-19 | In `IntegrationsAlertEvents` one rule stands for a rule per event kind (it watches dead-letters and missed occurrences, `InitialWatch`), except in the edit cfgs, where it watches one kind and the edit switches it. INV-413 marks every stored event of every kind ("every such event"). | INV-413, F-22 |
+| A-20 | One REQ-242 record (one trigger, however many instants it missed) is one event for INV-412, so one delivery. REQ-403 says "when a recurring job's occurrence is missed"; the subject is the recurring job either way, so the subject cooldown would merge per-instant deliveries. | REQ-403, recurring REQ-242 |
+| A-21 | In `IntegrationsAlerts` a split write (F-20) is two steps: a read that decides the write, then the write. A crash forgets a pending write. "Conditional" writes are one step under the lease check, so they are both fenced and re-checked; the model does not separate the two checks. | INV-411, INV-412, INV-413, F-20 |
 
 ## Coverage
 | Modeled | Skipped (reason) |
 |---|---|
-| REQ-400…REQ-409, REQ-412…REQ-416, INV-400, INV-407, INV-409, INV-410, INV-411, INV-412, REQ-433, REQ-438 · REQ-420…REQ-422, REQ-434, INV-401…INV-404, INV-408 · REQ-430, REQ-432, REQ-435, REQ-436, INV-406, LIV-400 · SCN-400, SCN-402, SCN-403, SCN-404, SCN-406 (reachable), SCN-401, SCN-405 (hold) | REQ-410 (static merge of rule definitions and a page listing, no state change; its rule identity by name is used as A-17) · INV-405 (masking in the dashboard and logs is presentation) · REQ-431, REQ-437 (which enqueue path a configuration takes; no interleaving to explore) · REQ-411 (retired, moved to hosting REQ-60) |
+| REQ-400…REQ-409, REQ-412…REQ-416, INV-400, INV-407, INV-409, INV-410, INV-411, INV-412, INV-413, REQ-433, REQ-438 · REQ-420…REQ-422, REQ-434, INV-401…INV-404, INV-408 · REQ-430, REQ-432, REQ-435, REQ-436, INV-406, LIV-400 · SCN-400, SCN-402, SCN-403, SCN-404, SCN-406 (reachable), SCN-401, SCN-405 (hold) | REQ-410 (static merge of rule definitions and a page listing, no state change; its rule identity by name is used as A-17) · INV-405 (masking in the dashboard and logs is presentation) · REQ-431, REQ-437 (which enqueue path a configuration takes; no interleaving to explore) · REQ-411 (retired, moved to hosting REQ-60) |
 
-Owner open questions already recorded, and not raised again here: no warning when rules exist but no node has the alerts registration, refused webhook hosts, and a test delivery left pending when no alerts node exists. The run-2 question about events while no alerts node runs is answered by INV-412's notes; F-17 shows that missed occurrences are the exception.
+Owner open questions already recorded, and not raised again here: no warning when rules exist but no node has the alerts registration (F-21 option 1 relies on this being visible), refused webhook hosts, and a test delivery left pending when no alerts node exists.
 
 ## Reproduce
-From `specs/model/integrations/`: `python -X utf8 run_all.py` reruns every check (or `run_all.py IntegrationsAlertEvents` for one model). Each check runs alone as `python run_tlc.py <Module>.tla --config <cfg with one INVARIANT or PROPERTY> --workers 2 --stop-at-first --no-deadlock`, killed after 170 s, plus a `TypeInv`-only run with deadlock checking for the HTTP and notification cfgs. Results land in `runs/` (gitignored), with a summary in `runs/summary.md`. Set `RUN_TLC` if `run_tlc.py` is not under `~/.claude-personal/skills/refiner-model/scripts/`.
+From `specs/model/integrations/`: `python -X utf8 run_all.py` reruns every check (or `run_all.py IntegrationsAlert` for the two alert models). Each check runs alone as `python run_tlc.py <Module>.tla --config <cfg with one INVARIANT or PROPERTY> --workers 2 --stop-at-first --no-deadlock`, killed after 170 s, plus a `TypeInv`-only run with deadlock checking for the HTTP and notification cfgs. Results land in `runs/` (gitignored), with a summary in `runs/summary.md`. Set `RUN_TLC` if `run_tlc.py` is not under `~/.claude-personal/skills/refiner-model/scripts/`.
 
 ## Next
-Apply the chosen options to `integrations.json` (and, for F-17 option 1, `recurring.json`) with the `refiner-requirements` skill (it validates and diffs), then run this skill again.
+Apply the chosen options to `integrations.json` with the `refiner-requirements` skill (it validates and diffs), then run this skill again. Decide F-20 first: its option changes the wording of both INV-412 and INV-413, and F-22's snippet builds on it.

@@ -1,28 +1,28 @@
 {
   "module": "integrations",
-  "specHash": "8d15657c8cd56fbaef557cb0f68bc07fc82d84921fd14b0a0ec8a1f2a945affe",
-  "generatedAt": "2026-11-06T23:00:00Z",
+  "specHash": "138efb1f8daa4ba9b02b768d3a815d1b75a018522437d5962b545f588738c03f",
+  "generatedAt": "2026-11-07T12:00:00Z",
   "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsAlertEvents.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
   "items": {
     "REQ-400": {
       "hash": "4b15ca75d0e530b27e0f177d58ebbd5c44d4fb886ca8014b8c714334e428f774",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent (INV-412); IntegrationsAlertEvents.tla: HandleDeadLetter -> F-18, F-19"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent (INV-412); IntegrationsAlertEvents.tla: HandleDeadLetter -> F-18, F-19 Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-401": {
       "hash": "fa4f5ce7811070589566bf04fe771213bab1fe3029e8c0c3e431a69bd5e45706",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent (edge event, INV-412) -> F-18, F-19 (requeue restarts the count)"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent (edge event, INV-412) -> F-18, F-19 (requeue restarts the count) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-402": {
       "hash": "e39de7723ebfdf511d1ebe317b703cb63464ec7e44d23dd8f0b96c12cac03dea",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406, trigger abstracted A-1)"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406, trigger abstracted A-1) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-403": {
-      "hash": "f31f60461edbfa53e629028cbf74f1a75c05cbc13efea5a4e0b72ee015cd088b",
+      "hash": "bbb0a1a5c5d593fde58d3a31fe4fb1b2da2ccef22d87094fba42a70b0fd95d04",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires; IntegrationsAlerts.tla: HandleEvent; IntegrationsAlertEvents.tla: HandleMissed, Liv_MissedAlerted violated -> F-17"
+      "note": "IntegrationsAlertEvents.tla HandleMissed: missed instants found through recurring REQ-242 records; Liv_MissedAlerted holds (230 states), fails without REQ-242 (_noReq242)"
     },
     "REQ-404": {
       "hash": "88df2c741a7379689aca56f470de10a4e8a52d4ad47ff5cb94fc9d78b37d54b8",
@@ -32,17 +32,17 @@
     "REQ-405": {
       "hash": "5f24e07642e4d7f26e1f4fe5872d1d6f0e129e21ed680a6766f71d2ba12b8bcb",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406, trigger abstracted A-1)"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406, trigger abstracted A-1) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-406": {
       "hash": "0eaabf524168e29142469623c807faeef5f1523a2063689ac6748eafd685a3f0",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406, trigger abstracted A-1)"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires (one action for REQ-400..406, trigger abstracted A-1) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-407": {
       "hash": "f7e072f0aa8547b836590bfc9f622bc45c27a827422f10e0c5adbfdc1aefa343",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: ChannelAccepts"
+      "note": "model/integrations/IntegrationsNotifications.tla: ChannelAccepts Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-408": {
       "hash": "39d1883f60e745ad3c3ccf9987913ae608aca9d7064c02c1a4e00c55e2eb235d",
@@ -62,7 +62,7 @@
     "REQ-414": {
       "hash": "414b671fb66a52305b9f98591ebd518fbbc4a49fd03bab2c0da42d0f02c20377",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleCooldownEnds (digest)"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleCooldownEnds (digest) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-412": {
       "hash": "edd5d575f50226a3ee80f66fee43b5dcff591bbbd1ae9ebede780c3a791a06a4",
@@ -82,27 +82,27 @@
     "INV-400": {
       "hash": "6c0f609acc5ee4e9509d447bcdfb0bb7ad8b2287504e6a494190ab7c627acd81",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: Inv_OneSendPerSubjectCooldown holds (176,927 / 7,683,747 states)"
+      "note": "model/integrations/IntegrationsNotifications.tla: Inv_OneSendPerSubjectCooldown holds (176,927 / 7,683,747 states) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "INV-407": {
       "hash": "bcb37ffb3a4c842b7478d45aec9b0b65c1fbae9c32800a27181a4901358c3a0b",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: Inv_RuleCap holds"
+      "note": "model/integrations/IntegrationsNotifications.tla: Inv_RuleCap holds Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "INV-409": {
       "hash": "8ada8696f64bfb5a5a4e3b85d40d26e3285f24418ecc2280a108aa941f22ab19",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires decision rule (dedup before cap)"
+      "note": "model/integrations/IntegrationsNotifications.tla: RuleFires decision rule (dedup before cap) Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "INV-410": {
       "hash": "d09944aaf4b31dc39f185f661b9e6a4545514112144a5783f717eef842b5cfb9",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: guards on SubjectCooldownEnds / RuleCooldownEnds"
+      "note": "model/integrations/IntegrationsNotifications.tla: guards on SubjectCooldownEnds / RuleCooldownEnds Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-433": {
       "hash": "4f523089d6b526a40dec8603f3c40e4c658a1a2fde887abe270dbd3f00490f04",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsNotifications.tla: ChannelRejects closes subject cooldown on failure; run-1 probe F-3 holds"
+      "note": "model/integrations/IntegrationsNotifications.tla: ChannelRejects closes subject cooldown on failure; run-1 probe F-3 holds Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "INV-411": {
       "hash": "2fecc024e416563f9c0aeaaace283579e7ca8d136a9df47d01bb204dcf2023f8",
@@ -112,7 +112,7 @@
     "REQ-438": {
       "hash": "787fa90356e09512df8b35a918865b93b82a824ae01ae69612d46a09d8a9d7db",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla: TakeLease (fair), LeaseExpires; crash/pause environment A-10..A-12"
+      "note": "model/integrations/IntegrationsAlerts.tla: TakeLease (fair), LeaseExpires; crash/pause environment A-10..A-12 Run 4: impacted through NotificationRule (name added); rerun, unchanged result."
     },
     "REQ-420": {
       "hash": "708d2ee907ce3e11d9d941b4f14aea4991429aa80c5f75b23756fef8da6d1422",
@@ -220,9 +220,14 @@
       "note": "model/integrations/IntegrationsAlerts.tla: Scn405_NoLeaseNoDelivery holds (all three readings)"
     },
     "INV-412": {
-      "hash": "a1a440c4eaea2bcf280db1f970974275605b7302024c402bc3b842aa737ac9d0",
+      "hash": "1f1ea4f3b8c5ceb5b24b6ff341993f7e75d2bd609505afde462b753ab69a9df0",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla: EventTracking storeCursor; Inv_OneDeliveryPerEvent and Liv_EventAlerted hold (445 states); without it both fail (noInv412 cfgs). IntegrationsAlertEvents.tla: store records -> F-17, rule start -> F-18, event identity -> F-19"
+      "note": "model/integrations/IntegrationsAlertEvents.tla: one delivery per recorded change, every dead-letter and every REQ-242 miss record alerted (230 states); the job-mark and no-REQ-242 counterfactuals fail. IntegrationsAlerts.tla: holds across a handover with one-step writes (445); as written, a write decided before a lease lapse can land after it and alert an event twice (_staleWrite, F-20)"
+    },
+    "INV-413": {
+      "hash": "8e3682ef45a344b230d3b84bde5bb7f575f3a45f2e998ee857c92b58cf50b00a",
+      "reviewed": false,
+      "note": "IntegrationsAlertEvents.tla: a rule added later alerts no older event and every later one (_newRule, 509 states); remove/re-add catches up as the notes say (_readd, accepted); edit of trigger -> F-22; new system -> F-21. IntegrationsAlerts.tla: as written its write is unchecked and a stale one skips an event (_newRuleLiteral, F-20); one conditional step passes (_newRule, 984)"
     },
     "SCN-406": {
       "hash": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11",
@@ -231,7 +236,7 @@
     }
   },
   "skipped": {
-    "REQ-410": "could not encode: static merge of rule definitions and a page listing, no state change (rule identity by name used as assumption A-17)",
+    "REQ-410": "could not encode: static merge of rule definitions and a page listing, no state change (rule identity by name used as assumption A-17; INV-413 models the name record)",
     "INV-405": "could not encode: masking in dashboard and logs is presentation, not state",
     "REQ-431": "configuration choice between enqueue paths, no interleaving to check",
     "REQ-437": "rejection of a call in a configuration without outbox mode, no interleaving to check"
