@@ -1,7 +1,7 @@
 {
   "module": "jobs",
-  "specHash": "4abf0385ed9d57dbe10175d4662566bd5b731aa55990f78ae44f32898b6bbe60",
-  "generatedAt": "2026-11-06T21:17:34Z",
+  "specHash": "7952e5e0ed20eafe6c69c66a8d43a614ba7df32a111101f16b6bbab9bcf217ff",
+  "generatedAt": "2026-11-07T18:43:06Z",
   "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla",
   "items": {
     "INV-100": {
@@ -75,9 +75,9 @@
       "note": "Jobs.tla - holds by construction: only Delete and Retention remove a dead letter"
     },
     "INV-128": {
-      "hash": "5ff9530e2cf1e30016090bace22d853c601278469e02c0220d0e6d0928058f20",
+      "hash": "3c3dea61729429d2643eb9bbb0ec9bc578f804decc06e1a771d017c3ab22e4d2",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla Current(r) guard on every write; run 4 clause 'or its job is no longer processing' checked by Scn_StaleCannotComplete and Inv_StaleRunsFenced (hold)"
     },
     "INV-129": {
       "hash": "a7b8ab9db0f2b42f316917f9fe0d29629075efce22af178e1bd8f70f84edc767",
@@ -250,9 +250,9 @@
       "note": "Jobs.tla"
     },
     "REQ-140": {
-      "hash": "1079974bc9d46f40ee0c7e9387aa95b76c5e7ebeff291325fbf3ece77127145f",
+      "hash": "b503e05d234d7e1b312008d934ca61c718bd06eaae587ac4cfe25b3ec48296c7",
       "reviewed": false,
-      "note": "Jobs.tla ReleaseOnShutdown + R140 (run 3: OCE branch only when the timeout token was not signalled); Chk_TimeoutVsShutdown holds; still-running branch vs REQ-138: finding F-1"
+      "note": "Jobs.tla ReleaseOnShutdown + R140 (run 4: both branches only while the timeout token was not signalled); Chk_TimeoutReleaseSplit, Chk_TimeoutVsShutdown and Scn124_TimedOutNotReleased hold; hosting REQ-29 run-4 wording in NodeStop (R140Pending)"
     },
     "REQ-141": {
       "hash": "25daec5403a37590cc9c8d5a490fde9cceca1fbace087d0fdcbe8ee103fcb431",
@@ -415,9 +415,9 @@
       "note": "Jobs.tla - abstracted to the GracePasses flag"
     },
     "REQ-188": {
-      "hash": "03589f4a5ac362306e94351fd91e4e123d508435c6280937d50911c6b67dbc71",
+      "hash": "db7747331d149bf6ba4fff82502a3425021d9155cefa4b0f35ad0e8f17be7991",
       "reviewed": false,
-      "note": "Jobs_Flow.tla Delete, Retention and BatchRemoved (run 3) -> cancel awaiting continuations; member continuations on REQ-192 removal: A-17, finding F-3"
+      "note": "Jobs_Flow.tla Delete / Retention / BatchRemoved (cascade); run 4: Inv_NoAwaitingOnRemoved holds (Jobs_Flow_P1b, Holds, HoldsC, HoldsU)"
     },
     "REQ-189": {
       "hash": "6b9d0da09bbb6fca39162e67eaa32acb35613e007b88a474d46693933701f1c9",
@@ -427,12 +427,12 @@
     "REQ-190": {
       "hash": "b48aa7dd7997d510100767214258e5653b1cb54305632a1eceac1b435f2030d2",
       "reviewed": false,
-      "note": "Jobs.tla Recover, R190 (run 3: retryable failures only), AbandonOnTimeout, ReleaseOnShutdown; Chk_PermanentVsCancel holds"
+      "note": "Jobs.tla Recover / HandlerThrows R190 / AbandonOnTimeout / ReleaseOnShutdown cancel branch (impacted via REQ-140, re-checked); shutdown branch vs hosting REQ-29: finding F-1"
     },
     "REQ-191": {
-      "hash": "a20f7457ab449664baae19d8a16d9d4f3db02cbd0dc612eab1f4464494421e3e",
+      "hash": "6cad06cee72ee0252d669418673a57af605efe127ee13f89eb366f625f95c0ab",
       "reviewed": false,
-      "note": "Jobs.tla: abandonment/release as run modes; lease-lost trigger as predicate LeaseLostRecordable (run 3, history only); finding F-2"
+      "note": "Jobs.tla LeaseLostRecordable (predicate, history only); run 4 trigger is the complement of Current, so Gap_LeaseLostUnrecorded holds by construction; SCN-125 trap reachable"
     },
     "REQ-192": {
       "hash": "de45473aa59ac24e5e895bdabb4987cf0ac7f51d529269fdfec2b259cb644389",
@@ -512,7 +512,7 @@
     "SCN-115": {
       "hash": "be6208b6014b51a90904a224f3c875f2730b77dab2bd0279b1cd96f4aa6be694",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs_SCN115.cfg trap (reachable, re-checked)"
     },
     "SCN-117": {
       "hash": "816300fd92119c080ed4ac0975fcd1d44a4709b4fda283bb8a1561bf1ed05844",
@@ -548,6 +548,16 @@
       "hash": "6bfc8c48525e95f20cbd5dc819676bf23b33017864bdb343400318f782647411",
       "reviewed": false,
       "note": "Jobs_Flow.tla Scn123_MissingParentRejected (holds)"
+    },
+    "SCN-124": {
+      "hash": "4af34aea5cf5408e010effbc0da441ba42b6e1c4d0b5e5ce485e2650d87c3e9c",
+      "reviewed": false,
+      "note": "Jobs_SCN124.cfg Scn124_TimedOutNotReleased (negative, holds) + Jobs_SCN124s.cfg trap for steps 1-2 (reachable)"
+    },
+    "SCN-125": {
+      "hash": "618f50ebba3635de145e9d97ad35248cbc7bbee47da66df550ae1ba8d8359717",
+      "reviewed": false,
+      "note": "Jobs_SCN125.cfg Scn125_NotReached trap (reachable, 6 states)"
     }
   },
   "skipped": {

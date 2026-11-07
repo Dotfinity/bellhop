@@ -28,7 +28,7 @@ Status == {"none", "Scheduled", "Enqueued", "Processing", "Succeeded", "Failed",
 Finished == {"Succeeded", "Cancelled", "DeadLettered"}
 \* history tags (history variable only, never read by an action)
 Hist == {"Failed", "DeadLettered", "Interrupted", "Released", "Timeout", "Unroutable",
-         "Requeued", "ShutdownFailure", "Abandoned", "LeaseCancel", "StaleCancel"}
+         "Requeued", "ShutdownFailure", "Abandoned", "LeaseCancel", "StaleCancel", "DrainLeft"}
 
 JobRec == [status: Status, attempt: 0..MaxAttempts, token: Nat, owner: Nodes \cup {NULL},
            due: BOOLEAN,          \* scheduledAt / retryAt has passed (A-1)
@@ -289,9 +289,12 @@ SignalShutdown(r) ==
 \* @req REQ-140 REQ-190 REQ-191  handler still running: release the lease and take back the attempt or, when
 \*        cancellation was requested, mark the job Cancelled (REQ-190); the handler is abandoned and recorded
 \*        (REQ-191).  The "throws OperationCanceledException" branch of REQ-140 is in HandlerThrows.
+\*        Run 4: REQ-140 applies only while the timeout token was not signalled (both branches).  REQ-190's
+\*        "its node releases it at shutdown" has no timeout guard of its own and is kept as written (A-19).
 ReleaseOnShutdown(r) ==
   /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r)
   /\ node[r.node].st = "Draining"
+  /\ job[r.job].cancelReq \/ ~r.tSig
   /\ IF job[r.job].cancelReq
        THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Cancelled", !.owner = NULL,
                             !.hist = @ \cup {"Abandoned"} \cup Stale(r.job)])
@@ -300,14 +303,22 @@ ReleaseOnShutdown(r) ==
   /\ SetRun(r, [r EXCEPT !.mode = "released"])
   /\ UNCHANGED <<node, queue, maint>>
 
-\* hosting REQ-29: stop when nothing in flight holds the job, or after ShutdownTimeout and release.
+\* hosting REQ-29 (run 4 wording): stop when every in-flight job has finished, or once ShutdownTimeout has
+\* passed, every remaining run's token was cancelled and "the lease releases that jobs REQ-140 calls for" were
+\* attempted.  Runs REQ-140 does not call to release (timeout signalled, or cancellation requested) do not hold
+\* the node.  A current run left behind is tagged DrainLeft (history only) so probes can tell it from a crash.
+R140Pending(r) == r.mode = "running" /\ Current(r) /\ ~r.tSig /\ ~job[r.job].cancelReq
 NodeStop(n) ==
   /\ node[n].st = "Draining"
   /\ \/ RunsOn(n) = {}
-     \/ node[n].shutdownPassed /\ \A r \in RunsOn(n) : ~(r.mode = "running" /\ Current(r))
+     \/ /\ node[n].shutdownPassed
+        /\ \A r \in RunsOn(n) : r.mode = "running" => r.sSig
+        /\ \A r \in RunsOn(n) : ~R140Pending(r)
   /\ node' = [node EXCEPT ![n].st = "Stopped", ![n].shutdownPassed = FALSE]
   /\ runs' = runs \ RunsOn(n)
-  /\ UNCHANGED <<job, queue, maint>>
+  /\ job' = [j \in Jobs |-> IF \E r \in RunsOn(n) : r.job = j /\ r.mode = "running" /\ Current(r)
+                              THEN [job[j] EXCEPT !.hist = @ \cup {"DrainLeft"}] ELSE job[j]]
+  /\ UNCHANGED <<queue, maint>>
 
 \* modeling artefact A-3: a process dies; its handlers die with it, its leases will expire.
 Crash(n) ==
@@ -425,9 +436,15 @@ Scn_CancelledNotPromoted == \A j \in Jobs : job[j].status = "Cancelled" => ~ENAB
 Scn_PausedNotDrained ==
   \A j \in Jobs, n \in Nodes : (queue = "Paused" \/ maint = "On") => ~ENABLED Claim(n, j)
 
-\* @req SCN-117 INV-128  a stale run cannot complete a job.
+\* @req SCN-117 INV-128  a stale run cannot complete a job.  Run 4: "stale" includes a run whose job is no
+\*        longer processing (INV-128's new clause).
 Scn_StaleCannotComplete ==
-  \A r \in runs : job[r.job].token # r.token => ~ENABLED (SucceedByRun(r) /\ HandlerReturns(r))
+  \A r \in runs : (job[r.job].token # r.token \/ job[r.job].status # "Processing")
+                  => ~ENABLED (SucceedByRun(r) /\ HandlerReturns(r))
+
+\* @req INV-128 REQ-140  (run 4) a run that was released at shutdown or abandoned is never current again, so
+\*        none of its writes (complete, fail, renew) can change its job, before or after the job is claimed again.
+Inv_StaleRunsFenced == \A r \in runs : r.mode \in {"released", "abandoned"} => ~Current(r)
 
 \* @req SCN-120 hosting REQ-20  a process without the worker never claims.
 Scn_NoWorkerNoClaim == \A j \in Jobs, n \in Nodes \ WorkerNodes : ~ENABLED Claim(n, j)
@@ -484,13 +501,14 @@ Gap_CooperativeShutdownCounted == ~\E j \in Jobs : "ShutdownFailure" \in job[j].
 \* A cancellation requested on an earlier run decides a later run after a requeue (A-16).
 Gap_StaleCancelRequest == ~\E j \in Jobs : "StaleCancel" \in job[j].hist
 
-\* @req REQ-191 INV-128 REQ-123  (run 3) REQ-191 records a lease-lost handler when the system "refuses the heartbeat
-\*        of a handler that is still running because its lease token is no longer current".  The record is
-\*        history only, so it is a predicate, not an action.
-LeaseLostRecordable(r) == r.mode = "running" /\ node[r.node].st # "Stopped" /\ job[r.job].token # r.token
-\* Probe: a handler still running on a live node holds no claim (so its node claims another job, REQ-123),
-\* its job has left Processing for a finished state without a new lease token, so REQ-191 can never record it
-\* until a person requeues the job.  Expected VIOLATED = finding.
+\* @req REQ-191 INV-128 REQ-123  (run 4) REQ-191 records a lease-lost handler when the system "refuses the heartbeat
+\*        of a handler that is still running because its lease token is no longer current or its job is no longer
+\*        processing".  The record is history only, so it is a predicate, not an action.
+LeaseLostRecordable(r) == r.mode = "running" /\ node[r.node].st # "Stopped"
+                          /\ (job[r.job].token # r.token \/ job[r.job].status # "Processing")
+\* Run 3 probe (F-2): a handler still running on a live node holds no claim (so its node claims another job,
+\* REQ-123), its job has left Processing for a finished state without a new lease token, and REQ-191 cannot
+\* record it.  Run 4: expected to HOLD (the new trigger is the complement of Current).
 Gap_LeaseLostUnrecorded ==
   ~\E r \in runs : /\ r.mode = "running" /\ node[r.node].st # "Stopped" /\ ~Current(r)
                    /\ ~LeaseLostRecordable(r) /\ job[r.job].status \in Finished
@@ -505,4 +523,34 @@ Chk_TimeoutReleaseSplit ==
 
 \* @req SCN-122  positive: a cancelled job whose lease expires with attempts left ends Cancelled (expected VIOLATED).
 Scn122_NotReached == ~\E j \in Jobs : job[j].status = "Cancelled" /\ "LeaseCancel" \in job[j].hist
+
+\* @req SCN-124 REQ-140  (run 4) negative, impossibleAt 3: a run whose timeout token was signalled and whose
+\*        token was then cancelled for shutdown is not released with its attempt taken back, whether the handler
+\*        is still running (ReleaseOnShutdown) or throws OperationCanceledException (R140).
+Scn124_TimedOutNotReleased ==
+  \A r \in runs : (Current(r) /\ r.tSig /\ r.sSig /\ ~CR(r)) => (~ENABLED ReleaseOnShutdown(r) /\ ~R140(r, "oce"))
+\* SCN-124 steps 1-2 are reachable (expected VIOLATED): shows the property above is not vacuous.
+Scn124_StepsNotReached == ~\E r \in runs : Current(r) /\ r.tSig /\ r.sSig /\ ~CR(r) /\ job[r.job].attempt = 1
+
+\* @req SCN-125  (run 4) positive: a lease-lost run of a job cancelled on recovery (REQ-190, no new token) is
+\*        still running, its job is Cancelled and REQ-191 can record it (expected VIOLATED).
+Scn125_NotReached ==
+  ~\E r \in runs : /\ LeaseLostRecordable(r) /\ job[r.job].token = r.token
+                   /\ job[r.job].status = "Cancelled" /\ "LeaseCancel" \in job[r.job].hist
+
+\* Probe (run 4): an operator cancels a processing job at its last attempt, the node drains, and hosting REQ-29
+\* (run 4 wording) lets it stop without REQ-190's shutdown branch, because REQ-140 does not call for releasing a
+\* job whose cancellation was requested.  Lease expiry then dead-letters it (REQ-133).  Expected VIOLATED.
+Gap_CancelledDeadLetteredAfterDrain ==
+  ~\E j \in Jobs : job[j].status = "DeadLettered" /\ job[j].cancelReq
+                   /\ {"DrainLeft", "Interrupted"} \subseteq job[j].hist
+
+\* Probe (run 4): a timed-out run left behind by a draining node (REQ-29) ends with its attempt counted by
+\* lease expiry (REQ-132/133), never released.  Expected VIOLATED (reachable): the F-1 path.
+Reach_TimedOutLeftCounted ==
+  ~\E j \in Jobs : "DrainLeft" \in job[j].hist /\ "Interrupted" \in job[j].hist /\ "Released" \notin job[j].hist
+                   /\ job[j].status = "Enqueued" /\ job[j].attempt = 1 /\ ~job[j].cancelReq
+
+\* Check (run 4, hosting REQ-29): a draining node eventually stops.
+Liv_DrainEnds == \A n \in Nodes : node[n].st = "Draining" ~> node[n].st = "Stopped"
 =============================================================================

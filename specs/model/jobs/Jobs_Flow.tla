@@ -189,8 +189,8 @@ BatchCompletes(bt) ==
 \* @req REQ-192 REQ-188  (run 3) a Completed or Succeeded batch is removed with its stored members once every
 \*        stored member is past its own state's retention (A-1: a fair nondeterministic event, guarded only
 \*        by every stored member being finished).  Awaiting batch-level continuations are cancelled (REQ-188).
-\*        Awaiting job-level continuations of a removed member are cancelled as for removal by retention
-\*        (REQ-188 "removed by retention", A-17).  Slots are not reused (A-11).
+\*        Run 4: REQ-188 now names both retention paths ("removed by retention (REQ-145, REQ-192)"), so
+\*        awaiting job-level continuations of a removed member are cancelled too.  Slots are not reused (A-11).
 StoredMembers(bt) == {m \in Members(bt) : job[m].status # "removed"}
 BatchRemoved(bt) ==
   /\ batch[bt].status \in {"Completed", "Succeeded"}
@@ -275,7 +275,13 @@ Liv_CompletedBatchRemoved ==
   \A bt \in Batches : batch[bt].status = "Completed" ~> batch[bt].status \in {"Succeeded", "removed"}
 
 \* Probe (run 3): a job-level continuation of a batch member is cancelled because REQ-192 removed its parent
-\* with the batch (A-17).  Expected VIOLATED: the trace shows the case REQ-188's wording has to cover.
+\* with the batch.  Run 4: required by REQ-188; expected VIOLATED (the required case is reachable).
+\* @req REQ-188  (run 4) no continuation is left awaiting a parent or batch that no longer exists.
+Inv_NoAwaitingOnRemoved ==
+  \A c \in Jobs : job[c].status = "Awaiting" =>
+                  /\ (job[c].parent # NULL => job[job[c].parent].status # "removed")
+                  /\ (job[c].cbatch # NULL => batch[job[c].cbatch].status # "removed")
+
 Probe_MemberContinuationRemoved ==
   ~\E c \in Jobs : /\ job[c].parent # NULL /\ job[c].status = "Cancelled" /\ job[c].released = "cancel"
                    /\ job[job[c].parent].status = "removed" /\ job[job[c].parent].member # NULL
