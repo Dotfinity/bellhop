@@ -1215,11 +1215,11 @@ Format: refiner-tech/1
 ## TECH-130 — Redis reset safety in the claim and heartbeat scripts
 
 - **Area:** datastore
-- **Statement:** The Redis claim script and the recurring trigger script shall refuse to claim or create an occurrence while the generation marker is missing or flagged as reconciling, the heartbeat script shall, while it is missing or flagged, re-create a missing job record as Processing with its lease, concurrency-key hold and unique-key lock and cancel in the same script a pending job that took the unique key, and new generation marker values shall be read from the server's TIME.
-- **Applies to:** redis REQ-507, redis REQ-522, redis REQ-526, redis REQ-527, redis REQ-534, TECH-56, TECH-62
+- **Statement:** The Redis claim script and the recurring trigger script shall refuse to claim or create an occurrence while the generation marker is missing or flagged as reconciling, the heartbeat script shall, while it is missing or flagged, re-create a missing job record as Processing with its lease, concurrency-key hold and unique-key lock and cancel in the same script a pending job that took the unique key, new generation marker values shall be read from the server's TIME, and the claim, heartbeat and completion scripts shall return the generation marker and last-reset value they read, so the node applies redis REQ-507, REQ-528 and REQ-530 to them before using the script's result and a claim keeps the last-reset value it read.
+- **Applies to:** redis REQ-507, redis REQ-521, redis REQ-522, redis REQ-526, redis REQ-527, redis REQ-528, redis REQ-530, redis REQ-534, TECH-56, TECH-62
 - **Strength:** must
 - **Status:** approved
-- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy; see open questions. Redis run 2 (F-2, F-6): unique-key locks are re-created with the record, and marker values come from TIME.
+- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy; see open questions. Redis run 2 (F-2, F-6): unique-key locks are re-created with the record, and marker values come from TIME. Redis run 4 F-1 and F-2: every script that reads the marker returns it, so detection happens on the reads a worker already makes, and the claim keeps the last-reset value for the resetSinceClaim test.
 
 ## Open questions
 
