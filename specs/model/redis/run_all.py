@@ -9,7 +9,7 @@ import json, os, pathlib, re, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUN_TLC = pathlib.Path.home() / ".claude-personal/skills/refiner-model/scripts/run_tlc.py"
-SCENARIO = re.compile(r"_SCN\d+$")
+SCENARIO = re.compile(r"_SCN\d+(Reach)?$")
 
 
 def split(cfg_text):
@@ -41,7 +41,7 @@ def run(cfg_path, label, text, no_deadlock):
     tmp = HERE / f"_{cfg_path.stem}__{label}.cfg"
     tmp.write_text(text + "\n")
     out = HERE / "runs" / f"{cfg_path.stem}__{label}"
-    cmd = [sys.executable, str(RUN_TLC), "Redis.tla", "--config", tmp.name, "--workers", "2",
+    cmd = [sys.executable, str(RUN_TLC), "Redis.tla", "--config", tmp.name, "--workers", "4",
            "--stop-at-first", "--timeout", "150", "--out", f"{out}.json", "--md", f"{out}.md"]
     if no_deadlock: cmd.append("--no-deadlock")
     try:
@@ -69,7 +69,7 @@ def run(cfg_path, label, text, no_deadlock):
 def main():
     (HERE / "runs").mkdir(exist_ok=True)
     cfgs = [HERE / c for c in sys.argv[1:]] or sorted(HERE.glob("Redis*.cfg"))
-    index_path = HERE / "run.json"
+    index_path = HERE / os.environ.get("RUN_INDEX", "run.json")
     index = json.loads(index_path.read_text()) if index_path.exists() else []
     for cfg in cfgs:
         index = [r for r in index if r["cfg"] != cfg.name]
@@ -87,7 +87,7 @@ def main():
     index_path.write_text(json.dumps(index, indent=2) + "\n")
     lines = ["| cfg | check | status | property | distinct states | s | trace |", "|---|---|---|---|---|---|---|"]
     lines += [f"| {r['cfg']} | {r['check']} | {r['status']} | {r['property'] or ''} | {r['distinctStates']} | {r['seconds']} | {r['traceLength']} |" for r in index]
-    (HERE / "run.md").write_text("# TLC runs for Redis.tla\n\n" + "\n".join(lines) + "\n")
+    index_path.with_suffix(".md").write_text("# TLC runs for Redis.tla\n\n" + "\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
   "module": "redis",
-  "specHash": "214a6f8075bba701eb524f53beaf9f4a225bf3b297ab34cfae4ca723060f0feb",
-  "generatedAt": "2026-11-06T22:14:39Z",
+  "specHash": "71445b81e1d2faf606f7a46616926dfa060ff616a82c5c3d73234fe14c73a604",
+  "generatedAt": "2026-11-07T18:50:38Z",
   "model": "model/redis/Redis.tla",
   "items": {
     "REQ-500": {
@@ -37,7 +37,7 @@
     "REQ-507": {
       "hash": "f00602ecd948045116000afb3fb197273d718a7ce81f2388114bc1efe7a5f42e",
       "reviewed": false,
-      "note": "DetectReset(n): server-clock value as value and last-reset value, flagged; also on a flagged older marker. F-1 (no wait restart from Reconciling), F-3, F-4."
+      "note": "DetectReset(n) (DetectCond): server-clock value as value and last-reset value, flagged; also on a flagged older marker; restarts the REQ-509 wait. F-1: 'found' has no defined moment (A-2); ReadsDetect checks option 1."
     },
     "REQ-508": {
       "hash": "b8e5cd7efad11922fb20840fbf7eaf6a1b5a50c6d450d97cce23a687c3250daf",
@@ -45,9 +45,9 @@
       "note": "HealthCheck rule r508 (any Reconciling, REQ-528's included)."
     },
     "REQ-509": {
-      "hash": "f30e489e421ebf68451eead6589405e9d0bd10ac01ad874d75060d9aae05ee99",
+      "hash": "e8e8104b5f3be4ab87b479acc5ca602596117d6dd9a1d38a254c9d4040766689",
       "reviewed": false,
-      "note": "FinishReconcile(n) + LeaseElapses(n) (A-18: LeaseDuration since the store became reconciling). F-1; option 1 checked on Redis_Flush2Restart.cfg."
+      "note": "FinishReconcile(n) + LeaseElapses(n); the wait restarts at every StartWait (DetectReset, InitMarker, Learn). Run-3 F-1 resolved: Redis_Flush2.cfg passes; SCN-509 holds."
     },
     "REQ-510": {
       "hash": "568bcda13e7dd90e9826a92b4b063a25a123ff908cdb9bad0e67d9fe8d380535",
@@ -92,17 +92,17 @@
     "REQ-521": {
       "hash": "2510296a2619e19c1e43fe44ce438e394f2cf7fe7e76317e738805dc219d2e20",
       "reviewed": false,
-      "note": "Complete(n) branches with the glossary resetSinceClaim (incl. last-reset value); Inv_NoLostOutcome passes; Inv_NoLostOutcomeLeaseLost fails on Redis_LateJoin.cfg (F-3)."
+      "note": "Complete(n) branches with the glossary resetSinceClaim; Inv_NoLostOutcome and Inv_NoLostOutcomeLeaseLost pass on Redis_LateJoin.cfg (run-3 F-3 resolved). F-2: resetSinceClaim holds with no reset for claims under REQ-528's first marker."
     },
     "REQ-522": {
-      "hash": "cb4a1e8e7d347b3c5fd496f821014ad065ef3a302350a1f8a5d65f32f4461851",
+      "hash": "50bf045b20c8219131967ce2b58b901b287af09be90e1670103f4ff21809d61b",
       "reviewed": false,
-      "note": "Heartbeat(n) re-creation branch (only while missing or flagged). F-2 (no lease check); option 1 checked as OptLeaseCheck."
+      "note": "Heartbeat(n) re-creation branch: marker missing or flagged, record missing, resetSinceClaim, not leaseLost (A-18). Run-3 F-2 resolved: Redis_Unique2/Recurring2(During) pass; SCN-510 holds."
     },
     "REQ-523": {
-      "hash": "336403eb21a3047ffe9a2c0ea6741a075f8e13c5a7ce5ad6aa180c8badfa6bc5",
+      "hash": "7131a7e37c13a489b8b07ca8833d6f39c4c3409439481c419bad8e68ad7346ba",
       "reviewed": false,
-      "note": "DetectReset(n): resetRec unacked, remembers; Inv_UnackedUntilOperator passes. F-5 (trigger wording)."
+      "note": "DetectReset(n) only (trigger names REQ-507): resetRec unacked, remembers. Inv_UnackedUntilOperator passes; run-3 F-5 resolved."
     },
     "REQ-524": {
       "hash": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
@@ -125,9 +125,9 @@
       "note": "Advance(n): unflagged marker only, server-clock value, last-reset unchanged. F-3."
     },
     "REQ-528": {
-      "hash": "8ecab74b06bd83268929300e224822543f9c8b83df7efbf4b06bd428b76728a3",
+      "hash": "a0589719e87b5c2e5430bb7a44366170e6aeb6a378512654b2419493a359ad57",
       "reviewed": false,
-      "note": "InitMarker(n): lowest value, flagged, no last-reset value (A-23), Reconciling. F-3, F-4, F-5."
+      "note": "InitMarker(n): lowest value, flagged, last-reset = server clock, Reconciling, no report. Run-3 F-3 option 2: lost outcome fixed; F-1 (flush hidden without a paused node), F-2 (resetSinceClaim side effect)."
     },
     "REQ-529": {
       "hash": "9ec746459993be5849d8ce8fe98f27c3f349b5bb5617cd82b14c4342484f8bd0",
@@ -135,9 +135,9 @@
       "note": "Disconnect (all nodes) and DropConnection(n) (one node) + Connect(n); wait restarts via REQ-530."
     },
     "REQ-530": {
-      "hash": "f483405d53f8d5c1848cf979c0d84fa535b6a3bdcd22eff712a418f5830c051b",
+      "hash": "f8a1d499b038300544cc676a5749c3bde694fd47da75f2bbac76e13078fa980f",
       "reviewed": false,
-      "note": "Learn(n): value not finished; 'remember the value' literal (A-22). F-4 (overlap with REQ-507)."
+      "note": "Learn(n): flagged value not finished and not older than lastSeen (run-3 F-4 resolved, Liv_LossReported passes on Redis_LivLateJoin.cfg)."
     },
     "REQ-531": {
       "hash": "2f4c5fd11a000018eaf099d1503ea2f8e4d89e2869463f091029394d9269b9c9",
@@ -198,6 +198,16 @@
       "hash": "0c2f1046d7d73ba8407e3131db2e723d92e994d550d51eada02d34652138a31a",
       "reviewed": false,
       "note": "Redis_SCN508.cfg trap violated as expected (12 steps)."
+    },
+    "SCN-509": {
+      "hash": "601bc07a15732220c9c3ae674d032eab9e2357b82ea557af188feb54bb3961da",
+      "reviewed": false,
+      "note": "Redis_SCN509.cfg: Scn_NoClearBeforeWait holds (negative, impossibleAt 4); Redis_SCN509Reach.cfg shows steps 1-3 reachable."
+    },
+    "SCN-510": {
+      "hash": "df536c9cdeeb2a1add41848c330abda23ae792cd8b00e62700a6970c2bb3cd41",
+      "reviewed": false,
+      "note": "Redis_SCN510.cfg: Scn_NoRevivalAfterExpiry holds (negative, impossibleAt 4); Redis_SCN510Reach.cfg shows steps 1-3 reachable."
     }
   },
   "skipped": {

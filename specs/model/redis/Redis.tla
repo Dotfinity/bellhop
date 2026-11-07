@@ -1,11 +1,11 @@
 ----------------------------- MODULE Redis -----------------------------
 \* Generated from specs/redis.json - edit the requirements, not this file.
-\* Run 3 (2026-11-06): regenerated from handoff.json (changes: REQ-507, REQ-508, REQ-509, REQ-522,
-\* REQ-526, REQ-527, REQ-528, REQ-530, REQ-534, SCN-500, SCN-503, SCN-504, SCN-507, SCN-508; wording
-\* only: REQ-502, REQ-505). Impacted ids re-checked: REQ-521 (glossary resetSinceClaim now uses
-\* markerLastReset), REQ-529, LIV-500, LIV-501, REQ-523..REQ-525, REQ-532, SCN-501, SCN-505, SCN-506.
-\* Run-2 option switches OptGlobalValues and OptResumeFlag are now the requirements (REQ-507/REQ-527
-\* server-clock values; REQ-530 "not finished") and are the default behaviour.
+\* Run 4 (2026-11-07): regenerated from handoff.json (changes: REQ-509, REQ-522, REQ-523, REQ-528,
+\* REQ-530, SCN-509, SCN-510). Impacted ids re-checked: LIV-501, REQ-526, REQ-532, REQ-534, SCN-500,
+\* SCN-503, SCN-504, SCN-507, SCN-508. The run-3 switches RestartWaitOnDetect (REQ-509), OptLeaseCheck
+\* (REQ-522) and Prio507 (REQ-530) are now the requirements and were removed; A-23 is gone (REQ-528
+\* gives the first marker a last-reset value). New switches (not requirements): ReadsDetect,
+\* OptClaimLastReset, TrackHidden; with all three FALSE the extra variables (xVars) stay constant.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (hosting.Node, hosting.Health, jobs.Job, jobs.Maintenance,
 \* recurring.RecurringJob) are abstracted to the few fields the redis requirements touch;
@@ -25,10 +25,12 @@ CONSTANTS Nodes,         \* hosting.Node instances (bound 2)
           MaxLosses,     \* at most this many data-loss events (environment bound)
           PolicyChange,  \* the server's maxmemory-policy may change to evicting while nodes run (failover, CONFIG SET)
           LateJoin,      \* a node may read the marker for the first time after a data loss (A-17)
-          Prio507,       \* READING SWITCH (not a requirement): where REQ-507 and REQ-530 both apply, REQ-507 is taken
-          OptLeaseCheck, \* OPTION CHECK (not a requirement): REQ-522 re-creates only a record whose lease has not expired
-          RestartWaitOnDetect, \* READING SWITCH (not a requirement): a REQ-507 detection on a node already
-                               \*   reconciling restarts the REQ-509 wait (FALSE = literal "since its store became reconciling")
+          ReadsDetect,   \* READING SWITCH (not a requirement): the marker reads a worker's claim, heartbeat and
+                         \*   completion already make count as "finding" it for REQ-507 (FALSE = A-2: REQ-507 is
+                         \*   its own step, taken at some time, independent of those reads)
+          OptClaimLastReset, \* OPTION CHECK (not a requirement): resetSinceClaim compares the marker's last-reset
+                             \*   value with the last-reset value read at the claim instead of the marker value
+          TrackHidden,   \* model switch: keep the history variables of Inv_HiddenOnlyIfPaused (xVars)
           MaxAdvances,   \* REQ-527 advances in one run (environment bound)
           MaxTok,        \* lease tokens issued in one run (fresh GUIDs, bounded)
           AllowStop,     \* hosts may stop nodes (hosting REQ-27/29, abstracted)
@@ -49,7 +51,7 @@ ASSUME /\ WorkerNodes \subseteq Nodes /\ QueueA \subseteq Jobs
        /\ MaxLosses \in Nat /\ MaxAdvances \in Nat /\ MaxTok \in Nat
        /\ ShardByQueue \in BOOLEAN /\ FreshStore \in BOOLEAN /\ AllowStop \in BOOLEAN
        /\ UniqueKeys \in BOOLEAN /\ Recurring \in BOOLEAN /\ PolicyChange \in BOOLEAN
-       /\ LateJoin \in BOOLEAN /\ Prio507 \in BOOLEAN /\ RestartWaitOnDetect \in BOOLEAN /\ OptLeaseCheck \in BOOLEAN
+       /\ LateJoin \in BOOLEAN /\ ReadsDetect \in BOOLEAN /\ OptClaimLastReset \in BOOLEAN /\ TrackHidden \in BOOLEAN
        /\ CheckHealth \in BOOLEAN /\ MemToggle \in BOOLEAN /\ MaxOutages \in Nat /\ MaxDrops \in Nat
 
 VARIABLES
@@ -94,7 +96,12 @@ VARIABLES
   clock,       \* the Redis server clock as marker values see it: the latest value ever written (REQ-507, REQ-527)
   \* history (observation only - no action is guarded by these)
   created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections, losses,
-  everAcked, inits
+  everAcked, inits,
+  \* run 4 extras (xVars): constant unless OptClaimLastReset / TrackHidden is on
+  claimLR,      \* last-reset value read when this node's job was claimed (OptClaimLastReset)
+  sawAtLoss,    \* history: this node had seen a marker when the last FLUSHALL happened (TrackHidden)
+  readInWindow, \* history: this node read the marker (claim, heartbeat, completion) since that flush (TrackHidden)
+  runAtLoss     \* history: this node's current run was already running at that flush (TrackHidden)
 
 nodeVars  == <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                done, remembers, waitDone, hbPending, leaseLost>>
@@ -102,7 +109,8 @@ storeVars == <<marker, flagged, lastReset, codeRec, registry, resetRec, maint, j
 envVars   == <<evalOK, evicting, reachable, memHigh, outages, drops, tokens, advances, clock>>
 histVars  == <<created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
                losses, everAcked, inits>>
-vars      == <<nodeVars, storeVars, envVars, histVars>>
+xVars     == <<claimLR, sawAtLoss, readInWindow, runAtLoss>>
+vars      == <<nodeVars, storeVars, envVars, histVars, xVars>>
 
 NodeStatus  == {"Starting", "Running", "Stopped", "StartupFailed"}
 StoreStatus == {"Connecting", "Ready", "Reconciling"}
@@ -110,7 +118,7 @@ HealthSt    == {"Healthy", "Degraded", "Unhealthy"}
 JobSt       == {"none", "enqueued", "processing", "done", "recreated", "cancelled"}
 ActiveSt    == {"enqueued", "processing"}            \* jobs REQ-107 (the subset modeled)
 InitGen     == 2                                     \* an established store; 1 is "the lowest value" (REQ-528)
-MaxGen      == InitGen + MaxAdvances + 2 * MaxLosses + 2
+MaxGen      == InitGen + MaxAdvances + 3 * MaxLosses + 3  \* run 4: REQ-528's last-reset value takes a clock value too
 Gens        == 0..MaxGen
 JobRec      == [st: JobSt, owner: Nodes \cup {NULL}, tok: 0..MaxTok]
 NoJob       == [st |-> "none", owner |-> NULL, tok |-> 0]
@@ -145,6 +153,8 @@ TypeInv ==
   /\ created \in [Jobs -> BOOLEAN] /\ maintIntent \in BOOLEAN
   /\ pendingLoss \in BOOLEAN /\ falseReset \in BOOLEAN /\ lostOutcome \in BOOLEAN /\ lostOutcomeLL \in BOOLEAN
   /\ detections \in Nat /\ losses \in 0..MaxLosses /\ everAcked \in BOOLEAN /\ inits \in Nat
+  /\ claimLR \in [Nodes -> Gens]
+  /\ sawAtLoss \in [Nodes -> BOOLEAN] /\ readInWindow \in [Nodes -> BOOLEAN] /\ runAtLoss \in [Nodes -> BOOLEAN]
 
 DataNow == [marker |-> marker, flagged |-> flagged, lastReset |-> lastReset, codeRec |-> codeRec,
             registry |-> registry, resetRec |-> resetRec, maint |-> maint, jobRec |-> jobRec]
@@ -187,6 +197,9 @@ Init ==
   /\ maintIntent = FALSE
   /\ pendingLoss = FALSE /\ falseReset = FALSE /\ lostOutcome = FALSE /\ lostOutcomeLL = FALSE
   /\ detections = 0 /\ losses = 0 /\ everAcked = FALSE /\ inits = 0
+  /\ claimLR = [n \in Nodes |-> 0]
+  /\ sawAtLoss = [n \in Nodes |-> FALSE] /\ readInWindow = [n \in Nodes |-> FALSE]
+  /\ runAtLoss = [n \in Nodes |-> FALSE]
 
 Up(n) == node[n] \in {"Starting", "Running"}
 Max2(a, b) == IF a > b THEN a ELSE b
@@ -207,7 +220,7 @@ Connect(n) ==
   /\ reachable /\ evalOK
   /\ node[n] = "Starting" => ~evicting
   /\ rs' = [rs EXCEPT ![n] = "Ready"]
-  /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  done, remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* @req REQ-502  A server without EVAL fails the host's start.
@@ -215,7 +228,7 @@ StartupNoEval(n) ==
   /\ node[n] = "Starting" /\ rs[n] = "Connecting"
   /\ reachable /\ ~evalOK
   /\ node' = [node EXCEPT ![n] = "StartupFailed"]
-  /\ UNCHANGED <<rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  done, remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* @req REQ-505  maxmemory-policy other than noeviction fails the host's start.
@@ -223,14 +236,14 @@ StartupEviction(n) ==
   /\ node[n] = "Starting" /\ rs[n] = "Connecting"
   /\ reachable /\ evalOK /\ evicting
   /\ node' = [node EXCEPT ![n] = "StartupFailed"]
-  /\ UNCHANGED <<rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  done, remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* context: hosting REQ-18 - node runs once its startup checks passed; A-1: "store ready" is one of them.
 NodeRuns(n) ==
   /\ node[n] = "Starting" /\ rs[n] = "Ready"
   /\ node' = [node EXCEPT ![n] = "Running"]
-  /\ UNCHANGED <<rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  done, remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* context: hosting REQ-27/REQ-29 abstracted - the host stops a node (human/host actor, not fair).
@@ -243,8 +256,9 @@ NodeStops(n) ==
   /\ hbPending' = [m \in Nodes |-> IF m = n THEN {} ELSE hbPending[m] \ {n}]
   /\ waitDone' = [waitDone EXCEPT ![n] = FALSE]
   /\ leaseLost' = [leaseLost EXCEPT ![n] = FALSE]
-  /\ UNCHANGED <<rs, health, chk, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
-                 storeVars, envVars, histVars>>
+  /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
+  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, rs, health, chk, claimGen, claimTok, learned, lastSeen,
+                 reseeded, resetVal, done, storeVars, envVars, histVars>>
 
 ---------------------------------------------------------------------------
 \* Generation marker and reset handling (worker nodes only: REQ-507, REQ-527, REQ-528, REQ-530)
@@ -263,7 +277,7 @@ Observe(n) ==
   /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
   /\ marker # 0 /\ ~flagged /\ marker > lastSeen[n]
   /\ lastSeen' = [lastSeen EXCEPT ![n] = marker]
-  /\ UNCHANGED <<node, rs, health, chk, run, claimGen, claimTok, learned, reseeded, resetVal, done,
+  /\ UNCHANGED <<xVars, node, rs, health, chk, run, claimGen, claimTok, learned, reseeded, resetVal, done,
                  remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* @req REQ-507 REQ-523  Marker missing, or older than the last value this node saw (flagged or not),
@@ -271,61 +285,66 @@ Observe(n) ==
 \*   time as value and last-reset value, flagged; the winner logs StoreWasReset (REQ-507) and the
 \*   ERROR + unacknowledged record (REQ-523), remembers it, and starts re-seeding. The CAS is atomic
 \*   here, so a loser reads the winner's flagged value later (A-19).
-\*   From Ready the store becomes reconciling (the REQ-509 wait starts). From Reconciling the store
-\*   stays reconciling; whether that restarts the wait is the RestartWaitOnDetect reading switch.
-DetectReset(n) ==
+\*   @req REQ-509 (run 4): a detection starts re-seeding, so the LeaseDuration wait (re)starts here,
+\*   from Ready and from Reconciling alike ("since it last started re-seeding").
+\*   @req REQ-523 (run 4): its trigger is "this node's compare-and-set in REQ-507 succeeds": this action only.
+DetectCond(n) ==
   /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
   /\ lastSeen[n] # 0
   /\ marker = 0 \/ marker < lastSeen[n]
   /\ clock + 1 <= MaxGen
+DetectReset(n) ==
+  /\ DetectCond(n)
   /\ LET v == clock + 1 IN
        /\ marker' = v /\ flagged' = TRUE /\ lastReset' = v /\ clock' = v
        /\ lastSeen' = [lastSeen EXCEPT ![n] = v]
        /\ resetVal' = [resetVal EXCEPT ![n] = v]
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
-  /\ IF rs[n] = "Ready" \/ RestartWaitOnDetect THEN StartWait(n) ELSE UNCHANGED <<waitDone, hbPending>>
+  /\ StartWait(n)
   /\ resetRec' = "unacked"
   /\ remembers' = [remembers EXCEPT ![n] = TRUE]
   /\ learned' = [learned EXCEPT ![n] = (run[n] # NULL) \/ learned[n]]
   /\ detections' = detections + 1
   /\ falseReset' = (falseReset \/ ~pendingLoss)
   /\ pendingLoss' = FALSE
-  /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, reseeded, done, leaseLost, codeRec,
+  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, reseeded, done, leaseLost, codeRec,
                  registry, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, drops,
                  tokens, advances, created, maintIntent, lostOutcome, lostOutcomeLL, losses, everAcked, inits>>
 
 \* @req REQ-528  Marker missing on a worker that has not seen one since it started -> write the
-\*   first marker at the lowest value, flagged, only if none exists yet; INFO; start re-seeding
-\*   without recording a reset. A-23: REQ-528 gives the first marker no last-reset value.
+\*   first marker at the lowest value, with the server's current time as its last-reset value
+\*   (run 4), flagged, only if none exists yet; INFO; start re-seeding without logging StoreWasReset
+\*   or recording the reset as unacknowledged (resetRec and detections are untouched).
 \*   A-17: without LateJoin a node's first marker read happens before any data loss.
 InitMarker(n) ==
   /\ Checking(n) /\ rs[n] = "Ready"
   /\ marker = 0 /\ lastSeen[n] = 0
-  /\ marker' = 1 /\ flagged' = TRUE /\ lastReset' = 0
+  /\ clock + 1 <= MaxGen
+  /\ marker' = 1 /\ flagged' = TRUE /\ lastReset' = clock + 1 /\ clock' = clock + 1
   /\ lastSeen' = [lastSeen EXCEPT ![n] = 1]
   /\ resetVal' = [resetVal EXCEPT ![n] = 1]
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
   /\ StartWait(n)
   /\ inits' = inits + 1
-  /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, learned, reseeded, done, remembers,
-                 leaseLost, codeRec, registry, resetRec, maint, jobRec, snap, envVars,
+  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, learned, reseeded, done, remembers,
+                 leaseLost, codeRec, registry, resetRec, maint, jobRec, snap, evalOK, evicting, reachable,
+                 memHigh, outages, drops, tokens, advances,
                  created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
                  losses, everAcked>>
 
-\* @req REQ-530  Marker flagged with a value whose reconciliation this node has not finished ->
-\*   re-seed without logging StoreWasReset, and remember the value (literally: lastSeen := value).
-\*   Where REQ-507 also applies (a flagged value older than the one this node saw), the sentences
-\*   do not say which wins; Prio507 = TRUE takes REQ-507.
+\* @req REQ-530  Marker flagged with a value whose reconciliation this node has not finished, if that
+\*   value is not older than the last value this node saw (run 4) -> re-seed without logging
+\*   StoreWasReset, and remember the value. Re-seeding starts, so the REQ-509 wait starts.
 Learn(n) ==
   /\ Checking(n) /\ rs[n] = "Ready"
   /\ marker # 0 /\ flagged /\ marker # done[n]
-  /\ Prio507 => ~(lastSeen[n] # 0 /\ marker < lastSeen[n])
+  /\ ~(marker < lastSeen[n])
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
   /\ resetVal' = [resetVal EXCEPT ![n] = marker]
   /\ lastSeen' = [lastSeen EXCEPT ![n] = marker]
   /\ learned' = [learned EXCEPT ![n] = (run[n] # NULL) \/ learned[n]]
   /\ StartWait(n)
-  /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, reseeded, done, remembers, leaseLost,
+  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, reseeded, done, remembers, leaseLost,
                  storeVars, envVars, histVars>>
 
 \* @req REQ-507 REQ-528 REQ-530 (shall: "start re-seeding the code-defined recurring jobs, the queue
@@ -335,7 +354,7 @@ Reseed(n) ==
   /\ reseeded[n] # resetVal[n]
   /\ codeRec' = TRUE /\ registry' = TRUE
   /\ reseeded' = [reseeded EXCEPT ![n] = resetVal[n]]
-  /\ UNCHANGED <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, resetVal, done,
+  /\ UNCHANGED <<xVars, node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, resetVal, done,
                  remembers, waitDone, hbPending, leaseLost, marker, flagged, lastReset, resetRec, maint,
                  jobRec, snap, envVars, histVars>>
 
@@ -347,11 +366,11 @@ LeaseElapses(n) ==
   /\ waitDone' = [waitDone EXCEPT ![n] = TRUE]
   /\ leaseLost' = [m \in Nodes |-> leaseLost[m] \/ (m \in hbPending[n] /\ run[m] # NULL)]
   /\ hbPending' = [hbPending EXCEPT ![n] = {}]
-  /\ UNCHANGED <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  done, remembers, storeVars, envVars, histVars>>
 
 \* @req REQ-509  While reconciling, re-seeded for the value, and LeaseDuration has passed since this
-\*   node's store became reconciling -> clear the flag if it is still set on the value this
+\*   node last started re-seeding (StartWait in DetectReset, InitMarker, Learn) -> clear the flag if it is still set on the value this
 \*   reconciliation is for; store ready. The node has finished the value if it cleared the flag or
 \*   found the marker no longer flagged with it (REQ-530 notes).
 FinishReconcile(n) ==
@@ -363,7 +382,7 @@ FinishReconcile(n) ==
   /\ rs' = [rs EXCEPT ![n] = "Ready"]
   /\ waitDone' = [waitDone EXCEPT ![n] = FALSE]
   /\ hbPending' = [hbPending EXCEPT ![n] = {}]
-  /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  remembers, leaseLost, marker, lastReset, codeRec, registry, resetRec, maint, jobRec,
                  snap, envVars, histVars>>
 
@@ -377,7 +396,7 @@ Advance(n) ==
   /\ marker' = clock + 1 /\ clock' = clock + 1
   /\ lastSeen' = [lastSeen EXCEPT ![n] = clock + 1]
   /\ advances' = advances + 1
-  /\ UNCHANGED <<node, rs, health, chk, run, claimGen, claimTok, learned, reseeded, resetVal, done,
+  /\ UNCHANGED <<xVars, node, rs, health, chk, run, claimGen, claimTok, learned, reseeded, resetVal, done,
                  remembers, waitDone, hbPending, leaseLost, flagged, lastReset, codeRec, registry,
                  resetRec, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, drops,
                  tokens, histVars>>
@@ -388,28 +407,28 @@ PeriodicReconcile(n) ==
   /\ Checking(n) /\ rs[n] = "Ready"
   /\ ~codeRec
   /\ codeRec' = TRUE
-  /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, registry, resetRec, maint, jobRec, snap, envVars, histVars>>
+  /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, registry, resetRec, maint, jobRec, snap, envVars, histVars>>
 
 \* @req REQ-532  A node that remembers an unacknowledged reset re-writes a missing record.
 RewriteRecord(n) ==
   /\ node[n] = "Running" /\ reachable /\ remembers[n]
   /\ resetRec = "none"
   /\ resetRec' = "unacked"
-  /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, maint, jobRec, snap, envVars, histVars>>
+  /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, maint, jobRec, snap, envVars, histVars>>
 
 \* @req REQ-523  "...remember it until it finds the reset acknowledged".
 ForgetReset(n) ==
   /\ node[n] = "Running" /\ reachable /\ remembers[n]
   /\ resetRec = "acked"
   /\ remembers' = [remembers EXCEPT ![n] = FALSE]
-  /\ UNCHANGED <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
+  /\ UNCHANGED <<xVars, node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
                  resetVal, done, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* @req REQ-525  Operator acknowledges the reset on the dashboard (human actor: not fair).
 Acknowledge ==
   /\ resetRec = "unacked" /\ reachable
   /\ resetRec' = "acked" /\ everAcked' = TRUE
-  /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, maint, jobRec, snap, envVars,
+  /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, maint, jobRec, snap, envVars,
                  created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
                  losses, inits>>
 
@@ -429,7 +448,12 @@ Flush ==
   /\ resetRec' = "none" /\ maint' = FALSE
   /\ jobRec' = [j \in Jobs |-> NoJob]
   /\ pendingLoss' = TRUE /\ losses' = losses + 1
-  /\ UNCHANGED <<nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
+  /\ IF TrackHidden
+       THEN /\ sawAtLoss' = [n \in Nodes |-> lastSeen[n] # 0]
+            /\ readInWindow' = [n \in Nodes |-> FALSE]
+            /\ runAtLoss' = [n \in Nodes |-> run[n] # NULL]
+       ELSE UNCHANGED <<sawAtLoss, readInWindow, runAtLoss>>
+  /\ UNCHANGED <<claimLR, nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
                  detections, everAcked, inits>>
 
 \* The policy changes to evicting while nodes run (failover to a differently configured replica,
@@ -437,7 +461,7 @@ Flush ==
 PolicyFlip ==
   /\ PolicyChange /\ ~evicting
   /\ evicting' = TRUE
-  /\ UNCHANGED <<nodeVars, storeVars, evalOK, reachable, memHigh, outages, drops, tokens, advances,
+  /\ UNCHANGED <<xVars, nodeVars, storeVars, evalOK, reachable, memHigh, outages, drops, tokens, advances,
                  clock, histVars>>
 
 \* Eviction of one key, possible only on an evicting server (REQ-505, REQ-531).
@@ -446,7 +470,7 @@ EvictJob(j) ==
   /\ "evict" \in LossKinds /\ evicting /\ LossAllowed /\ jobRec[j].st # "none"
   /\ jobRec' = [jobRec EXCEPT ![j] = NoJob]
   /\ losses' = losses + 1
-  /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, envVars,
+  /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, envVars,
                  created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
                  everAcked, inits>>
 
@@ -455,7 +479,7 @@ TakeSnapshot ==
   /\ "restore" \in LossKinds /\ reachable /\ marker # 0
   /\ snap' = DataNow
   /\ snap # snap'
-  /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, jobRec, envVars, histVars>>
+  /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, jobRec, envVars, histVars>>
 
 \* Restore from an old snapshot or failover to a lagging replica: the server rolls back to the
 \* image, marker included (A-12). A-21: only a rollback to an older marker value is a detectable
@@ -469,7 +493,7 @@ Restore ==
   /\ resetRec' = snap.resetRec /\ maint' = snap.maint /\ jobRec' = snap.jobRec
   /\ pendingLoss' = (pendingLoss \/ snap.marker < marker)
   /\ losses' = losses + 1
-  /\ UNCHANGED <<nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
+  /\ UNCHANGED <<xVars, nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
                  detections, everAcked, inits>>
 
 \* Action constraint for Redis_RestoreOlder.cfg: only rollbacks to an older marker value (the
@@ -498,7 +522,7 @@ Enqueue(j) ==
   /\ Recurring => (codeRec /\ marker # 0 /\ ~flagged /\ ~\E k \in Jobs : jobRec[k].st \in ActiveSt)
   /\ jobRec' = [jobRec EXCEPT ![j] = [st |-> "enqueued", owner |-> NULL, tok |-> 0]]
   /\ created' = [created EXCEPT ![j] = TRUE]
-  /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, envVars,
+  /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, envVars,
                  maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections, losses,
                  everAcked, inits>>
 
@@ -507,6 +531,20 @@ Enqueue(j) ==
 \* The claim script reads the marker (TECH-130), so the node also remembers a newer value. A claim
 \* starts a fresh lease.
 Holders == {j \in Jobs : jobRec[j].st = "processing"}
+
+\* ReadsDetect (reading switch): a worker's claim, heartbeat and completion read the marker; if
+\* REQ-507's condition holds at that read, the node runs REQ-507 first (DetectReset is fair).
+ReadOK(n) == ReadsDetect => ~DetectCond(n)
+\* A flush is hidden for good: no node can detect it any more (the marker is present, unflagged and
+\* not older than any value a node saw) although no node detected it.
+Hidden ==
+  /\ pendingLoss /\ marker # 0 /\ ~flagged
+  /\ \A n \in WorkerNodes : ~(marker < lastSeen[n])
+
+\* TrackHidden: n read the marker after the last flush and before it became hidden.
+MarkRead(n) == IF TrackHidden /\ pendingLoss /\ ~Hidden
+                 THEN readInWindow' = [readInWindow EXCEPT ![n] = TRUE]
+                 ELSE UNCHANGED readInWindow
 Claim(n, j) ==
   /\ node[n] = "Running" /\ n \in WorkerNodes /\ rs[n] # "Connecting" /\ reachable
   /\ run[n] = NULL /\ ~maint
@@ -514,6 +552,7 @@ Claim(n, j) ==
   /\ Cardinality(Holders) < KeyMax
   /\ marker # 0 /\ ~flagged
   /\ tokens < MaxTok
+  /\ ReadOK(n)
   /\ jobRec' = [jobRec EXCEPT ![j] = [st |-> "processing", owner |-> n, tok |-> tokens + 1]]
   /\ tokens' = tokens + 1
   /\ run' = [run EXCEPT ![n] = j]
@@ -522,35 +561,40 @@ Claim(n, j) ==
   /\ learned' = [learned EXCEPT ![n] = FALSE]
   /\ leaseLost' = [leaseLost EXCEPT ![n] = FALSE]
   /\ lastSeen' = [lastSeen EXCEPT ![n] = Max2(lastSeen[n], marker)]
-  /\ UNCHANGED <<node, rs, health, chk, reseeded, resetVal, done, remembers, waitDone, hbPending,
+  /\ claimLR' = [claimLR EXCEPT ![n] = IF OptClaimLastReset THEN lastReset ELSE 0]
+  /\ MarkRead(n)
+  /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
+  /\ UNCHANGED <<sawAtLoss, node, rs, health, chk, reseeded, resetVal, done, remembers, waitDone, hbPending,
                  marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, evalOK, evicting,
                  reachable, memHigh, outages, drops, advances, clock, histVars>>
 
 \* glossary resetSinceClaim: marker missing, flagged, or older than at claim, or its last-reset value
 \* later than at claim, or this node detected or learned of a reset since the claim.
 ResetSinceClaim(n) ==
-  \/ marker = 0 \/ flagged \/ marker < claimGen[n] \/ lastReset > claimGen[n] \/ learned[n]
+  \/ marker = 0 \/ flagged \/ marker < claimGen[n] \/ learned[n]
+  \/ IF OptClaimLastReset THEN lastReset > claimLR[n] ELSE lastReset > claimGen[n]
 
 OwnRecord(n) ==
   LET r == jobRec[run[n]] IN r.st = "processing" /\ r.owner = n /\ r.tok = claimTok[n]
 
 \* context jobs REQ-126 (heartbeat; system actor):
 \*   - record intact -> lease renewed (modeled only while some REQ-509 wait still needs it);
-\*   - @req REQ-522: while the marker is missing or flagged, a heartbeat that finds the record missing
-\*     and the store reset since the claim re-creates it as processing with the claim's node, token,
-\*     queue, concurrency key, unique key and occurrence;
+\*   - @req REQ-522: while the marker is missing or flagged, a heartbeat that finds the record missing,
+\*     the store reset since the claim and the run's lease not expired (run 4; A-18: not leaseLost)
+\*     re-creates it as processing with the claim's node, token, queue, concurrency key, unique key
+\*     and occurrence;
 \*   - @req REQ-534: in the same write, another job holding the unique key in a state REQ-534 lists
 \*     (Scheduled, Enqueued, Awaiting, Unroutable; the model has Enqueued) is cancelled with
 \*     reason DuplicateAfterReset;
 \*   - anything else is refused (jobs INV-128) and the run continues (A-16).
 \* A successful renewal or re-creation counts for the REQ-509 wait. A run whose lease has already
-\* expired stays leaseLost until it ends, even if a later reset lets it re-create its record (A-18):
-\* the store-state invariants (Inv_UniqueKey, Inv_RecurringOverlap) show what such a revival does.
+\* expired stays leaseLost until it ends (A-18).
 Heartbeat(n) ==
   /\ node[n] = "Running" /\ run[n] # NULL /\ reachable /\ rs[n] # "Connecting"
+  /\ ReadOK(n)
   /\ LET j == run[n] IN
        \/ /\ jobRec[j].st = "none" /\ (marker = 0 \/ flagged) /\ ResetSinceClaim(n)
-          /\ OptLeaseCheck => ~leaseLost[n]
+          /\ ~leaseLost[n]
           /\ jobRec' = [k \in Jobs |->
                IF k = j THEN [st |-> "processing", owner |-> n, tok |-> claimTok[n]]
                ELSE IF UniqueKeys /\ SameScope(j, k) /\ jobRec[k].st = "enqueued"
@@ -559,7 +603,8 @@ Heartbeat(n) ==
        \/ /\ OwnRecord(n) /\ \E m \in Nodes : n \in hbPending[m]
           /\ UNCHANGED jobRec
   /\ hbPending' = Renewed(n)
-  /\ UNCHANGED <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
+  /\ MarkRead(n)
+  /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
                  resetVal, done, remembers, waitDone, leaseLost, marker, flagged, lastReset, codeRec, registry,
                  resetRec, maint, snap, envVars, histVars>>
 
@@ -571,6 +616,7 @@ Heartbeat(n) ==
 \*                                                 run whose lease had expired: lostOutcomeLL)
 Complete(n) ==
   /\ run[n] # NULL /\ reachable /\ rs[n] # "Connecting"
+  /\ ReadOK(n)
   /\ LET j == run[n]
          gone == jobRec[j].st = "none" /\ ~ResetSinceClaim(n) IN
        /\ jobRec' = [jobRec EXCEPT ![j] =
@@ -582,17 +628,19 @@ Complete(n) ==
   /\ run' = [run EXCEPT ![n] = NULL]
   /\ hbPending' = Renewed(n)
   /\ leaseLost' = [leaseLost EXCEPT ![n] = FALSE]
-  /\ UNCHANGED <<node, rs, health, chk, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
+  /\ MarkRead(n)
+  /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
+  /\ UNCHANGED <<claimLR, sawAtLoss, node, rs, health, chk, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
                  remembers, waitDone, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap,
                  envVars, created, maintIntent, pendingLoss, falseReset, detections, losses, everAcked, inits>>
 
 \* context: jobs REQ-162 / REQ-163 - operator turns maintenance on / off.
 MaintOn  == /\ reachable /\ ~maint /\ maint' = TRUE  /\ maintIntent' = TRUE
-            /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, jobRec, snap,
+            /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, jobRec, snap,
                            envVars, created, pendingLoss, falseReset, lostOutcome, lostOutcomeLL,
                            detections, losses, everAcked, inits>>
 MaintOff == /\ reachable /\ maint /\ maint' = FALSE /\ maintIntent' = FALSE
-            /\ UNCHANGED <<nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, jobRec, snap,
+            /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, jobRec, snap,
                            envVars, created, pendingLoss, falseReset, lostOutcome, lostOutcomeLL,
                            detections, losses, everAcked, inits>>
 
@@ -617,7 +665,7 @@ HealthCheck(n) ==
   /\ CheckHealth /\ Up(n)
   /\ \E h \in Outcomes(n) : health' = [health EXCEPT ![n] = h]
   /\ chk' = [chk EXCEPT ![n] = IF reachable THEN "reachable" ELSE "unreachable"]
-  /\ UNCHANGED <<node, rs, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
+  /\ UNCHANGED <<xVars, node, rs, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
                  remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* environment: the server goes away (@req REQ-529: every connected node marks its store
@@ -627,11 +675,11 @@ Disconnect == /\ reachable /\ outages < MaxOutages
               /\ rs' = [n \in Nodes |-> "Connecting"]
               /\ waitDone' = [n \in Nodes |-> FALSE]
               /\ hbPending' = [n \in Nodes |-> {}]
-              /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
+              /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
                              resetVal, done, remembers, leaseLost, storeVars, evalOK, evicting, memHigh,
                              drops, tokens, advances, clock, histVars>>
 Reconnect  == /\ ~reachable /\ reachable' = TRUE
-              /\ UNCHANGED <<nodeVars, storeVars, evalOK, evicting, memHigh, outages, drops, tokens,
+              /\ UNCHANGED <<xVars, nodeVars, storeVars, evalOK, evicting, memHigh, outages, drops, tokens,
                              advances, clock, histVars>>
 \* @req REQ-529  One node loses its connection (or sees the server's role change): its store is
 \*   connecting until Connect(n) succeeds again; a reconciliation it was in is left (REQ-530 resumes it).
@@ -641,11 +689,11 @@ DropConnection(n) ==
   /\ drops' = drops + 1
   /\ waitDone' = [waitDone EXCEPT ![n] = FALSE]
   /\ hbPending' = [hbPending EXCEPT ![n] = {}]
-  /\ UNCHANGED <<node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
+  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                  done, remembers, leaseLost, storeVars, evalOK, evicting, reachable, memHigh, outages,
                  tokens, advances, clock, histVars>>
 MemChange  == /\ MemToggle /\ memHigh' = ~memHigh
-              /\ UNCHANGED <<nodeVars, storeVars, evalOK, evicting, reachable, outages, drops, tokens,
+              /\ UNCHANGED <<xVars, nodeVars, storeVars, evalOK, evicting, reachable, outages, drops, tokens,
                              advances, clock, histVars>>
 
 ---------------------------------------------------------------------------
@@ -794,5 +842,44 @@ Scn_DuplicateCancelled_NotReached ==
   ~(\E n \in Nodes, j, k \in Jobs :
       /\ losses = 1 /\ detections = 1 /\ run[n] = j
       /\ jobRec[j].st = "processing" /\ jobRec[j].owner = n /\ jobRec[k].st = "cancelled")
+
+\* ---- run 4 ----------------------------------------------------------------
+
+\* @req REQ-528 REQ-507 (REQ-528 notes, NFR-31: "a flush first seen by a newly started worker is not
+\*   reported if every worker that saw the previous marker is paused until the marker is next
+\*   advanced") - a hidden flush means every node that saw the old marker made no marker read
+\*   (claim, heartbeat, completion) since the flush. Needs TrackHidden.
+Inv_HiddenOnlyIfPaused == Hidden => \A n \in WorkerNodes : sawAtLoss[n] => ~readInWindow[n]
+
+\* @req REQ-528 (notes: "a node paused for that whole time ... its runs are lease-lost anyway") -
+\*   a run that was live at the hidden flush has lost its lease. Needs TrackHidden.
+Inv_HiddenRunsLeaseLost == Hidden => \A n \in Nodes : runAtLoss[n] => leaseLost[n]
+
+\* glossary resetSinceClaim ("The store was reset since a job was claimed"): with no data loss at
+\*   all, no run counts as reset since its claim (REQ-521 notes: "A record missing for any other
+\*   reason is still refused").
+Inv_ResetSinceClaimSound == losses = 0 => \A n \in Nodes : run[n] # NULL => ~ResetSinceClaim(n)
+
+\* @req SCN-509 (negative, impossibleAt 4): a flag set by a detection on a node that was already
+\*   reconciling is not cleared before LeaseDuration has passed since that detection.
+Scn_NoClearBeforeWait == \A n \in Nodes : (rs[n] = "Reconciling" /\ ~waitDone[n]) => ~ENABLED FinishReconcile(n)
+
+\* SCN-509 steps 1-3 are reachable: n1 reconciles a second detection, the run on n2 kept its lease,
+\*   and n1 has not re-seeded for the new value (trap, expected VIOLATED).
+Scn509_Prefix_NotReached ==
+  ~(\E n, m \in Nodes :
+      /\ n # m /\ detections = 2 /\ losses = 2 /\ rs[n] = "Reconciling" /\ flagged /\ marker = resetVal[n]
+      /\ reseeded[n] # resetVal[n] /\ run[m] # NULL /\ ~leaseLost[m])
+
+\* @req SCN-510 (negative, impossibleAt 4): a run whose lease expired does not re-create its record
+\*   at a later flush.
+Scn_NoRevivalAfterExpiry ==
+  \A n \in Nodes : (leaseLost[n] /\ run[n] # NULL /\ jobRec[run[n]].st = "none") => ~ENABLED Heartbeat(n)
+
+\* SCN-510 steps 1-3 are reachable: a lease-lost run, its record gone, a second detection, flag set.
+Scn510_Prefix_NotReached ==
+  ~(\E n \in Nodes :
+      /\ losses = 2 /\ detections = 2 /\ flagged /\ leaseLost[n] /\ run[n] # NULL
+      /\ jobRec[run[n]].st = "none")
 
 =============================================================================
