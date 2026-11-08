@@ -1,7 +1,7 @@
 {
   "module": "integrations",
-  "specHash": "60631c2ae0002044b1f3da5c2568767deaeff1602ab4fe25d5c7deaa6579063d",
-  "generatedAt": "2026-11-08T18:00:00Z",
+  "specHash": "7b719d5882c5246ed81e99575065f7270c6f01162e77d443b96eeabee9fd070f",
+  "generatedAt": "2026-11-08T21:00:00Z",
   "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsAlertEvents.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
   "items": {
     "REQ-400": {
@@ -220,14 +220,14 @@
       "note": "model/integrations/IntegrationsAlerts.tla Scn405_NoLeaseNoDelivery: holds in every alerts cfg (949 states in the main cfg)"
     },
     "INV-412": {
-      "hash": "98981fd32deed31ca37eef0bbff670bdcc40eab9b62a764b093e0088e69e72ae",
+      "hash": "9ff94550e801e66680911bf650ad6b8e86d89e5226847c713b343eae676c6253",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla (run 6): marks per name and event settings, as written. One delivery per recorded change and every dead-letter and REQ-242 miss record alerted, including one dropped by a pause (1,282 states). A version's owed event is alerted after a rollback (_editBack 14,474, _settingsBack 13,187; per-name counterfactuals fail, 10 states). An event alerted by one version is alerted again by another after a threshold/tolerance rollback or a rolling-deploy flap (_settingsBack 7 states, _settingsFlap 8): F-24; option 1 (delivered per name, start per version) holds (_settingsBackSplit 7,167, _settingsFlapSplit 12,753). IntegrationsAlerts.tla (one version, unchanged logic): read then conditional lease-checked write, one delivery and every event alerted across crash, restart and lease pause (949)."
+      "note": "IntegrationsAlertEvents.tla (run 7): 'delivered' per rule name, 'before the start' per name and event settings, as written (MarkScope split). One delivery per event per name and every event alerted on the main run (1,282 states), the re-add (4,696), a new rule (1,061), trigger, widened-trigger and threshold/tolerance edit-backs and a rolling-deploy flap (14,474 / 8,876 / 7,167 / 12,753); run 6's per-version marks, kept as counterfactuals, alert an event twice (7 and 8 states). IntegrationsAlerts.tla: two-step conditional writes with two nodes on two versions of the rule (_rollingSettings 2,703; _rollingNew 5,492): one delivery and every event alerted across a stale holder's write; per-version marks duplicate (12 states). F-25: the new purpose clause 'nor a version ... skips one' fails under the name-wide reading after an edit that is never rolled back (_settingsEdit, 9/10 states); option 2 checked (_settingsEditSinceEval). F-26: a renamed rule and its old name each alert the same event (_rename, 7 states)."
     },
     "INV-413": {
-      "hash": "3e8a00c4b5e50f1a08882b1203733d92090e65c8706741d2b69ae23318bc5c9c",
+      "hash": "4c3f09cc08311a495633b784bc8bd80f227c69bdff0907bcb628b0c922a489de",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla (run 6): records and start marks per name and event settings; an edited trigger starts at the store's present (_editTrigger 3,215; name-only counterfactual fails, 5 states); a rule added later alerts no older event and every later one (_newRule 1,061); run-5 F-23 resolved for trigger and threshold/tolerance edits; F-24 is the duplicate across versions. IntegrationsAlerts.tla: the conditional, lease-checked write across a handover holds (_newRule 2,408); unchecked and lease-only counterfactuals lose an event (12 and 14 states)."
+      "note": "IntegrationsAlertEvents.tla (run 7): records and 'before the start' marks per name and event settings; a rule added later alerts no older event and every later one (_newRule 1,061); an edited trigger starts at the store's present (_editTrigger 3,215; name-only counterfactual fails, 5 states); a rolled-back version alerts what it owes but not what another version delivered (_settingsBack, _editBack, _editWiden). IntegrationsAlerts.tla: the conditional, lease-checked write holds across a handover for one version (_newRule 2,408) and for two versions started by two nodes (_rollingNew 5,492); unchecked and lease-only counterfactuals lose an event (14 states each). F-25 (where an edited version starts) and F-26 (renames) are open."
     },
     "SCN-406": {
       "hash": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11",

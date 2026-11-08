@@ -13,7 +13,7 @@ import json, os, pathlib, re, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUN_TLC = os.environ.get("RUN_TLC", str(pathlib.Path.home() / ".claude-personal/skills/refiner-model/scripts/run_tlc.py"))
-TIMEOUT = 170
+TIMEOUT = 400
 # cfgs whose deadlocks are real findings; the others have a finite environment by design (A-10, A-12).
 DEADLOCK_CFGS = {"IntegrationsHttp", "IntegrationsHttp_transport", "IntegrationsHttp_wildcard",
                  "IntegrationsNotifications", "IntegrationsNotifications_cap2"}
@@ -34,7 +34,7 @@ def split_cfg(text):
 
 
 def run(tla, cfg_path, out, flags):
-    cmd = [sys.executable, "-X", "utf8", RUN_TLC, tla, "--config", cfg_path, "--workers", "2",
+    cmd = [sys.executable, "-X", "utf8", RUN_TLC, tla, "--config", cfg_path, "--workers", "4",
            "--stop-at-first", "--timeout", str(TIMEOUT + 30), "--out", f"runs/{out}.json", "--md", f"runs/{out}.md"] + flags
     p = subprocess.Popen(cmd, cwd=HERE)
     try:
