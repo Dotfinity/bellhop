@@ -1,7 +1,7 @@
 {
   "module": "integrations",
-  "specHash": "7b719d5882c5246ed81e99575065f7270c6f01162e77d443b96eeabee9fd070f",
-  "generatedAt": "2026-11-08T21:00:00Z",
+  "specHash": "dce58296443f125005831955a247d675c6dcf37c8bb55724ad84209fa6598c28",
+  "generatedAt": "2026-11-08T23:30:00Z",
   "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsAlertEvents.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
   "items": {
     "REQ-400": {
@@ -220,14 +220,14 @@
       "note": "model/integrations/IntegrationsAlerts.tla Scn405_NoLeaseNoDelivery: holds in every alerts cfg (949 states in the main cfg)"
     },
     "INV-412": {
-      "hash": "9ff94550e801e66680911bf650ad6b8e86d89e5226847c713b343eae676c6253",
+      "hash": "d1626e50cc19956abd88da25353293d48d30105d66660e40eb53f6e922250971",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla (run 7): 'delivered' per rule name, 'before the start' per name and event settings, as written (MarkScope split). One delivery per event per name and every event alerted on the main run (1,282 states), the re-add (4,696), a new rule (1,061), trigger, widened-trigger and threshold/tolerance edit-backs and a rolling-deploy flap (14,474 / 8,876 / 7,167 / 12,753); run 6's per-version marks, kept as counterfactuals, alert an event twice (7 and 8 states). IntegrationsAlerts.tla: two-step conditional writes with two nodes on two versions of the rule (_rollingSettings 2,703; _rollingNew 5,492): one delivery and every event alerted across a stale holder's write; per-version marks duplicate (12 states). F-25: the new purpose clause 'nor a version ... skips one' fails under the name-wide reading after an edit that is never rolled back (_settingsEdit, 9/10 states); option 2 checked (_settingsEditSinceEval). F-26: a renamed rule and its old name each alert the same event (_rename, 7 states)."
+      "note": "Run 8: 'skips one after its start (INV-413)'. IntegrationsAlertEvents.tla Liv_DeadLetterAlerted/Liv_MissedAlerted restated to that reading (an event after a version's start is delivered for the name once that version is configured for good; start kept as history vStartDL/vStartMI) and run on every cfg: hold in every as-written cfg, incl. _settingsEdit (2,421) and _editWiden (8,876) that failed under run 7's wording; fail under per-name, per-job, no-REQ-242 counterfactuals (9-11 states). IntegrationsAlerts.tla Liv_EventAlerted restated (lease stays with a node running the version): holds on main (949), _rollingSettings (2,703), _rollingNew (5,492), _newRule (2,408); fails under unchecked/lease-only INV-413 writes (14) and node memory (7). One delivery per event per name holds everywhere as written. Run-7 F-25/F-26 accepted in INV-413 notes (name-wide checks fail: _settingsEdit 7, _editWiden 10, _rename 7). No findings."
     },
     "INV-413": {
       "hash": "4c3f09cc08311a495633b784bc8bd80f227c69bdff0907bcb628b0c922a489de",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla (run 7): records and 'before the start' marks per name and event settings; a rule added later alerts no older event and every later one (_newRule 1,061); an edited trigger starts at the store's present (_editTrigger 3,215; name-only counterfactual fails, 5 states); a rolled-back version alerts what it owes but not what another version delivered (_settingsBack, _editBack, _editWiden). IntegrationsAlerts.tla: the conditional, lease-checked write holds across a handover for one version (_newRule 2,408) and for two versions started by two nodes (_rollingNew 5,492); unchecked and lease-only counterfactuals lose an event (14 states each). F-25 (where an edited version starts) and F-26 (renames) are open."
+      "note": "Run 8: impacted via INV-412, notes only (F-25, F-26 accepted). Re-checked: records and 'before the start' marks per name and event settings; a rule added later alerts no older event and every later one (_newRule 1,061); an edited trigger starts at the store's present (_editTrigger 3,215); a version that comes back alerts what it owes after its start but not what another version of the name delivered (_editBack, _settingsBack, _editWiden, _rename, _settingsFlap). IntegrationsAlerts.tla: the conditional, lease-checked write holds across a handover for one and two versions (_newRule 2,408, _rollingNew 5,492). Run 7's sinceNameEval alternative removed (not chosen)."
     },
     "SCN-406": {
       "hash": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11",

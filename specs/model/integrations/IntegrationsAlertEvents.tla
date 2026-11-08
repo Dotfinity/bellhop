@@ -1,5 +1,5 @@
 ---------------------- MODULE IntegrationsAlertEvents ----------------------
-\* Generated from integrations.json (specHash 7b719d5882c5) — FEAT-400 Notifications, INV-412, INV-413.
+\* Generated from integrations.json (specHash dce58296443f) — FEAT-400 Notifications, INV-412, INV-413.
 \* Edit the requirements, not this file. Every action/property carries an @req comment.
 \* INV-412 makes the alerts node find once-only events "from what the job store records" and mark each one
 \* in the store write that creates its delivery. INV-413 says where a rule starts: the first time the
@@ -11,6 +11,14 @@
 \* for that name. INV-413's first evaluation marks the stored events "before the start" of that name and
 \* those settings. The two marks are kept apart (start*, del*). Run 7 also adds a rename (a new name,
 \* REQ-410) and a trigger edit that widens what the rule watches, and counts deliveries per rule name.
+\* Run 8 (handoff: INV-412 modified, run-7 F-25/F-26 option 1 applied; INV-413 impacted, notes only): the
+\* purpose clause ends "... alerts an event again or skips one after its start (INV-413)". Liv_DeadLetterAlerted
+\* and Liv_MissedAlerted now say that reading: an event a version watches and that is after that version's
+\* start is delivered for the name once that version is configured for good. Run 7's name-wide liveness (an
+\* event is alerted unless it happened while the version then configured was unrecorded) is kept as
+\* Chk_*AcrossVersions; INV-413's notes accept where it fails (F-25, F-26). Each version's start is a
+\* history variable (vStartDL, vStartMI), so the property does not depend on the MarkScope switch. Run 7's
+\* "sinceNameEval" alternative (F-25 option 2, not chosen) is removed.
 \* This module asks what the store records for each event, what one event is, and how a rule's
 \* life (added, removed, re-added, edited, edited back, renamed) moves its start point.
 \* The lease is not modeled here: one alerts node holds it throughout and is always able to act
@@ -30,10 +38,6 @@
 \*     "freshCatchUp" : run-4 F-21 option (not chosen): as "firstSeen", except on a store that records no
 \*                      rule at all (OtherRuleKnown = FALSE), where nothing is marked.
 \*     "storeStart"   : counterfactual "INV-413 dropped": nothing is marked (run 3's F-18 flood).
-\*     "sinceNameEval": run 7 F-25 option 2 (not a requirement): as "firstSeen", except that a name the lease
-\*                      holder has evaluated before keeps its place: only the events the store recorded at
-\*                      the name's last evaluation (Evaluate) are marked, so events between the previous
-\*                      version's last evaluation and this version's first are due to this version.
 \*   RuleKey    : what INV-413's store record knows a rule by.
 \*     "nameAndSettings" : @req INV-413  the rule's name and event settings: here the name (nm), the
 \*                         trigger (watch) and a threshold/tolerance version bit (ver).
@@ -74,7 +78,7 @@ ASSUME SameJob \in BOOLEAN /\ RuleAtStart \in BOOLEAN /\ OtherRuleKnown \in BOOL
 ASSUME InitialWatch \subseteq {"dl", "miss"} /\ AllowRemove \in BOOLEAN /\ AllowEdit \in BOOLEAN
 ASSUME MaxChanges \in Nat /\ EditKind \in {"trigger", "widen", "settings", "rename"} /\ AllowPause \in BOOLEAN
 ASSUME RecordedAtStart \in BOOLEAN
-ASSUME RuleStart \in {"firstSeen", "freshCatchUp", "storeStart", "sinceNameEval"}
+ASSUME RuleStart \in {"firstSeen", "freshCatchUp", "storeStart"}
 ASSUME RuleKey \in {"nameAndSettings", "nameOnly"}
 ASSUME MarkScope \in {"split", "perSettings", "perName"}
 ASSUME MarkKey \in {"perChange", "perJob"}
@@ -113,12 +117,12 @@ VARIABLES ruleOn,       \* the rule is loaded by the lease holder (REQ-410)
           pausedI,                 \* history: (run 6) instants recorded by a pause, orphaning or removal
           dlOff, miOff,            \* history: events that happened while the rule did not watch them
           dlNew, miNew,            \* history: events that happened while the store had no record of the rule
-          evalDL, evalMI, evaluated \* "sinceNameEval" only: per name, what the store recorded at its last evaluation
+          vStartDL, vStartMI       \* history: (run 8) per version (RecKey), the events before its start (INV-413)
 vars == <<ruleOn, known, watch, ver, nm, recActive, changes, dl, processed, lastOutcome, missRec,
           startDL, startJob, startMI, delDL, delJob, delMI, madeDL, madeMI, missedI, pausedI,
-          dlOff, miOff, dlNew, miNew, evalDL, evalMI, evaluated>>
-evals == <<evalDL, evalMI, evaluated>>
-marks == <<startDL, startJob, startMI, delDL, delJob, delMI, evalDL, evalMI, evaluated>>
+          dlOff, miOff, dlNew, miNew, vStartDL, vStartMI>>
+vstart == <<vStartDL, vStartMI>>
+marks == <<startDL, startJob, startMI, delDL, delJob, delMI, vStartDL, vStartMI>>
 
 TypeInv ==
   /\ ruleOn \in BOOLEAN /\ known \subseteq Keys
@@ -131,7 +135,7 @@ TypeInv ==
   /\ delDL \in [Keys -> SUBSET DL] /\ delJob \in [Keys -> SUBSET DL] /\ delMI \in [Keys -> SUBSET Instants]
   /\ madeDL \in [BOOLEAN -> [DL -> 0..2]] /\ madeMI \in [BOOLEAN -> [Instants -> 0..2]]
   /\ dlOff \subseteq DL /\ miOff \subseteq Instants /\ dlNew \subseteq DL /\ miNew \subseteq Instants
-  /\ evalDL \in [BOOLEAN -> 0..2] /\ evalMI \in [BOOLEAN -> SUBSET Instants] /\ evaluated \subseteq BOOLEAN
+  /\ vStartDL \in [Keys -> SUBSET DL] /\ vStartMI \in [Keys -> SUBSET Instants]
 
 Min(a, b) == IF a < b THEN a ELSE b
 Watches(k) == ruleOn /\ k \in watch
@@ -157,8 +161,7 @@ Init ==
   /\ delDL = [k \in Keys |-> {}] /\ delJob = [k \in Keys |-> {}] /\ delMI = [k \in Keys |-> {}]
   /\ madeDL = [b \in BOOLEAN |-> [d \in DL |-> 0]] /\ madeMI = [b \in BOOLEAN |-> [i \in Instants |-> 0]]
   /\ dlOff = {} /\ miOff = {} /\ dlNew = {} /\ miNew = {}
-  /\ evalDL = [b \in BOOLEAN |-> 0] /\ evalMI = [b \in BOOLEAN |-> {}]
-  /\ evaluated = IF RecordedAtStart /\ RuleStart = "sinceNameEval" THEN {FALSE} ELSE {}
+  /\ vStartDL = [k \in Keys |-> {}] /\ vStartMI = [k \in Keys |-> {}]
 
 \* jobs REQ-131 (and REQ-141 in between when SameJob): a job is dead-lettered; jobs INV-116 records the
 \* transition in its state history, so the store holds the event.
@@ -291,21 +294,20 @@ EditRule ==
 \*               of: record them and mark every event the store records as before the start of that
 \*               name and those event settings, without creating deliveries. (One step here; the write's
 \*               lease check and condition across a handover are in IntegrationsAlerts.tla.)
+\*               History (run 8): vStart* keeps this version's start under its own key, whatever MarkScope.
 FirstSeen ==
   /\ ruleOn
   /\ ~Known
   /\ known' = known \cup {CurKey}
-  /\ IF RuleStart = "sinceNameEval" /\ nm \in evaluated
-       THEN /\ startDL' = [startDL EXCEPT ![StartKy] = @ \cup 1..evalDL[nm]]
-            /\ startJob' = [startJob EXCEPT ![StartKy] = @ \cup {JobOf(d) : d \in 1..evalDL[nm]}]
-            /\ startMI' = [startMI EXCEPT ![StartKy] = @ \cup evalMI[nm]]
-       ELSE IF RuleStart \in {"firstSeen", "sinceNameEval"} \/ (RuleStart = "freshCatchUp" /\ OtherRuleKnown)
+  /\ IF RuleStart = "firstSeen" \/ (RuleStart = "freshCatchUp" /\ OtherRuleKnown)
        THEN /\ startDL' = [startDL EXCEPT ![StartKy] = @ \cup 1..dl]
             /\ startJob' = [startJob EXCEPT ![StartKy] = @ \cup {JobOf(d) : d \in 1..dl}]
             /\ startMI' = [startMI EXCEPT ![StartKy] = @ \cup {i \in Instants : Findable(i)}]
-       ELSE UNCHANGED <<startDL, startJob, startMI>>
+            /\ vStartDL' = [vStartDL EXCEPT ![CurKey] = 1..dl]
+            /\ vStartMI' = [vStartMI EXCEPT ![CurKey] = {i \in Instants : Findable(i)}]
+       ELSE UNCHANGED <<startDL, startJob, startMI, vStartDL, vStartMI>>
   /\ UNCHANGED <<ruleOn, watch, ver, nm, recActive, pausedI, changes, dl, processed, lastOutcome, missRec,
-                 delDL, delJob, delMI, madeDL, madeMI, missedI, dlOff, miOff, dlNew, miNew, evals>>
+                 delDL, delJob, delMI, madeDL, madeMI, missedI, dlOff, miOff, dlNew, miNew>>
 
 \* @req INV-412  Due for the rule as it is now configured: neither delivered for its name nor before the
 \*               start of its name and event settings. (Under the counterfactuals both marks share a key.)
@@ -330,7 +332,7 @@ HandleDeadLetter(d) ==
   /\ delJob' = [delJob EXCEPT ![DelivKy] = @ \cup {JobOf(d)}]
   /\ madeDL' = [madeDL EXCEPT ![nm][d] = Min(@ + 1, 2)]
   /\ UNCHANGED <<ruleOn, known, watch, ver, nm, recActive, pausedI, changes, dl, processed, lastOutcome, missRec,
-                 startDL, startJob, startMI, delMI, madeMI, missedI, dlOff, miOff, dlNew, miNew, evals>>
+                 startDL, startJob, startMI, delMI, madeMI, missedI, dlOff, miOff, dlNew, miNew, vstart>>
 
 \* @req REQ-403  An occurrence is missed: a delivery for the rule with the recurring job as subject.
 \* @req INV-412  Found in the store (recurring REQ-242's record), due, delivered and marked in one write.
@@ -342,32 +344,17 @@ HandleMissed(i) ==
   /\ delMI' = [delMI EXCEPT ![DelivKy] = @ \cup {i}]
   /\ madeMI' = [madeMI EXCEPT ![nm][i] = Min(@ + 1, 2)]
   /\ UNCHANGED <<ruleOn, known, watch, ver, nm, recActive, pausedI, changes, dl, processed, lastOutcome, missRec,
-                 startDL, startJob, startMI, delDL, delJob, madeDL, missedI, dlOff, miOff, dlNew, miNew, evals>>
-
-\* "sinceNameEval" only (F-25 option 2): the lease holder finishes an evaluation of the rule, with nothing
-\* left due for it, and the store keeps for the rule's name what it recorded at that point.
-Evaluate ==
-  /\ RuleStart = "sinceNameEval"
-  /\ ruleOn /\ Known
-  /\ ~(\E d \in DL : ENABLED HandleDeadLetter(d))
-  /\ ~(\E i \in Instants : ENABLED HandleMissed(i))
-  /\ <<evalDL[nm], evalMI[nm], nm \in evaluated>> # <<dl, {i \in Instants : Findable(i)}, TRUE>>
-  /\ evalDL' = [evalDL EXCEPT ![nm] = dl]
-  /\ evalMI' = [evalMI EXCEPT ![nm] = {i \in Instants : Findable(i)}]
-  /\ evaluated' = evaluated \cup {nm}
-  /\ UNCHANGED <<ruleOn, known, watch, ver, nm, recActive, changes, dl, processed, lastOutcome, missRec,
-                 startDL, startJob, startMI, delDL, delJob, delMI, madeDL, madeMI, missedI, pausedI,
-                 dlOff, miOff, dlNew, miNew>>
+                 startDL, startJob, startMI, delDL, delJob, madeDL, missedI, dlOff, miOff, dlNew, miNew, vstart>>
 
 Next ==
   \/ DeadLetter \/ TriggerMissed \/ ScheduleChangeMissed \/ PauseMissed \/ Resume \/ TriggerRuns
-  \/ AddRule \/ RemoveRule \/ EditRule \/ FirstSeen \/ Evaluate
+  \/ AddRule \/ RemoveRule \/ EditRule \/ FirstSeen
   \/ \E d \in DL : HandleDeadLetter(d)
   \/ \E i \in Instants : HandleMissed(i)
 
 \* Rule evaluation is a system duty of the lease holder (INV-411): fair. Events, pauses and configuration
 \* changes are not.
-Fairness == /\ WF_vars(FirstSeen) /\ WF_vars(Evaluate)
+Fairness == /\ WF_vars(FirstSeen)
             /\ \A d \in DL : WF_vars(HandleDeadLetter(d))
             /\ \A i \in Instants : WF_vars(HandleMissed(i))
 Spec == Init /\ [][Next]_vars /\ Fairness
@@ -382,18 +369,29 @@ Inv_OneDeliveryPerEvent == \A b \in BOOLEAN : /\ \A d \in DL : madeDL[b][d] <= 1
                                               /\ \A i \in Instants : madeMI[b][i] <= 1
 
 \* (run 7) One event never yields two deliveries under any rule name: a renamed rule and its old name
-\* together. A check of one reading, not a requirement (F-26).
+\* together. A check of one reading, not a requirement (run 7 F-26; INV-413 notes accept where it fails).
 Chk_OneDeliveryPerEventAnyName == /\ \A d \in DL : MadeDL(d) <= 1
                                   /\ \A i \in Instants : MadeMI(i) <= 1
 
-\* @req REQ-400 INV-412 INV-413  Every dead-letter is alerted, except one that happened while the store had
-\*                               no record of the rule as then configured (its start point, INV-413).
-Liv_DeadLetterAlerted == \A d \in DL : (d <= dl /\ d \notin dlNew) ~> (MadeDL(d) >= 1)
+\* (run 8) An event is the configured version's own: the store records the version, the version watches
+\* the event, and the event is after the version's start (INV-413).
+OwnDL(d) == ruleOn /\ "dl" \in watch /\ Known /\ d <= dl /\ d \notin vStartDL[CurKey]
+OwnMI(i) == ruleOn /\ "miss" \in watch /\ Known /\ i \in missedI /\ i \notin vStartMI[CurKey]
 
-\* @req REQ-403 INV-412 INV-413  Every missed instant is alerted, with the same exception, whether a
-\*                               trigger, a schedule change or (run 6) a pause, orphaning or removal
-\*                               dropped it (recurring REQ-242).
-Liv_MissedAlerted == \A i \in Instants : (i \in missedI /\ i \notin miNew) ~> (MadeMI(i) >= 1)
+\* @req REQ-400 INV-412 INV-413  "nor a version of the rule that takes over from another ... skips one after
+\*   its start" (run 8): a dead-letter after a version's start is delivered for the rule's name once that
+\*   version is configured for good (by that version, or before by another version of the same name).
+Liv_DeadLetterAlerted == \A d \in DL, b \in BOOLEAN : <>[](OwnDL(d) /\ nm = b) => <>(madeDL[b][d] >= 1)
+
+\* @req REQ-403 INV-412 INV-413  The same for a missed instant, whether a trigger, a schedule change or
+\*   (run 6) a pause, orphaning or removal dropped it (recurring REQ-242).
+Liv_MissedAlerted == \A i \in Instants, b \in BOOLEAN : <>[](OwnMI(i) /\ nm = b) => <>(madeMI[b][i] >= 1)
+
+\* Run 7's liveness, kept as a check of the name-wide reading, not a requirement (INV-413 notes accept
+\* where it fails, run 7 F-25 and F-26): every dead-letter / missed instant is alerted under some name,
+\* except one that happened while the store had no record of the rule as then configured.
+Chk_DeadLetterAlertedAcrossVersions == \A d \in DL : (d <= dl /\ d \notin dlNew) ~> (MadeDL(d) >= 1)
+Chk_MissedAlertedAcrossVersions == \A i \in Instants : (i \in missedI /\ i \notin miNew) ~> (MadeMI(i) >= 1)
 
 \* (run 6) Vacuity trap, expected to be VIOLATED: an instant recorded by a pause is alerted.
 Trap_PausedMissAlerted == ~(\E i \in pausedI : MadeMI(i) >= 1)
