@@ -1,7 +1,7 @@
 {
   "module": "redis",
-  "specHash": "fb9a582eac88b10894a48db443960a05d217c328fd46a73780562b87006febf3",
-  "generatedAt": "2026-11-08T02:05:29Z",
+  "specHash": "ea2b1eed07d1d2f91c3186134a26d94364d3a3d09b50c21722f1bbd714c3e4d1",
+  "generatedAt": "2026-11-08T13:26:40Z",
   "model": "model/redis/Redis.tla",
   "items": {
     "REQ-500": {
@@ -37,7 +37,7 @@
     "REQ-507": {
       "hash": "7f22c0f680883fc760b4b0cc74b267f62abc3297ccdc2ae7c17156b2bbef0245",
       "reviewed": false,
-      "note": "DetectReset(n) (DetectCond), also on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): run 6, the replacement is one atomic step with the read that found the marker missing or older (A-19 is now the requirement); server-clock value as value and last-reset value, flagged; StoreWasReset always; restarts the REQ-509 wait. Run-5 F-1 resolved: Redis_Hide.cfg and Redis_Hide2.cfg hold; the run-5 wording (SplitCAS) is the counterfactual Redis_HideRace.cfg, violated in 14 steps."
+      "note": "DetectReset(n) (DetectCond), also on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): run 6, the replacement is one atomic step with the read that found the marker missing or older (A-19 is now the requirement); server-clock value as value and last-reset value, flagged; StoreWasReset always; restarts the REQ-509 wait. Run-5 F-1 resolved: Redis_Hide.cfg and Redis_Hide2.cfg hold; the run-5 wording (SplitCAS) is the counterfactual Redis_HideRace.cfg, violated in 14 steps. Run 7: ReplyLost(n) (environment switch LostReply) makes the store side of this write without the node side (A-32); F-1."
     },
     "REQ-508": {
       "hash": "b8e5cd7efad11922fb20840fbf7eaf6a1b5a50c6d450d97cce23a687c3250daf",
@@ -100,9 +100,9 @@
       "note": "Heartbeat(n) re-creation branch with the run-5 resetSinceClaim; marker missing or flagged, record missing, not leaseLost (A-18). The heartbeat read applies REQ-507/528/530 first (ReadOK). Re-checked: Redis_Unique2(During), Recurring2(During), SCN-510 hold."
     },
     "REQ-523": {
-      "hash": "7131a7e37c13a489b8b07ca8833d6f39c4c3409439481c419bad8e68ad7346ba",
+      "hash": "278732eaa3cc6370b8a70ebd290b28c886068bb6eec1bb4e089f486c35c6b0f4",
       "reviewed": false,
-      "note": "DetectReset(n): modeled as this node's REQ-507 replacement of the marker (A-31). Impacted, re-checked: Inv_UnackedUntilOperator holds on Redis.cfg, Redis_Flush2.cfg and Redis_LateJoin.cfg. F-1 (ambiguity): its trigger still names a compare-and-set REQ-507 no longer makes; read literally it never fires (Redis_Req523Literal.cfg, 9 steps)."
+      "note": "DetectReset(n): run 7, the trigger 'this node replaces the generation marker under REQ-507' is this action (A-31 is the requirement); InitMarker (REQ-528) and Learn (REQ-530) record nothing. Req523Literal counterfactual retired. Inv_UnackedUntilOperator holds on Redis.cfg, Redis_Flush2.cfg and Redis_LateJoin.cfg; Inv_OneEventPerReset holds. F-1 (gap, high): with LostReply the script's replacement happens but the node never learns it, so nothing is logged or recorded (Redis_ReplyLost.cfg Inv_HiddenOnlyIfPaused, 13 steps; Redis_LivReplyLost.cfg Liv_LossReported, 16 steps)."
     },
     "REQ-524": {
       "hash": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
@@ -132,12 +132,12 @@
     "REQ-529": {
       "hash": "9ec746459993be5849d8ce8fe98f27c3f349b5bb5617cd82b14c4342484f8bd0",
       "reviewed": false,
-      "note": "Disconnect (all nodes) and DropConnection(n) (one node) + Connect(n); wait restarts via REQ-530."
+      "note": "Disconnect (all nodes) and DropConnection(n) (one node) + Connect(n); wait restarts via REQ-530. Run 7: ReplyLost(n) is a drop that takes the reply of REQ-507's write with it (A-32, F-1)."
     },
     "REQ-530": {
       "hash": "6bcbf2a9fed07be07473f952aba2ffb5f4c10ca819c16f6fbd8aa8d2d4eb89ca",
       "reviewed": false,
-      "note": "Learn(n) (LearnCond, also on every claim, heartbeat and completion read): flagged value not finished and not older than lastSeen. Impacted, re-checked: with REQ-507's write atomic, the other nodes join here (Inv_OneEventPerReset holds)."
+      "note": "Learn(n) (LearnCond, also on every claim, heartbeat and completion read): flagged value not finished and not older than lastSeen. Impacted, re-checked: with REQ-507's write atomic, the other nodes join here (Inv_OneEventPerReset holds). Run 7: after a lost reply every node, the writer included, joins the new marker here silently (F-1)."
     },
     "REQ-531": {
       "hash": "2f4c5fd11a000018eaf099d1503ea2f8e4d89e2869463f091029394d9269b9c9",
@@ -147,7 +147,7 @@
     "REQ-532": {
       "hash": "f73d75bb1dc8e61f3a25e890980154d4e132bc32949d5cd51fb0a112ba18b0f2",
       "reviewed": false,
-      "note": "RewriteRecord(n); Liv_UnackedRestored passes."
+      "note": "RewriteRecord(n). Impacted (run 7), re-checked: Liv_UnackedRestored passes on Redis_Liveness.cfg (33,469) and Redis_LivFlush2.cfg (318,426)."
     },
     "REQ-533": {
       "hash": "a1f41ff73b6c692e68595220b089dbfd4fb0c5d7ceed70b152f493087654af66",
@@ -162,7 +162,7 @@
     "SCN-500": {
       "hash": "d96390722d6195a6601a18e35e50686174663a28e1b222a2ed1df52de27ee7fc",
       "reviewed": false,
-      "note": "Redis_SCN500.cfg trap violated as expected (10 steps)."
+      "note": "Impacted (run 7), re-checked: Redis_SCN500.cfg trap violated as expected (10 steps); the trap now also requires the next health check to keep the node Degraded (Outcomes = {\"Degraded\"}), so REQ-524's share is shown rather than a Degraded left by hosting REQ-58."
     },
     "SCN-501": {
       "hash": "6c5d66c00775a24165e0d4c05eae7c4eead5939da1a3adcd64c524287f3698c4",

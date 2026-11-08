@@ -1,13 +1,12 @@
 ----------------------------- MODULE Redis -----------------------------
 \* Generated from specs/redis.json - edit the requirements, not this file.
-\* Run 6 (2026-11-08): regenerated from handoff.json (changes: REQ-507 and REQ-528 write the marker in the
-\* same atomic step as the read that found it; REQ-507 has no compare-and-set and always logs
-\* StoreWasReset). A-19 is now the requirement, so DetectReset and InitMarker stay one step. The run-5
-\* option switch OptRetryCAS is removed. Impacted ids re-checked: LIV-501, REQ-523, REQ-526, REQ-530,
-\* SCN-500, SCN-503..SCN-510.
+\* Run 7 (2026-11-08): regenerated from handoff.json (change: REQ-523's trigger is now "this node
+\* replaces the generation marker under REQ-507", which DetectReset already encoded as A-31). The
+\* run-6 counterfactual Req523Literal (the old wording, which never fired) is removed. Impacted ids
+\* re-checked: REQ-532, SCN-500. New environment switch LostReply: the reply of a script that made the
+\* REQ-507 write is lost with the connection (REQ-529), so the node does not learn it made it.
 \* Switches that are not requirements: TrackHidden (history variables), SplitCAS (COUNTERFACTUAL: the
-\* run-5 wording, a read followed by a separate compare-and-set) and Req523Literal (COUNTERFACTUAL: REQ-523
-\* read literally; its trigger "this node's compare-and-set in REQ-507 succeeds" never happens). With all
+\* run-5 wording, a read followed by a separate compare-and-set) and LostReply (environment). With all
 \* FALSE the extra variables (xVars) stay constant, except claimLR (a requirement since run 5).
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (hosting.Node, hosting.Health, jobs.Job, jobs.Maintenance,
@@ -30,8 +29,8 @@ CONSTANTS Nodes,         \* hosting.Node instances (bound 2)
           LateJoin,      \* a node may read the marker for the first time after a data loss (A-17)
           SplitCAS,      \* COUNTERFACTUAL (run-5 wording, not a requirement): REQ-507's read and a separate
                          \*   compare-and-set are two steps (FALSE = run 6: one atomic step)
-          Req523Literal, \* COUNTERFACTUAL: REQ-523's trigger "this node's compare-and-set in REQ-507 succeeds"
-                         \*   read literally; REQ-507 makes no compare-and-set since run 6, so it never fires
+          LostReply,     \* environment (run 7): a script that made the REQ-507 write loses its reply with the
+                         \*   connection (REQ-529); the write stands, the node never learns it made it
           TrackHidden,   \* model switch: keep the history variables of Inv_HiddenOnlyIfPaused (xVars)
           MaxAdvances,   \* REQ-527 advances in one run (environment bound)
           MaxTok,        \* lease tokens issued in one run (fresh GUIDs, bounded)
@@ -53,7 +52,7 @@ ASSUME /\ WorkerNodes \subseteq Nodes /\ QueueA \subseteq Jobs
        /\ MaxLosses \in Nat /\ MaxAdvances \in Nat /\ MaxTok \in Nat
        /\ ShardByQueue \in BOOLEAN /\ FreshStore \in BOOLEAN /\ AllowStop \in BOOLEAN
        /\ UniqueKeys \in BOOLEAN /\ Recurring \in BOOLEAN /\ PolicyChange \in BOOLEAN
-       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ Req523Literal \in BOOLEAN /\ TrackHidden \in BOOLEAN
+       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ LostReply \in BOOLEAN /\ TrackHidden \in BOOLEAN
        /\ CheckHealth \in BOOLEAN /\ MemToggle \in BOOLEAN /\ MaxOutages \in Nat /\ MaxDrops \in Nat
 
 VARIABLES
@@ -305,8 +304,8 @@ Observe(n) ==
 \*   re-seeding. Another node's later read finds the new flagged value and joins through REQ-530.
 \*   @req REQ-509 (run 4): a detection starts re-seeding, so the LeaseDuration wait (re)starts here,
 \*   from Ready and from Reconciling alike ("since it last started re-seeding").
-\*   @req REQ-523: its trigger still reads "this node's compare-and-set in REQ-507 succeeds"; modeled as
-\*   this action (the replacement), except under the counterfactual Req523Literal (never).
+\*   @req REQ-523 (run 7): "When this node replaces the generation marker under REQ-507" is this action.
+\*   REQ-528's first marker (InitMarker) and REQ-530's join (Learn) are other actions and record nothing.
 \*   @req REQ-507 (run 5): "when any read this node makes of the generation marker, including those of its
 \*   claim, heartbeat and completion scripts, finds it ...": the reads of Claim, Heartbeat and Complete
 \*   apply this action first (ReadOK below); other reads (REQ-527, REQ-510, plain looks) still happen at
@@ -337,8 +336,8 @@ DetectReset(n) ==
        /\ resetVal' = [resetVal EXCEPT ![n] = v]
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
   /\ StartWait(n)
-  /\ resetRec' = IF Req523Literal THEN resetRec ELSE "unacked"
-  /\ remembers' = [remembers EXCEPT ![n] = IF Req523Literal THEN remembers[n] ELSE TRUE]
+  /\ resetRec' = "unacked"
+  /\ remembers' = [remembers EXCEPT ![n] = TRUE]
   /\ learned' = [learned EXCEPT ![n] = (run[n] # NULL) \/ learned[n]]
   /\ detections' = detections + 1
   /\ falseReset' = (falseReset \/ ~pendingLoss)
@@ -347,6 +346,26 @@ DetectReset(n) ==
                  claimTok, reseeded, done, leaseLost, codeRec,
                  registry, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, drops,
                  tokens, advances, created, maintIntent, lostOutcome, lostOutcomeLL, losses, everAcked, inits>>
+
+\* environment LostReply (run 7, @req REQ-507 REQ-523 REQ-529, TECH-130): the script makes REQ-507's
+\*   write in the same atomic step as its read, then the connection drops before its reply arrives
+\*   ("the connection to the server is lost", REQ-529). The store side of DetectReset happens; the
+\*   node side does not: it does not learn that it replaced the marker, logs nothing, records
+\*   nothing, remembers nothing and does not move lastSeen. Its store is connecting, as in
+\*   DropConnection. Not fair (environment).
+ReplyLost(n) ==
+  /\ LostReply /\ ~SplitCAS /\ DetectCond(n) /\ drops < MaxDrops
+  /\ LET v == clock + 1 IN
+       /\ marker' = v /\ flagged' = TRUE /\ lastReset' = v /\ clock' = v
+  /\ MarkRead(n)
+  /\ rs' = [rs EXCEPT ![n] = "Connecting"]
+  /\ drops' = drops + 1
+  /\ waitDone' = [waitDone EXCEPT ![n] = FALSE]
+  /\ hbPending' = [hbPending EXCEPT ![n] = {}]
+  /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, casPending, found, foundLR, node, health, chk, run, claimGen,
+                 claimTok, learned, lastSeen, reseeded, resetVal, done, remembers, leaseLost, codeRec, registry,
+                 resetRec, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, tokens,
+                 advances, histVars>>
 
 \* @req REQ-528  Marker missing on a worker that has not seen one since it started -> write the
 \*   first marker at the lowest value, with the server's current time as its last-reset value
@@ -765,6 +784,7 @@ SystemStep(n) ==
 
 Next ==
   \/ \E n \in Nodes : SystemStep(n) \/ NodeStops(n) \/ Complete(n) \/ LeaseElapses(n) \/ DropConnection(n)
+                     \/ ReplyLost(n)
   \/ \E n \in Nodes, j \in Jobs : Claim(n, j)
   \/ \E j \in Jobs : Enqueue(j) \/ EvictJob(j)
   \/ Acknowledge \/ MaintOn \/ MaintOff
@@ -864,10 +884,14 @@ Scn_NoEvalNoReady == \A n \in Nodes : ~evalOK => ~ENABLED Connect(n)
 Scn_ClientNoDetect == \A n \in Nodes \ WorkerNodes : ~ENABLED DetectReset(n) /\ ~ENABLED Learn(n)
 
 \* @req SCN-500  Positive scenario: trap for Redis_SCN500.cfg (expected to be VIOLATED).
+\*   Run 7: "health stays Degraded until an operator acknowledges the reset" also needs the next
+\*   health check to keep it Degraded (Outcomes = {"Degraded"}); before, the trace could end on a
+\*   Degraded set by hosting REQ-58 before the flush and never checked again.
 Scn_FlushRecovered_NotReached ==
   ~(\E n \in Nodes :
       /\ losses = 1 /\ codeRec /\ marker # 0 /\ ~flagged /\ rs[n] = "Ready"
-      /\ detections = 1 /\ resetRec = "unacked" /\ health[n] = "Degraded")
+      /\ detections = 1 /\ resetRec = "unacked" /\ health[n] = "Degraded"
+      /\ Outcomes(n) = {"Degraded"})
 
 \* @req SCN-503  Positive scenario (Redis_SCN503.cfg): a new server is initialised (flagged first
 \*   marker, then cleared), no reset is reported or recorded, and claims are allowed.

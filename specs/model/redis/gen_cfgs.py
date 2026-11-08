@@ -1,11 +1,11 @@
-"""Writes the Redis*.cfg files of run 6. Each cfg = BASE constants + overrides + checks.
+"""Writes the Redis*.cfg files of run 7. Each cfg = BASE constants + overrides + checks.
 Run from specs/model/redis:  python gen_cfgs.py   (removes Redis*.cfg files it no longer writes)"""
 import pathlib
 
 BASE = dict(Nodes="{n1, n2}", WorkerNodes="{n1, n2}", Jobs="{j1, j2}", QueueA="{j1}", KeyMax="1",
             UniqueKeys="FALSE", Recurring="FALSE", ShardByQueue="FALSE", FreshStore="FALSE",
             LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE",
-            SplitCAS="FALSE", Req523Literal="FALSE", TrackHidden="FALSE",
+            SplitCAS="FALSE", LostReply="FALSE", TrackHidden="FALSE",
             MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
             CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", MaxDrops="0", NULL="NULL")
 SAFETY = ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost",
@@ -39,9 +39,13 @@ CFGS = {
   "Redis_HideRace": ("COUNTERFACTUAL (run-5 wording of REQ-507): as Hide, the read and a separate compare-and-set are two"
                      " steps, the window shorter than one LeaseDuration (ACTION_CONSTRAINT). Expected: Inv_HiddenOnlyIfPaused VIOLATED.",
             dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", SplitCAS="TRUE"), ["Inv_HiddenOnlyIfPaused"], []),
-  "Redis_Req523Literal": ("COUNTERFACTUAL: REQ-523 read literally (its trigger names a compare-and-set REQ-507 no longer makes)."
-                          " Expected: Inv_UnackedUntilOperator VIOLATED.",
-            dict(Jobs="{j1}", MaxAdvances="0", Req523Literal="TRUE"), ["Inv_UnackedUntilOperator"], []),
+  "Redis_ReplyLost": ("Run 7: one job, one flush; the reply of the script that made the REQ-507 write may be lost with the"
+                      " connection (LostReply, REQ-529). Inv_HiddenOnlyIfPaused tells whether the flush can then go unreported.",
+            dict(Jobs="{j1}", MaxDrops="1", LostReply="TRUE", TrackHidden="TRUE"),
+            ["Inv_HiddenOnlyIfPaused", "Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome",
+             "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax", "Inv_SingleClaim"], []),
+  "Redis_LivReplyLost": ("Run 7 liveness: as LivDrop with LostReply (the drop may take the reply of the REQ-507 write with it).",
+            dict(Jobs="{j1}", MaxDrops="1", LostReply="TRUE"), [], ["Liv_LossReported", "Liv_Reseeded"]),
   "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit (REQ-522, REQ-534).",
             dict(UniqueKeys="TRUE", KeyMax="2"), ["Inv_UniqueKey"], []),
   "Redis_Unique2": ("Unique keys across two flushes, the second after the first reconciliation ended (ACTION_CONSTRAINT); no concurrency limit.",
