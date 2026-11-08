@@ -1,7 +1,7 @@
 {
   "module": "jobs",
-  "specHash": "7952e5e0ed20eafe6c69c66a8d43a614ba7df32a111101f16b6bbab9bcf217ff",
-  "generatedAt": "2026-11-07T18:43:06Z",
+  "specHash": "b7690959c1ee1848a995c4a3001a5ebc1b71e4e741902b6ec0a42867b436a1b6",
+  "generatedAt": "2026-11-08T00:41:08Z",
   "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla",
   "items": {
     "INV-100": {
@@ -232,7 +232,7 @@
     "REQ-136": {
       "hash": "bbe29226eed995274c48f3d258e5c8f2099429493a81d7276dfca253a9d87fa6",
       "reviewed": false,
-      "note": "Jobs.tla"
+      "note": "Jobs.tla; run 5: overlaps REQ-190 shutdown OCE branch, same outcome (F-2, Jobs_CHK2 / Jobs_CHK6)"
     },
     "REQ-137": {
       "hash": "825d12ccb1aa6fa7cb0db80b9c9e52a1a444dbc6053c6e4c677a807081678d77",
@@ -425,14 +425,14 @@
       "note": "Jobs.tla - every run gets SignalTimeout"
     },
     "REQ-190": {
-      "hash": "b48aa7dd7997d510100767214258e5653b1cb54305632a1eceac1b435f2030d2",
+      "hash": "522f1cf001ddec45f9ef58f7cfbdb8c2a098a04a013b1ef5c3fa519b8ae11bda",
       "reviewed": false,
-      "note": "Jobs.tla Recover / HandlerThrows R190 / AbandonOnTimeout / ReleaseOnShutdown cancel branch (impacted via REQ-140, re-checked); shutdown branch vs hosting REQ-29: finding F-1"
+      "note": "run 5 regenerated: Jobs.tla HandlerThrows R190 (new shutdown OCE branch = ShutOCE /\\ CR), ReleaseOnShutdown cancel branch (token cancelled for shutdown while still running; no timeout guard), Recover, AbandonOnTimeout; NodeStop waits for it (hosting REQ-29). Run 4 F-1 resolved (Chk_NoCancelLeftAtStop holds); new F-1 (REQ-191 record) and F-2 (overlap with REQ-136)"
     },
     "REQ-191": {
       "hash": "6cad06cee72ee0252d669418673a57af605efe127ee13f89eb366f625f95c0ab",
       "reviewed": false,
-      "note": "Jobs.tla LeaseLostRecordable (predicate, history only); run 4 trigger is the complement of Current, so Gap_LeaseLostUnrecorded holds by construction; SCN-125 trap reachable"
+      "note": "Jobs.tla LeaseLostRecordable (predicate, history only); run 4 trigger is the complement of Current, so Gap_LeaseLostUnrecorded holds by construction; SCN-125 trap reachable; run 5: REQ-190 shutdown abandonment tagged ShutdownCancel, not recorded (F-1 open)"
     },
     "REQ-192": {
       "hash": "de45473aa59ac24e5e895bdabb4987cf0ac7f51d529269fdfec2b259cb644389",
@@ -542,7 +542,7 @@
     "SCN-122": {
       "hash": "d64f10e48f99d1ff2176956fae71269f624ae476bb202eada3b705bc327c90b5",
       "reviewed": false,
-      "note": "Jobs_SCN122.cfg trap (reachable)"
+      "note": "Jobs_SCN122.cfg trap (reachable), re-checked in run 5"
     },
     "SCN-123": {
       "hash": "6bfc8c48525e95f20cbd5dc819676bf23b33017864bdb343400318f782647411",
@@ -557,7 +557,7 @@
     "SCN-125": {
       "hash": "618f50ebba3635de145e9d97ad35248cbc7bbee47da66df550ae1ba8d8359717",
       "reviewed": false,
-      "note": "Jobs_SCN125.cfg Scn125_NotReached trap (reachable, 6 states)"
+      "note": "Jobs_SCN125.cfg trap (reachable), re-checked in run 5"
     }
   },
   "skipped": {
