@@ -1,5 +1,5 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash 90327ae0b99b) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash a564d3a8e001) — edit the requirements, not this file.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -57,8 +57,9 @@ OccRec == [st: OccStatus, rj: Names \cup {NULL}, blk: SUBSET OccIds,
            reason: {"none", "Overlap", "QueueFull", "Paused", "Orphaned", "Removed"}, sched: BOOLEAN]
 JobRec == [st: JobStatus, zombie: BOOLEAN, cancelReq: BOOLEAN]
 \* @req REQ-242  how: the created occurrence started / is waiting / was skipped by the overlap policy, or the
-\*              misfire policy ("Misfire") or a schedule change ("Schedule") dropped the instants.
-MissHow == {"none", "Started", "Waiting", "Skipped", "Misfire", "Schedule"}
+\*              misfire policy ("Misfire"), a schedule change ("Schedule"), a pause ("Pause"), an orphaning
+\*              ("Orphan") or a removal ("Removed", REQ-207 or REQ-213) dropped the instants.
+MissHow == {"none", "Started", "Waiting", "Skipped", "Misfire", "Schedule", "Pause", "Orphan", "Removed"}
 MissRec == [n: 0..2, how: MissHow, occ: OccIds \cup {NULL}]
 
 TypeInv ==
@@ -198,14 +199,19 @@ StartWaiting(o) ==
 -----------------------------------------------------------------------------
 \* Definitions and reconciliation
 
+\* @req REQ-234  an instant that fell due while the job was active and that no trigger reached before nextRunAt
+\*              was moved past it or the job stopped being active is missed, however recently it fell due.
+\*              While Active, behind counts exactly those instants (every way into Active resets it), so an
+\*              active job with behind >= 1 has missed instants at any write other than a trigger (A-25).
+HasMissed(r) == rj[r].st = "Active" /\ rj[r].behind >= 1
 \* @req REQ-242  a schedule change (REQ-227, applied by REQ-204, REQ-241 or REQ-212) that moves an *active*
 \*              job's nextRunAt past missed instants writes a record "dropped by the schedule change" in the
-\*              same write. behind = 2: the older instants are missed (A-3). behind = 1: REQ-234 defines
-\*              "missed" only for a trigger, so whether an instant passed but not yet triggered counts as
-\*              missed at a schedule change is a nondeterministic choice (A-25).
-SchedDropsMissed(r, late) == rj[r].st = "Active" /\ (rj[r].behind = 2 \/ (rj[r].behind = 1 /\ late))
-SchedRec(r, changed, late) ==                                                  \* @req REQ-242
-  IF changed /\ SchedDropsMissed(r, late) THEN NewRec(r, "Schedule", NULL) ELSE missRec[r]
+\*              same write.
+SchedRec(r, changed) ==                                                        \* @req REQ-242
+  IF changed /\ HasMissed(r) THEN NewRec(r, "Schedule", NULL) ELSE missRec[r]
+\* @req REQ-242  an active job paused (REQ-214), orphaned (REQ-205) or removed (REQ-207, REQ-213) while it has
+\*              missed instants: the record says the pause / orphaning / removal dropped them, in the same write.
+LeaveRec(r, how) == IF HasMissed(r) THEN Recorded(r, how, NULL) ELSE missRec
 
 \* @req REQ-203  node start: create a missing code-defined job (Active, nextRunAt from now).
 \* @req REQ-204  node start: a stored *code-defined* job whose code definition changed vs its
@@ -220,7 +226,7 @@ NodeStart(n, v) ==
   /\ node[n].st = "Down" /\ v \in Releases
   /\ \A r \in Decl(v) : rj[r].origin # "runtime"                       \* @req REQ-236
   /\ node' = [node EXCEPT ![n] = [st |-> "Running", ver |-> v]]
-  /\ \E schedChanged \in [Names -> BOOLEAN], late \in [Names -> BOOLEAN] :
+  /\ \E schedChanged \in [Names -> BOOLEAN] :
        LET reapply(r) == r \in Decl(v) /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code"
                          /\ rj[r].hash # CodeDef(v)
        IN /\ rj' = [r \in Names |->
@@ -231,7 +237,7 @@ NodeStart(n, v) ==
                   THEN [rj[r] EXCEPT !.hash = CodeDef(v), !.def = CodeDef(v),
                                      !.behind = IF schedChanged[r] THEN 0 ELSE rj[r].behind]
                 ELSE rj[r]]
-          /\ missRec' = [r \in Names |-> IF reapply(r) THEN SchedRec(r, schedChanged[r], late[r])   \* @req REQ-242
+          /\ missRec' = [r \in Names |-> IF reapply(r) THEN SchedRec(r, schedChanged[r])   \* @req REQ-242
                                                        ELSE missRec[r]]
   /\ UNCHANGED <<occ, job, order, maint, ov, mf, op>>
 
@@ -258,8 +264,10 @@ Orphan(r) ==
   /\ ~Declared(r)
   /\ IF op[r] = "Orphan"
        THEN rj' = [rj EXCEPT ![r].before = rj[r].st, ![r].st = "Orphaned"] /\ SkipWaiting(r, "Orphaned")
+            /\ missRec' = LeaveRec(r, "Orphan")                                    \* @req REQ-242
        ELSE rj' = [rj EXCEPT ![r] = NoRj] /\ SkipWaiting(r, "Removed")
-  /\ UNCHANGED <<node, job, order, maint, ov, mf, op, missRec>>
+            /\ missRec' = LeaveRec(r, "Removed")                                   \* @req REQ-242
+  /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
 
 \* @req REQ-206  a running worker node declares an orphaned job again: back to its earlier state,
 \*              definition and definitionHash from that node's code, nextRunAt from now.
@@ -283,10 +291,10 @@ Stale(r) ==
 ReapplyCode(r) ==
   /\ SchedulerRuns
   /\ Stale(r)
-  /\ \E n \in DeclaringNodes(r), schedChanged \in BOOLEAN, late \in BOOLEAN :
+  /\ \E n \in DeclaringNodes(r), schedChanged \in BOOLEAN :
        /\ rj' = [rj EXCEPT ![r].hash = CodeDef(node[n].ver), ![r].def = CodeDef(node[n].ver),
                            ![r].behind = IF schedChanged THEN 0 ELSE rj[r].behind]
-       /\ missRec' = [missRec EXCEPT ![r] = SchedRec(r, schedChanged, late)]   \* @req REQ-242
+       /\ missRec' = [missRec EXCEPT ![r] = SchedRec(r, schedChanged)]   \* @req REQ-242
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
 
 \* @req REQ-208  operator adds a runtime job when no definition with its name exists.
@@ -303,28 +311,32 @@ CanEdit(r) == rj[r].origin = "runtime" \/ (rj[r].origin = "code" /\ r \in Overri
 \* @req REQ-227  if the schedule changed: nextRunAt from now, no catch-up.
 OperatorUpdate(r) ==
   /\ rj[r].st \in {"Active", "Paused"} /\ CanEdit(r)
-  /\ \E scheduleChanged \in BOOLEAN, late \in BOOLEAN :
+  /\ \E scheduleChanged \in BOOLEAN :
        /\ rj' = [rj EXCEPT ![r].def = "edited",
                            ![r].behind = IF scheduleChanged THEN 0 ELSE rj[r].behind]
-       /\ missRec' = [missRec EXCEPT ![r] = SchedRec(r, scheduleChanged, late)]   \* @req REQ-242
+       /\ missRec' = [missRec EXCEPT ![r] = SchedRec(r, scheduleChanged)]   \* @req REQ-242
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
 
 \* @req REQ-213  operator removes a runtime job, or an orphaned one of any origin.
 \* @req INV-206  a code job that is not orphaned is refused (guard).
 \* @req REQ-237  waiting occurrences skipped with reason Removed.
+\* @req REQ-242  an active job removed with missed instants: recorded as dropped by the removal, same write.
 OperatorRemove(r) ==
   /\ (rj[r].st # "none" /\ rj[r].origin = "runtime") \/ rj[r].st = "Orphaned"
   /\ rj' = [rj EXCEPT ![r] = NoRj]
   /\ SkipWaiting(r, "Removed")
-  /\ UNCHANGED <<node, job, order, maint, ov, mf, op, missRec>>
+  /\ missRec' = LeaveRec(r, "Removed")
+  /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
 
 \* @req REQ-214
 \* @req REQ-237  waiting occurrences skipped with reason Paused.
+\* @req REQ-242  instants already missed are recorded as dropped by the pause, in the pause write.
 Pause(r) ==
   /\ rj[r].st = "Active"
   /\ rj' = [rj EXCEPT ![r].st = "Paused"]
   /\ SkipWaiting(r, "Paused")
-  /\ UNCHANGED <<node, job, order, maint, ov, mf, op, missRec>>
+  /\ missRec' = LeaveRec(r, "Pause")
+  /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
 
 \* @req REQ-215  resume: Active, nextRunAt from now.
 Resume(r) ==
@@ -397,7 +409,7 @@ Fairness == /\ \A r \in Names : WF_vars(Trigger(r)) /\ WF_vars(Orphan(r)) /\ WF_
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
-\* A-22: missRec is written only by Trigger and the schedule-change steps (REQ-242) and read by no guard or
+\* A-22: missRec is written only by Trigger, the schedule-change steps and Pause / Orphan / OperatorRemove (REQ-242) and read by no guard or
 \* other update, so states that differ only in missRec have the same futures. Checks that do not mention missRec may use this VIEW (the 3-slot Queue cfgs).
 ViewNoRec == <<rj, node, occ, job, order, maint, ov, mf, op>>
 
@@ -474,23 +486,30 @@ Prop_StaleOnlyWhenNodeStops ==
 \* A step that moves nextRunAt by a schedule change (REQ-227 via REQ-204, REQ-241 or REQ-212).
 ScheduleChange(r) == OperatorUpdate(r) \/ ReapplyCode(r) \/ \E n \in Nodes, v \in Releases : NodeStart(n, v)
 MissedTrigger(r) == Trigger(r) /\ rj'[r].miss # "none"
+\* @req REQ-234  a step other than a trigger that passes over an active job's missed instants: it moves nextRunAt
+\*              from now while the job stays active (a schedule change), or it takes the job out of Active (a
+\*              pause, an orphaning, or a removal by REQ-207 or REQ-213).
+PassesOver(r) == HasMissed(r) /\ ~Trigger(r) /\ (rj'[r].st # "Active" \/ rj'[r].behind = 0)
+RecordedAs(r, how) == missRec'[r].n = (IF missRec[r].n < 2 THEN missRec[r].n + 1 ELSE 2) /\ missRec'[r].how = how
 
-\* @req REQ-242  a missed-instant record is written only when an active job's nextRunAt is moved past
-\*              missed instants: by a trigger that missed at least one, or by a schedule change (never by
-\*              trigger-now, resume, restore, pause, orphaning, or a trigger with nothing missed) ...
+\* @req REQ-242  a missed-instant record is written only when an active job's nextRunAt is moved past missed
+\*              instants or the job stops being active while it has some: by a trigger that missed at least
+\*              one, or by a step that passes over them (never by trigger-now, resume, restore, a trigger with
+\*              nothing missed, or any step on a paused or orphaned job) ...
 Prop_MissRecordOnlyByMove ==
-  [][\A r \in Names : missRec'[r] # missRec[r] =>
-        \/ MissedTrigger(r)
-        \/ rj[r].st = "Active" /\ rj[r].behind >= 1 /\ rj'[r].behind = 0 /\ ScheduleChange(r)]_vars
+  [][\A r \in Names : missRec'[r] # missRec[r] => MissedTrigger(r) \/ PassesOver(r)]_vars
 
-\* @req REQ-242  ... and every such move writes exactly one record, in the same step, whatever the misfire
-\*              policy: every trigger that missed something, and every step that takes an active job with
-\*              missed instants (behind = 2, A-3) to nextRunAt-from-now while it stays active (run-4 F-1).
+\* @req REQ-242  ... and every such step writes exactly one record, in the same step, whatever the misfire
+\*              policy (run-4 F-1, run-5 F-1 and F-2).
 Prop_MissedMoveRecordsOnce ==
-  [][\A r \in Names :
-        (\/ MissedTrigger(r)
-         \/ rj[r].st = "Active" /\ rj[r].behind = 2 /\ rj'[r].st = "Active" /\ rj'[r].behind = 0)
+  [][\A r \in Names : (MissedTrigger(r) \/ PassesOver(r))
         => missRec'[r].n = (IF missRec[r].n < 2 THEN missRec[r].n + 1 ELSE 2) /\ missRec'[r].how # "none"]_vars
+
+\* @req REQ-242, REQ-234  no due instant is recorded twice: a step that writes a record leaves the job either
+\*              with nextRunAt from now or out of Active, and every way back into Active computes nextRunAt from
+\*              now (REQ-215, REQ-206), so a later record never covers an instant an earlier one did.
+Prop_NoInstantRecordedTwice ==
+  [][\A r \in Names : missRec'[r] # missRec[r] => rj'[r].behind = 0 \/ rj'[r].st # "Active"]_vars
 
 \* @req REQ-242  the record says how the instants were handled: a RunOnce / RunAll catch-up names the
 \*              occurrence created in that step and whether it started, is waiting or was skipped by the
@@ -502,7 +521,10 @@ Prop_RecordSaysOutcome ==
                /\ occ[missRec'[r].occ].st = "none" /\ occ'[missRec'[r].occ].st = missRec'[r].how
                /\ occ'[missRec'[r].occ].rj = r /\ occ'[missRec'[r].occ].sched
           [] missRec'[r].how = "Misfire"  -> MissedTrigger(r) /\ mf[r] = "Skip"
-          [] missRec'[r].how = "Schedule" -> ScheduleChange(r)
+          [] missRec'[r].how = "Schedule" -> ScheduleChange(r) /\ rj'[r].st = "Active"
+          [] missRec'[r].how = "Pause"    -> Pause(r)
+          [] missRec'[r].how = "Orphan"   -> Orphan(r) /\ rj'[r].st = "Orphaned"
+          [] missRec'[r].how = "Removed"  -> (Orphan(r) \/ OperatorRemove(r)) /\ rj'[r].st = "none"
           [] OTHER -> FALSE]_vars
 
 \* Not a requirement: REQ-240's notes say "a recurring job never holds more than one Unroutable job". Checked
@@ -645,28 +667,23 @@ ProbeAct_TriggerNowNeverSuperseded ==
 Probe_OneUnroutablePerJob ==
   \A r \in Names : Cardinality({o \in OfJob(r) : job[o].st = "Unroutable"}) <= 1
 
-\* Run 5: instants missed while a job is active (behind = 2, A-3) leave with a REQ-242 record whenever the job
-\* stops being active. REQ-242 covers only moves of an *active* job's nextRunAt; a pause (REQ-214) or orphaning
-\* (REQ-205/REQ-207) keeps or deletes nextRunAt, and every way back to Active is "from now" (REQ-215, REQ-206)
-\* while the job is not active. Reachable = instants missed while active are dropped with no record.
-ProbeAct_OverduePausedRecorded ==
-  [][\A r \in Names : rj[r].st = "Active" /\ rj[r].behind = 2 /\ rj'[r].st = "Paused"
-        => missRec'[r] # missRec[r]]_vars
-\* ... the same through the orphan sweep (REQ-205 orphans, REQ-207 deletes), for the outage-then-deploy story.
-\* (An operator removing an active runtime job, REQ-213, is a third path; the job is gone, so it is not probed.)
-ProbeAct_OverdueOrphanedRecorded ==
-  [][\A r \in Names : rj[r].st = "Active" /\ rj[r].behind = 2 /\ Orphan(r)
-        => missRec'[r] # missRec[r]]_vars
+\* @req REQ-242  run-5 F-1 regression (was ProbeAct_OverduePausedRecorded / ProbeAct_OverdueOrphanedRecorded): an
+\*              active job with missed instants that is paused, orphaned or removed (REQ-207 or REQ-213) is
+\*              recorded in that step, as dropped by that step.
+Prop_LeaveRecordsMissed ==
+  [][\A r \in Names : HasMissed(r) /\ rj'[r].st # "Active" =>
+        RecordedAs(r, CASE rj'[r].st = "Paused" -> "Pause" [] rj'[r].st = "Orphaned" -> "Orphan" [] OTHER -> "Removed")]_vars
 
-\* Run 5 (A-25): a due instant of an active job that has passed but was not yet triggered leaves the schedule
-\* only by running or by being recorded. Reachable = a schedule change drops an instant within
-\* MisfireThreshold with neither an occurrence nor a record.
-ProbeAct_PassedInstantRunsOrIsRecorded ==
-  [][\A r \in Names : rj[r].st = "Active" /\ rj[r].behind >= 1 /\ rj'[r].st = "Active" /\ rj'[r].behind = 0
-        /\ ~Trigger(r) => missRec'[r] # missRec[r]]_vars
+\* @req REQ-234, REQ-242  run-5 F-2 regression (was ProbeAct_PassedInstantRunsOrIsRecorded): a due instant of an
+\*              active job that has passed, however recently, leaves the schedule only by a trigger or with a
+\*              record "dropped by the schedule change".
+Prop_PassedInstantRunsOrIsRecorded ==
+  [][\A r \in Names : HasMissed(r) /\ rj'[r].st = "Active" /\ rj'[r].behind = 0 /\ ~Trigger(r)
+        => RecordedAs(r, "Schedule")]_vars
 
-\* Run 5: a record that says the catch-up occurrence "is waiting" stays true. Reachable = the recorded waiting
-\* occurrence is later skipped (REQ-237) while the record still says waiting.
+\* Run 5 F-3 (resolved by REQ-242's notes, kept as documentation): a record that says the catch-up occurrence
+\* "is waiting" is a snapshot. Reachable = the recorded waiting occurrence is later skipped (REQ-237) while the
+\* record still says waiting, which the notes accept.
 ProbeAct_RecordedWaiterNeverSkipped ==
   [][\A r \in Names : missRec[r].how = "Waiting" /\ missRec[r].occ # NULL
         => ~(occ[missRec[r].occ].st = "Waiting" /\ occ'[missRec[r].occ].st = "Skipped")]_vars

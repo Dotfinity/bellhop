@@ -1,7 +1,7 @@
 {
   "module": "recurring",
-  "specHash": "90327ae0b99bd7899bd5cffbe24df47baac2158ef875afd8c2048f5388b970d9",
-  "generatedAt": "2026-11-08T12:00:00Z",
+  "specHash": "a564d3a8e0016830d6db134c4eff9f68e704abf92c5d5a94fd299dbe0b69a6ba",
+  "generatedAt": "2026-11-08T18:00:00Z",
   "model": "model/recurring/Recurring.tla",
   "items": {
     "REQ-201": {
@@ -92,7 +92,7 @@
     "REQ-217": {
       "hash": "423051ebf969f570b07f758c6e63d371ca2cdc6c476edb9e3ad0398c97dbe513",
       "reviewed": false,
-      "note": "newest due instant judged on its own (newestLate), older instants missed when 2+ are due (A-3)"
+      "note": "re-checked run 6 (impacted by REQ-234): newest due instant judged on its own (newestLate), older instants missed when 2+ are due (A-3); SCN-206 reachable, Started/Waiting/Skipped records reachable"
     },
     "REQ-218": {
       "hash": "e1df26e1d5a64e728114a6adcf1f8bec0ed3fadbc2b7783cf30ee4a03d18e847",
@@ -155,9 +155,9 @@
       "note": "CONSTANT MaxQueued (1 and 2 checked)"
     },
     "REQ-234": {
-      "hash": "d11b2b4e6b6abe4d8fe0bb54f6b0a2bc4e4a4df4ebb4a082c5a207258d905498",
+      "hash": "691976c8ba72d6e1883bf90c0b90225214c65e18a4d7ff294ea2ff9d7dcb3878",
       "reviewed": false,
-      "note": "absorbed by nondeterministic 'missed' choice (A-3)"
+      "note": "run 6: second clause encoded as HasMissed(r): Active with behind >= 1 at any step other than a trigger (A-25); first clause as the nondeterministic newestLate of the trigger (A-3, A-23). Run 5's choice for a just-passed instant is gone."
     },
     "REQ-235": {
       "hash": "e54ac759ff008b89543c0ddfb71119fc6582dea6a45597500f47c05e0a8ca4cc",
@@ -190,9 +190,9 @@
       "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check) | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged)."
     },
     "REQ-242": {
-      "hash": "9e04184780de2facdc49c10d6165060fc37f42c31be61c31d81d1de6d154864c",
+      "hash": "022b183f414957bfe78bebbbe3bbc262c737a2973bd63bfd48d8746ec08792ab",
       "reviewed": false,
-      "note": "run 5: missRec per name = count + how the latest record says the instants were handled (Started/Waiting/Skipped with the occurrence, Misfire, Schedule) (A-21). Written by Trigger (same CAS, A-2) and by the schedule-change steps of REQ-204, REQ-241 and REQ-212 when the job is Active (behind = 2 always missed, behind = 1 by choice, A-25). Prop_MissRecordOnlyByMove, Prop_MissedMoveRecordsOnce, Prop_RecordSaysOutcome pass (Main, MainR, Misfire 2,153,292 states, Defs, Liv_Settles, Liv_Settles3, F_OverdueRecorded). Run-5 F-1 (pause/orphan of an overdue active job), F-2 (schedule change within MisfireThreshold), F-3 ('is waiting' goes stale)."
+      "note": "run 6: missRec per name = count + how the latest record says the instants were handled (Started/Waiting/Skipped with the occurrence, Misfire, Schedule, Pause, Orphan, Removed) (A-21). Written by Trigger (same CAS, A-2), by the schedule-change steps of REQ-204, REQ-241 and REQ-212, and by Pause, Orphan (both policies) and OperatorRemove, whenever the job is Active with an instant passed (HasMissed, A-25). Six properties pass (Main, MainR, Misfire 2,886,396 states, Defs 2,586,248, Liv_Settles, Liv_Settles3, F_OverdueRecorded, F_OverduePaused, F_OverdueOrphaned, F_PassedInstant). Run-6 F-1: RecurringRace.tla splits the pause into read and write; unconditional, it records an instant a trigger ran (Race_Pause, 6 states); as a compare-and-set on nextRunAt it holds (Race_PauseCAS, 9,357,168)."
     },
     "INV-206": {
       "hash": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",
@@ -202,7 +202,7 @@
     "INV-207": {
       "hash": "eb0b9994da29c80cfbbabf402ae0203a0bb5ee09b4903961ffe9e4dc99d5d68c",
       "reviewed": false,
-      "note": "inside Trigger: on-time trigger always creates its occurrence"
+      "note": "re-checked run 6 (impacted by REQ-234): an on-time newest instant creates its occurrence whatever the policy; SCN-211 reachable; Prop_RecordSaysOutcome under all three misfire policies"
     },
     "INV-210": {
       "hash": "b4f87cd091157f02198e42618c29d2f63807b7cdbc1221adc8363a4cadcf4625",

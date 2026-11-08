@@ -8,6 +8,8 @@
 # Run 3: REQ-240 is a requirement now, so the run-2 FixCancelUnroutable switch is gone.
 # Run 4: MISALL is MAIN with all three misfire policies, for REQ-242's missed-instant record.
 # Run 5: REQ-242 also records schedule changes, so its three properties (REC) run in Defs and the REQ-241 cfgs too.
+# Run 6: REQ-242 also records pauses, orphanings and removals, and REQ-234 makes every passed-over instant missed; the
+# run-5 F-1/F-2 probes are now the regression checks in REC, and PROBEOD is PROBE with both orphan policies.
 consts() {
   case $1 in
     MAIN)   set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue"}' '{"RunOnce", "Skip"}' '{"Orphan"}' FALSE ;;
@@ -19,6 +21,7 @@ consts() {
     ALLR)   set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue", "Allow", "CancelPrevious"}' '{"RunOnce"}' '{"Orphan"}' TRUE ;;
     PROBE2) set -- "{j1}" "{o1}" "{a, b}" '{"v1", "v2"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
     PROBE)  set -- "{j1}" "{o1}" "{a}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
+    PROBEOD) set -- "{j1}" "{o1}" "{a}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan", "Delete"}' FALSE ;;
     QUEUE1R) set -- "{j1}" "{o1, o2, o3}" "{a}" '{"v1"}' "{}" "{}" "{}" "{}" 1 '{"Queue"}' '{"RunOnce"}' '{"Orphan"}' TRUE ;;
     ALLOW3) set -- "{j1}" "{o1, o2, o3}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Allow", "CancelPrevious"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
     MISALL) set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue"}' '{"RunOnce", "Skip", "RunAll"}' '{"Orphan"}' FALSE ;;
@@ -39,7 +42,8 @@ P='Probe (modeling aid, not a requirement):'
 R='regression check for a run-1 finding; expected to hold.'
 R2='regression check for a run-2 finding; expected to hold.'
 R4='regression check for a run-4 finding; expected to hold.'
-REC="Prop_MissRecordOnlyByMove Prop_MissedMoveRecordsOnce Prop_RecordSaysOutcome"
+R5='regression check for a run-5 finding; expected to hold.'
+REC="Prop_MissRecordOnlyByMove Prop_MissedMoveRecordsOnce Prop_RecordSaysOutcome Prop_NoInstantRecordedTwice Prop_LeaveRecordsMissed Prop_PassedInstantRunsOrIsRecorded"
 MAINCHK="TypeInv Inv_NoScheduleWhilePaused Inv_NoScheduleInMaintenance Inv_MaxQueued Scn_SecondCasImpossible Prop_NoScheduledAdvanceInMaintenance Prop_PauseOrphanRemoveSkipsWaiting Prop_SkipOnlyWhenInTheWay $REC"
 cfg Recurring.cfg               MAIN   "Main run: triggering, misfire, maintenance, overlap with 2 slots; $H" $MAINCHK Inv_NoOverlapProcessing
 cfg Recurring_MainR.cfg         MAINR  "Main run with jobs REQ-125 explored (REQ-240 makes INV-204 checkable here too); $H" $MAINCHK Inv_NoOverlapProcessing
@@ -64,10 +68,18 @@ cfg Recurring_P_TriggerNowSuperseded.cfg MAIN "Run 3: $P REQ-240 cancels an Unro
 cfg Recurring_P_OneUnroutable.cfg   ALL    "Run 4: $P REQ-240's notes say a recurring job never holds two Unroutable jobs; all four policies; $V" Probe_OneUnroutablePerJob
 cfg Recurring_F_OverdueRecorded.cfg PROBE  "Run-4 F-1: overdue instants of an active job dropped by a schedule change (REQ-204, REQ-241, REQ-212) are recorded by REQ-242; $R4" TypeInv $REC
 cfg Recurring_P_CatchUpSkipped.cfg  MAIN   "Run 4: $P a RunOnce catch-up occurrence recorded by REQ-242 is skipped by the overlap policy (run 5: the record now says Skipped, Prop_RecordSaysOutcome); $V" ProbeAct_CatchUpNeverSkipped
-cfg Recurring_P_OverduePaused.cfg   MAIN   "Run 5: $P instants missed while active leave with no REQ-242 record when the job is paused; $V" ProbeAct_OverduePausedRecorded
-cfg Recurring_P_OverdueOrphaned.cfg PROBE  "Run 5: $P ... or orphaned / deleted by the orphan sweep; $V" ProbeAct_OverdueOrphanedRecorded
-cfg Recurring_P_PassedInstantDropped.cfg MAIN "Run 5 (A-25): $P a schedule change drops a passed, not-yet-triggered instant with no occurrence and no record; $V" ProbeAct_PassedInstantRunsOrIsRecorded
-cfg Recurring_P_RecordedWaiterSkipped.cfg MAIN "Run 5: $P a REQ-242 record that says the catch-up occurrence is waiting, then REQ-237 skips it; $V" ProbeAct_RecordedWaiterNeverSkipped
+cfg Recurring_F_OverduePaused.cfg   MAIN    "Run-5 F-1: instants missed while active are recorded when the job is paused or removed (REQ-214, REQ-213); $R5" TypeInv $REC
+cfg Recurring_F_OverdueOrphaned.cfg PROBEOD "Run-5 F-1: ... or orphaned or deleted by the orphan sweep (REQ-205, REQ-207), outage-then-deploy; $R5" TypeInv $REC
+cfg Recurring_F_PassedInstant.cfg   MAIN    "Run-5 F-2: a passed, not-yet-triggered instant passed over by a schedule change is recorded (REQ-234); $R5" TypeInv Prop_PassedInstantRunsOrIsRecorded Prop_MissRecordOnlyByMove
+cfg Recurring_P_RecordedWaiterSkipped.cfg MAIN "Run-5 F-3 (accepted in REQ-242's notes): $P a REQ-242 record that says the catch-up occurrence is waiting, then REQ-237 skips it; $V" ProbeAct_RecordedWaiterNeverSkipped
+# Run 6 (F-1): RecurringRace.tla splits the pause into its read and its write (SpecR, constant CondPause).
+race() {
+  f=$1; cond=$2; h=$3; shift 3
+  { printf '%s %s\nSPECIFICATION SpecR\n' '\*' "$h"; consts MAIN; printf '  CondPause = %s\nINVARIANTS\n  Inv_NoScheduleWhilePausedR\nPROPERTIES\n' $cond
+    for i in "$@"; do printf '  %s\n' $i; done; } > $f
+}
+race Recurring_Race_Pause.cfg    FALSE "Run-6 F-1: pause write decided by an earlier read, unconditional, a trigger may land in between; $V" Prop_RecordOnlyUnhandledInstants
+race Recurring_Race_PauseCAS.cfg TRUE  "Run-6 F-1 option 1: the pause write is a compare-and-set on nextRunAt; $H" Prop_RecordOnlyUnhandledInstants Prop_MissRecordOnlyByMove Prop_MissedMoveRecordsOnce Prop_NoInstantRecordedTwice Prop_LeaveRecordsMissed Prop_PassedInstantRunsOrIsRecorded
 # Run 4: the 3-slot Queue cfgs check nothing about REQ-242, so they use VIEW ViewNoRec (A-22) to stay at run-3 size.
 for f in Recurring_OverlapQueue.cfg Recurring_OverlapQueue2.cfg Recurring_F_WaitingRace.cfg Recurring_F_RerouteQueue.cfg Recurring_P_QueueTwoWaiters.cfg; do
   printf 'VIEW ViewNoRec

@@ -8,13 +8,14 @@ R=${RUN_TLC:-$HOME/.claude-personal/skills/refiner-model/scripts/run_tlc.py}
 T=${TLC_TIMEOUT:-300}
 ALL="Defs Main MainR Misfire OverlapAll OverlapQueue OverlapQueue2 F_WaitingRace F_RerouteOverlap F_RerouteQueue F_RunningHandlers
      P_QueueTwoWaiters P_StaleDefinition P_StaleDefinition2 P_RuntimeTakenOver P_UnroutableBlocks P_Req225Unroutable P_TriggerNowSuperseded
-     P_OneUnroutable F_OverdueRecorded P_CatchUpSkipped P_OverduePaused P_OverdueOrphaned P_PassedInstantDropped P_RecordedWaiterSkipped
+     P_OneUnroutable F_OverdueRecorded P_CatchUpSkipped F_OverduePaused F_OverdueOrphaned F_PassedInstant P_RecordedWaiterSkipped Race_Pause Race_PauseCAS
      Liv_Settles Liv_Settles3
      SCN201 SCN203 SCN204 SCN206 SCN209 SCN209b SCN210 SCN211 SCN213 SCN215"
 for c in ${*:-$ALL}; do
   cfg=Recurring_$c.cfg; [ "$c" = Main ] && cfg=Recurring.cfg
-  case $c in SCN*) extra=--no-deadlock ;; *) extra= ;; esac
-  timeout $((T + 10)) python "$R" Recurring.tla --config "$cfg" --stop-at-first --workers 4 --timeout $T $extra --out "run_$c.json" --md "run_$c.md" > /dev/null
+  mod=Recurring.tla; case $c in Race_*) mod=RecurringRace.tla ;; esac
+  case $c in SCN*|Race_*) extra=--no-deadlock ;; *) extra= ;; esac
+  timeout $((T + 10)) python "$R" "$mod" --config "$cfg" --stop-at-first --workers ${TLC_WORKERS:-4} --timeout $T $extra --out "run_$c.json" --md "run_$c.md" > /dev/null
   printf '%-20s %s | %s | exceptions: %s\n' "$c" "$(head -1 "run_$c.md" | sed 's/.*: \*\*//; s/\*\*//')" \
     "$(grep -m1 '^States:' "run_$c.md")" "$(grep -c -i 'unexpected exception' "run_$c.md")"
 done
