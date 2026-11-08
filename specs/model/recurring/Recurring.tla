@@ -1,5 +1,8 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash a564d3a8e001) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash 5a8b9d80683d) — edit the requirements, not this file.
+\* Run 7 (INV-212): every write that changes a job's state or nextRunAt, or removes it, is written here as a guard
+\* (what its read checks) and a ...Write operator (what it lands). This module keeps each as one atomic step (A-2);
+\* RecurringRace.tla splits them into a read and a write and checks INV-212's compare-and-set.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -144,39 +147,41 @@ Decide(o, r, sched) ==
                                    THEN [job[x] EXCEPT !.st = "Cancelled"]
                                  ELSE job[x]]
 
-\* @req REQ-216  Active, maintenance off, nextRunAt passed: one compare-and-set advances nextRunAt
-\*              and creates what the misfire policy calls for.
+\* @req REQ-216  Active, maintenance off, nextRunAt passed: one compare-and-set on the job's state and nextRunAt
+\*              (INV-212) advances nextRunAt and creates what the misfire policy calls for.
 \* @req REQ-217, REQ-218, REQ-219, INV-207, REQ-234  misfire handling; REQ-220 recorded in .miss.
 \* @req REQ-242  when one or more instants were missed, the same CAS writes one missed-instant record:
 \*              how the instants were handled (the created occurrence's start / wait / overlap skip, or
 \*              dropped by the misfire policy) and which occurrence; first/last/how many abstracted (A-21).
 \* @req INV-201, INV-210  guarded by Active and ~maint.
-\* The CAS makes the whole step atomic (A-2); RunAll(max) is abstracted to max = 1 (A-4);
-\* at most one occurrence per trigger (A-5).
+\* Here the read and the CAS are one atomic step (A-2; RecurringRace.tla splits them); RunAll(max) is abstracted
+\* to max = 1 (A-4); at most one occurrence per trigger (A-5).
 NewRec(r, how, o) == [n |-> IF missRec[r].n < 2 THEN missRec[r].n + 1 ELSE 2, how |-> how, occ |-> o]  \* @req REQ-242
 Recorded(r, how, o) == [missRec EXCEPT ![r] = NewRec(r, how, o)]                                         \* @req REQ-242
-Trigger(r) ==
-  /\ SchedulerRuns
-  /\ rj[r].st = "Active" /\ ~maint /\ rj[r].behind >= 1
-  \* The most recent due instant is judged on its own (INV-207); with behind = 2 at least one
-  \* older instant was passed over and is missed (A-3).
-  /\ \E newestLate \in BOOLEAN :                      \* newest instant later than MisfireThreshold?
-       LET olderMissed == rj[r].behind = 2
-           missed      == olderMissed \/ newestLate
-       IN IF mf[r] = "Skip" /\ newestLate
-            THEN /\ rj' = [rj EXCEPT ![r].behind = 0, ![r].miss = "dropped"]   \* @req REQ-218
-                 /\ missRec' = Recorded(r, "Misfire", NULL)                   \* @req REQ-242
-                 /\ UNCHANGED <<occ, job, order>>
-            ELSE /\ rj' = [rj EXCEPT ![r].behind = 0,
-                                     ![r].miss = IF ~missed THEN "none"
-                                                 ELSE IF mf[r] = "Skip" THEN "dropped"  \* @req REQ-218: older ones dropped, on-time newest created
-                                                 ELSE "caughtUp"]                       \* @req REQ-217, REQ-219 (max = 1, A-4)
-                 /\ \E o \in FreeSlots :
-                      /\ Decide(o, r, TRUE)                                    \* @req REQ-217, INV-207
-                      /\ missRec' = IF ~missed THEN missRec                      \* @req REQ-242
-                                    ELSE IF mf[r] = "Skip" THEN Recorded(r, "Misfire", NULL)
-                                    ELSE Recorded(r, occ'[o].st, o)               \* Started / Waiting / Skipped
+\* The write of a trigger that found b due instants (b >= 1) and judged the newest late or not.
+\* The most recent due instant is judged on its own (INV-207); with b = 2 at least one
+\* older instant was passed over and is missed (A-3).
+TriggerWrite(r, b, newestLate) ==
+  /\ LET olderMissed == b = 2
+         missed      == olderMissed \/ newestLate
+     IN IF mf[r] = "Skip" /\ newestLate
+          THEN /\ rj' = [rj EXCEPT ![r].behind = 0, ![r].miss = "dropped"]   \* @req REQ-218
+               /\ missRec' = Recorded(r, "Misfire", NULL)                   \* @req REQ-242
+               /\ UNCHANGED <<occ, job, order>>
+          ELSE /\ rj' = [rj EXCEPT ![r].behind = 0,
+                                   ![r].miss = IF ~missed THEN "none"
+                                               ELSE IF mf[r] = "Skip" THEN "dropped"  \* @req REQ-218: older ones dropped, on-time newest created
+                                               ELSE "caughtUp"]                       \* @req REQ-217, REQ-219 (max = 1, A-4)
+               /\ \E o \in FreeSlots :
+                    /\ Decide(o, r, TRUE)                                    \* @req REQ-217, INV-207
+                    /\ missRec' = IF ~missed THEN missRec                      \* @req REQ-242
+                                  ELSE IF mf[r] = "Skip" THEN Recorded(r, "Misfire", NULL)
+                                  ELSE Recorded(r, occ'[o].st, o)               \* Started / Waiting / Skipped
   /\ UNCHANGED <<node, maint, ov, mf, op>>
+TriggerGuard(r) == SchedulerRuns /\ rj[r].st = "Active" /\ ~maint /\ rj[r].behind >= 1
+Trigger(r) ==
+  /\ TriggerGuard(r)
+  /\ \E newestLate \in BOOLEAN : TriggerWrite(r, rj[r].behind, newestLate)   \* newest later than MisfireThreshold?
 
 \* @req REQ-226  Trigger now: any stored job (also paused/orphaned), decided by the overlap policy,
 \*              nextRunAt unchanged.
@@ -210,8 +215,8 @@ HasMissed(r) == rj[r].st = "Active" /\ rj[r].behind >= 1
 SchedRec(r, changed) ==                                                        \* @req REQ-242
   IF changed /\ HasMissed(r) THEN NewRec(r, "Schedule", NULL) ELSE missRec[r]
 \* @req REQ-242  an active job paused (REQ-214), orphaned (REQ-205) or removed (REQ-207, REQ-213) while it has
-\*              missed instants: the record says the pause / orphaning / removal dropped them, in the same write.
-LeaveRec(r, how) == IF HasMissed(r) THEN Recorded(r, how, NULL) ELSE missRec
+\*              missed instants: the record says the pause / orphaning / removal dropped them, in the same write
+\*              (PauseWrite, OrphanWrite, RemoveWrite below, called with missed = HasMissed(r)).
 
 \* @req REQ-203  node start: create a missing code-defined job (Active, nextRunAt from now).
 \* @req REQ-204  node start: a stored *code-defined* job whose code definition changed vs its
@@ -258,26 +263,27 @@ SkipWaiting(r, why) ==
 \*              record its state, mark it orphaned (which pauses it).
 \* @req REQ-207  same event, orphanPolicy Delete: remove the definition.
 \* @req REQ-237  its waiting occurrences are skipped (Orphaned / Removed).
-Orphan(r) ==
-  /\ SchedulerRuns
-  /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code"
-  /\ ~Declared(r)
+\* (the write: before = the state it records, missed = whether it judged missed instants, REQ-242)
+OrphanWrite(r, before, missed) ==
   /\ IF op[r] = "Orphan"
-       THEN rj' = [rj EXCEPT ![r].before = rj[r].st, ![r].st = "Orphaned"] /\ SkipWaiting(r, "Orphaned")
-            /\ missRec' = LeaveRec(r, "Orphan")                                    \* @req REQ-242
+       THEN rj' = [rj EXCEPT ![r].before = before, ![r].st = "Orphaned"] /\ SkipWaiting(r, "Orphaned")
+            /\ missRec' = IF missed THEN Recorded(r, "Orphan", NULL) ELSE missRec      \* @req REQ-242
        ELSE rj' = [rj EXCEPT ![r] = NoRj] /\ SkipWaiting(r, "Removed")
-            /\ missRec' = LeaveRec(r, "Removed")                                   \* @req REQ-242
+            /\ missRec' = IF missed THEN Recorded(r, "Removed", NULL) ELSE missRec     \* @req REQ-242
   /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
+OrphanGuard(r) == SchedulerRuns /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code" /\ ~Declared(r)
+Orphan(r) == OrphanGuard(r) /\ OrphanWrite(r, rj[r].st, HasMissed(r))
 
 \* @req REQ-206  a running worker node declares an orphaned job again: back to its earlier state,
 \*              definition and definitionHash from that node's code, nextRunAt from now.
+RestoreWrite(r, st, d) ==
+  /\ rj' = [rj EXCEPT ![r].st = st, ![r].before = "none", ![r].behind = 0, ![r].hash = d, ![r].def = d]
+  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
 Restore(r) ==
   /\ rj[r].st = "Orphaned"
   /\ \E n \in RunningNodes :
        /\ r \in Decl(node[n].ver)
-       /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0,
-                           ![r].hash = CodeDef(node[n].ver), ![r].def = CodeDef(node[n].ver)]
-  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
+       /\ RestoreWrite(r, rj[r].before, CodeDef(node[n].ver))
 
 \* @req REQ-241  the scheduler finds a stored code-defined job (Active or Paused) that running worker
 \*              nodes declare but whose definitionHash matches the code of none of them: take the code
@@ -288,14 +294,16 @@ Stale(r) ==
   /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code"
   /\ DeclaringNodes(r) # {}
   /\ \A n \in DeclaringNodes(r) : rj[r].hash # CodeDef(node[n].ver)
+\* (the write: d = the code definition taken, sc = schedule changed, missed as judged, REQ-242)
+ReapplyWrite(r, d, sc, missed) ==
+  /\ rj' = [rj EXCEPT ![r].hash = d, ![r].def = d, ![r].behind = IF sc THEN 0 ELSE rj[r].behind]
+  /\ missRec' = [missRec EXCEPT ![r] = IF sc /\ missed THEN NewRec(r, "Schedule", NULL) ELSE missRec[r]]  \* @req REQ-242
+  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
 ReapplyCode(r) ==
   /\ SchedulerRuns
   /\ Stale(r)
   /\ \E n \in DeclaringNodes(r), schedChanged \in BOOLEAN :
-       /\ rj' = [rj EXCEPT ![r].hash = CodeDef(node[n].ver), ![r].def = CodeDef(node[n].ver),
-                           ![r].behind = IF schedChanged THEN 0 ELSE rj[r].behind]
-       /\ missRec' = [missRec EXCEPT ![r] = SchedRec(r, schedChanged)]   \* @req REQ-242
-  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
+       ReapplyWrite(r, CodeDef(node[n].ver), schedChanged, HasMissed(r))
 
 \* @req REQ-208  operator adds a runtime job when no definition with its name exists.
 \* @req INV-211  a name that is already stored is rejected (guard), whatever its origin.
@@ -309,40 +317,42 @@ CanEdit(r) == rj[r].origin = "runtime" \/ (rj[r].origin = "code" /\ r \in Overri
 \* @req REQ-212  operator updates a runtime job, or a code job with AllowRuntimeOverride.
 \* @req REQ-211  otherwise the edit is rejected (guard CanEdit).
 \* @req REQ-227  if the schedule changed: nextRunAt from now, no catch-up.
-OperatorUpdate(r) ==
-  /\ rj[r].st \in {"Active", "Paused"} /\ CanEdit(r)
-  /\ \E scheduleChanged \in BOOLEAN :
-       /\ rj' = [rj EXCEPT ![r].def = "edited",
-                           ![r].behind = IF scheduleChanged THEN 0 ELSE rj[r].behind]
-       /\ missRec' = [missRec EXCEPT ![r] = SchedRec(r, scheduleChanged)]   \* @req REQ-242
+UpdateWrite(r, sc, missed) ==
+  /\ rj' = [rj EXCEPT ![r].def = "edited", ![r].behind = IF sc THEN 0 ELSE rj[r].behind]
+  /\ missRec' = [missRec EXCEPT ![r] = IF sc /\ missed THEN NewRec(r, "Schedule", NULL) ELSE missRec[r]]  \* @req REQ-242
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op>>
+UpdateGuard(r) == rj[r].st \in {"Active", "Paused"} /\ CanEdit(r)
+OperatorUpdate(r) ==
+  /\ UpdateGuard(r)
+  /\ \E scheduleChanged \in BOOLEAN : UpdateWrite(r, scheduleChanged, HasMissed(r))
 
 \* @req REQ-213  operator removes a runtime job, or an orphaned one of any origin.
 \* @req INV-206  a code job that is not orphaned is refused (guard).
 \* @req REQ-237  waiting occurrences skipped with reason Removed.
 \* @req REQ-242  an active job removed with missed instants: recorded as dropped by the removal, same write.
-OperatorRemove(r) ==
-  /\ (rj[r].st # "none" /\ rj[r].origin = "runtime") \/ rj[r].st = "Orphaned"
+RemoveWrite(r, missed) ==
   /\ rj' = [rj EXCEPT ![r] = NoRj]
   /\ SkipWaiting(r, "Removed")
-  /\ missRec' = LeaveRec(r, "Removed")
+  /\ missRec' = IF missed THEN Recorded(r, "Removed", NULL) ELSE missRec
   /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
+RemoveGuard(r) == (rj[r].st # "none" /\ rj[r].origin = "runtime") \/ rj[r].st = "Orphaned"
+OperatorRemove(r) == RemoveGuard(r) /\ RemoveWrite(r, HasMissed(r))
 
 \* @req REQ-214
 \* @req REQ-237  waiting occurrences skipped with reason Paused.
 \* @req REQ-242  instants already missed are recorded as dropped by the pause, in the pause write.
-Pause(r) ==
-  /\ rj[r].st = "Active"
+PauseWrite(r, missed) ==
   /\ rj' = [rj EXCEPT ![r].st = "Paused"]
   /\ SkipWaiting(r, "Paused")
-  /\ missRec' = LeaveRec(r, "Pause")
+  /\ missRec' = IF missed THEN Recorded(r, "Pause", NULL) ELSE missRec
   /\ UNCHANGED <<node, job, order, maint, ov, mf, op>>
+Pause(r) == rj[r].st = "Active" /\ PauseWrite(r, HasMissed(r))
 
 \* @req REQ-215  resume: Active, nextRunAt from now.
-Resume(r) ==
-  /\ rj[r].st = "Paused"
+ResumeWrite(r) ==
   /\ rj' = [rj EXCEPT ![r].st = "Active", ![r].behind = 0]
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
+Resume(r) == rj[r].st = "Paused" /\ ResumeWrite(r)
 
 \* modeling artefact A-1: a due instant of a stored job passes (no clock).
 TimePasses(r) ==

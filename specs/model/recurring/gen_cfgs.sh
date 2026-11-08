@@ -25,6 +25,9 @@ consts() {
     QUEUE1R) set -- "{j1}" "{o1, o2, o3}" "{a}" '{"v1"}' "{}" "{}" "{}" "{}" 1 '{"Queue"}' '{"RunOnce"}' '{"Orphan"}' TRUE ;;
     ALLOW3) set -- "{j1}" "{o1, o2, o3}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Allow", "CancelPrevious"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
     MISALL) set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue"}' '{"RunOnce", "Skip", "RunAll"}' '{"Orphan"}' FALSE ;;
+    ORPH2)  set -- "{j1}" "{o1}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan", "Delete"}' FALSE ;;
+    LIVE)   set -- "{j1}" "{o1}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
+    LIVE2)  set -- "{j1}" "{}" "{a, b}" '{"v1", "v3"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan", "Delete"}' FALSE ;;
     SETTLE3) set -- "{j1}" "{o1}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{j1}" "{j1}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
   esac
   printf 'CONSTANTS\n  Names = %s\n  OccIds = %s\n  Nodes = %s\n  Releases = %s\n  DeclV1 = %s\n  DeclV2 = %s\n  DeclV3 = %s\n  Override = %s\n  MaxQueued = %s\n  OverlapPolicies = %s\n  MisfirePolicies = %s\n  OrphanPolicies = %s\n  RerouteOn = %s\n  NULL = NULL\n' "$@"
@@ -72,14 +75,63 @@ cfg Recurring_F_OverduePaused.cfg   MAIN    "Run-5 F-1: instants missed while ac
 cfg Recurring_F_OverdueOrphaned.cfg PROBEOD "Run-5 F-1: ... or orphaned or deleted by the orphan sweep (REQ-205, REQ-207), outage-then-deploy; $R5" TypeInv $REC
 cfg Recurring_F_PassedInstant.cfg   MAIN    "Run-5 F-2: a passed, not-yet-triggered instant passed over by a schedule change is recorded (REQ-234); $R5" TypeInv Prop_PassedInstantRunsOrIsRecorded Prop_MissRecordOnlyByMove
 cfg Recurring_P_RecordedWaiterSkipped.cfg MAIN "Run-5 F-3 (accepted in REQ-242's notes): $P a REQ-242 record that says the catch-up occurrence is waiting, then REQ-237 skips it; $V" ProbeAct_RecordedWaiterNeverSkipped
-# Run 6 (F-1): RecurringRace.tla splits the pause into its read and its write (SpecR, constant CondPause).
+# Run 7 (INV-212): RecurringRace.tla splits every write named in Split into a read and a write (SpecR). The
+# constants say what the write compares (CasOn) and when it judges (AtWrite); INV-212 as written is {"st", "nra"} TRUE.
+# ORPH2 is PROBEOD with two nodes, so a node can start (and declare the job) while another node's sweep is in flight.
+# LIVE and LIVE2 are the smallest sets, for the liveness checks.
 race() {
-  f=$1; cond=$2; h=$3; shift 3
-  { printf '%s %s\nSPECIFICATION SpecR\n' '\*' "$h"; consts MAIN; printf '  CondPause = %s\nINVARIANTS\n  Inv_NoScheduleWhilePausedR\nPROPERTIES\n' $cond
-    for i in "$@"; do printf '  %s\n' $i; done; } > $f
+  f=$1; c=$2; split=$3; cas=$4; atw=$5; mnt=$6; dcl=$7; h=$8; shift 8
+  spec=SpecR; for i in "$@"; do case $i in Liv_*) spec=SpecRL ;; esac; done
+  { printf '%s %s\nSPECIFICATION %s\n' '\*' "$h" $spec; consts $c
+    printf '  Split = %s\n  CasOn = %s\n  AtWrite = %s\n  WriteChecksMaint = %s\n  WriteChecksDecl = %s\nINVARIANTS\n' "$split" "$cas" $atw $mnt $dcl
+    for i in "$@"; do case $i in Prop_*|Liv_*|Scn217_*) ;; *) printf '  %s\n' $i ;; esac; done
+    printf 'PROPERTIES\n'; for i in "$@"; do case $i in Prop_*|Liv_*|Scn217_*) printf '  %s\n' $i ;; esac; done; } > $f
 }
-race Recurring_Race_Pause.cfg    FALSE "Run-6 F-1: pause write decided by an earlier read, unconditional, a trigger may land in between; $V" Prop_RecordOnlyUnhandledInstants
-race Recurring_Race_PauseCAS.cfg TRUE  "Run-6 F-1 option 1: the pause write is a compare-and-set on nextRunAt; $H" Prop_RecordOnlyUnhandledInstants Prop_MissRecordOnlyByMove Prop_MissedMoveRecordsOnce Prop_NoInstantRecordedTwice Prop_LeaveRecordsMissed Prop_PassedInstantRunsOrIsRecorded
+FULL='{"st", "nra"}'; NRA='{"nra"}'; ST='{"st"}'; NONE='{}'
+RREC="Prop_RecordOnlyUnhandledInstants $REC"
+RST="Prop_NoScheduledOccurrenceWhilePaused Prop_OneOccurrencePerInstant Prop_OrphanRecordsCurrentState Prop_LeaveOrphanedOnlyToStateBefore"
+RDECL="Prop_RestoreOnlyDeclared Prop_CodeJobLeavesOnlyUndeclared Prop_StaleOnlyWhenNodeStops"
+RBASE="TypeInvR Inv_NoScheduleWhilePaused Inv_MaxQueued Prop_PauseOrphanRemoveSkipsWaiting $RREC $RST"
+RH="INV-212 as written; $H"
+CF='counterfactual (not INV-212): expected VIOLATED; run with --stop-at-first, the trace shows the split is not vacuous.'
+SPLITM='{"Trigger", "Pause", "Resume", "Sched", "Remove"}'
+SPLITO='{"Orphan", "Restore", "Reapply", "Pause", "Resume", "Remove"}'
+# INV-212 as written, one split write per cfg (A-28), each with every check including Prop_Refines; the scheduler's
+# writes (trigger, orphan sweep, restore, REQ-241) also read data outside the job's row, so they run with the option of
+# the run-7 finding that covers it (maintenance, F-1; heartbeats, F-2) and the finding itself runs as written. With the
+# option, the only change is that a write landing under that condition loses.
+RALL="$RBASE Prop_NoTriggerWriteInMaintenance Prop_Refines"
+race Recurring_Race_Pause.cfg      MAIN  '{"Pause"}'   "$FULL" TRUE FALSE FALSE "Run 7: pause split, 1 job, 2 slots; $RH" $RALL Inv_NoOverlapProcessing
+race Recurring_Race_Resume.cfg     MAIN  '{"Resume"}'  "$FULL" TRUE FALSE FALSE "Run 7: resume split, 1 job, 2 slots; $RH" $RALL Inv_NoOverlapProcessing
+race Recurring_Race_Sched.cfg      MAIN  '{"Sched"}'   "$FULL" TRUE FALSE FALSE "Run 7: operator schedule change split, 1 job, 2 slots; $RH" $RALL Inv_NoOverlapProcessing
+race Recurring_Race_Remove.cfg     MAIN  '{"Remove"}'  "$FULL" TRUE FALSE FALSE "Run 7: operator removal split, 1 job, 2 slots; $RH" $RALL Inv_NoOverlapProcessing
+race Recurring_Race_TriggerOpt.cfg MAIN  '{"Trigger"}' "$FULL" TRUE TRUE FALSE "Run-7 F-1 option 1: trigger split, its write also requires maintenance off; $H" $RALL Inv_NoOverlapProcessing
+race Recurring_Race_MainMaint.cfg  MAIN  '{"Trigger"}' "$FULL" TRUE FALSE FALSE "Run-7 F-1: the trigger split as written, in flight when maintenance turns on; $V" Prop_NoTriggerWriteInMaintenance
+race Recurring_Race_OPause.cfg     ORPH2 '{"Pause"}'   "$FULL" TRUE FALSE FALSE "Run 7: pause split, two nodes, three releases, both orphan policies; $RH" $RALL $RDECL
+race Recurring_Race_OResume.cfg    ORPH2 '{"Resume"}'  "$FULL" TRUE FALSE FALSE "Run 7: resume split, two nodes, three releases, both orphan policies; $RH" $RALL $RDECL
+race Recurring_Race_ORemove.cfg    ORPH2 '{"Remove"}'  "$FULL" TRUE FALSE FALSE "Run 7: removal (of an orphan, REQ-213) split, two nodes, three releases; $RH" $RALL $RDECL
+race Recurring_Race_OrphanOpt.cfg  ORPH2 '{"Orphan"}'  "$FULL" TRUE FALSE TRUE "Run-7 F-2 option 1: orphan sweep split, its write also re-checks the declared names; $H" $RALL $RDECL
+race Recurring_Race_RestoreOpt.cfg ORPH2 '{"Restore"}' "$FULL" TRUE FALSE TRUE "Run-7 F-2 option 1: restore split, its write also re-checks the declared names; $H" $RALL $RDECL
+race Recurring_Race_ReapplyOpt.cfg ORPH2 '{"Reapply"}' "$FULL" TRUE FALSE TRUE "Run-7 F-2 option 1: REQ-241 split, its write also re-checks the declared names; $H" $RALL $RDECL
+race Recurring_Race_OrphDecl.cfg   ORPH2 '{"Orphan", "Restore", "Reapply"}' "$FULL" TRUE FALSE FALSE "Run-7 F-2: the sweep, restore and REQ-241 split as written decide on heartbeats the CAS does not cover; $V" Prop_CodeJobLeavesOnlyUndeclared
+race Recurring_Race_RestoreDecl.cfg ORPH2 '{"Restore"}' "$FULL" TRUE FALSE FALSE "Run-7 F-2: restore split as written, its node stops before the write; $V" Prop_RestoreOnlyDeclared
+race Recurring_Race_ReapplyDecl.cfg ORPH2 '{"Reapply"}' "$FULL" TRUE FALSE FALSE "Run-7 F-2: REQ-241 split as written, its node stops before the write; $V" Prop_StaleOnlyWhenNodeStops
+race Recurring_Race_Live.cfg       LIVE  '{"Pause", "Resume", "Sched", "Remove"}' "$FULL" TRUE FALSE FALSE "Run 7: a writer that loses its CAS eventually acts or finds nothing to do (weak fairness of the writer only); $RH" TypeInvR Liv_WriterSettles
+race Recurring_Race_LiveStarve.cfg LIVE  '{"Pause"}' "$FULL" TRUE FALSE FALSE "Run 7: ... without the escape clause; $V" Liv_WriterSettlesAlways
+race Recurring_Race_LiveOrph.cfg   LIVE2 '{"Orphan", "Restore", "Reapply"}' "$FULL" TRUE FALSE FALSE "Run 7: the same for the scheduler's writes, two nodes; $RH" TypeInvR Liv_WriterSettles
+# Counterfactuals: one per part of INV-212, each expected to fail.
+race Recurring_Race_CF_Pause.cfg         MAIN  '{"Pause"}'   "$NONE" FALSE FALSE FALSE "Run-6 F-1 trace: the pause write unconditional, decided at the read; $CF" Prop_RecordOnlyUnhandledInstants
+race Recurring_Race_CF_PauseAtRead.cfg   MAIN  '{"Pause"}'   "$FULL" FALSE FALSE FALSE "CAS on state and nextRunAt but missed instants judged at the read (drops 'by the database clock at that write'); $CF" Prop_LeaveRecordsMissed
+race Recurring_Race_CF_TriggerNra.cfg    MAIN  '{"Trigger"}' "$NRA"  TRUE  FALSE FALSE "Trigger CAS on nextRunAt only (REQ-216 before run 7): the reverse order of run-6 F-1; $CF" Prop_NoScheduledOccurrenceWhilePaused
+race Recurring_Race_CF_TriggerSt.cfg     MAIN  '{"Trigger"}' "$ST"   FALSE FALSE FALSE "Trigger CAS on the state only (drops nextRunAt): two nodes trigger one instant; $CF" Prop_OneOccurrencePerInstant
+race Recurring_Race_CF_Sched.cfg         MAIN  '{"Sched"}'   "$NONE" FALSE FALSE FALSE "Schedule change unconditional: a pause in between, and the instant the pause recorded is recorded again; $CF" Prop_MissRecordOnlyByMove
+race Recurring_Race_CF_Remove.cfg        MAIN  '{"Remove"}'  "$NONE" FALSE FALSE FALSE "Removal unconditional: a trigger in between, and the removal records the instant it ran; $CF" Prop_RecordOnlyUnhandledInstants
+race Recurring_Race_CF_RemoveRestore.cfg ORPH2 '{"Remove"}'  "$NONE" FALSE FALSE FALSE "Removal unconditional: removal of an orphan that was restored in between (INV-206); $CF" Prop_CodeJobLeavesOnlyUndeclared
+race Recurring_Race_CF_OrphanNra.cfg     ORPH2 '{"Orphan"}'  "$NRA"  TRUE  FALSE FALSE "Orphan sweep CAS on nextRunAt only: a pause in between, and the orphaning records the wrong earlier state; $CF" Prop_OrphanRecordsCurrentState
+race Recurring_Race_CF_PauseNra.cfg      ORPH2 '{"Pause"}'   "$NRA"  TRUE  FALSE FALSE "Pause CAS on nextRunAt only: an orphaning in between, and the pause takes the job out of Orphaned; $CF" Prop_LeaveOrphanedOnlyToStateBefore
+race Recurring_Race_CF_ResumeNra.cfg     ORPH2 '{"Resume"}'  "$NRA"  TRUE  FALSE FALSE "Resume CAS on nextRunAt only: an orphaning in between, and the resume makes an orphaned job active; $CF" Prop_LeaveOrphanedOnlyToStateBefore
+race Recurring_Race_CF_Restore.cfg       ORPH2 '{"Restore"}' "$NONE" FALSE FALSE FALSE "Restore unconditional; $CF" Prop_LeaveOrphanedOnlyToStateBefore
+race Recurring_Race_CF_Reapply.cfg       ORPH2 '{"Reapply"}' "$NONE" FALSE FALSE FALSE "REQ-241 write unconditional: a pause in between, and the instant the pause recorded is recorded again; $CF" Prop_MissRecordOnlyByMove
 # Run 4: the 3-slot Queue cfgs check nothing about REQ-242, so they use VIEW ViewNoRec (A-22) to stay at run-3 size.
 for f in Recurring_OverlapQueue.cfg Recurring_OverlapQueue2.cfg Recurring_F_WaitingRace.cfg Recurring_F_RerouteQueue.cfg Recurring_P_QueueTwoWaiters.cfg; do
   printf 'VIEW ViewNoRec
