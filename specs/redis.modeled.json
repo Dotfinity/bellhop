@@ -1,7 +1,7 @@
 {
   "module": "redis",
   "specHash": "7bcd94d03e2daf303b36f0c332801df8419a33efeadb775b52a9515abc20bb8b",
-  "generatedAt": "2026-11-08T16:01:38Z",
+  "generatedAt": "2026-11-08T16:18:34Z",
   "model": "model/redis/Redis.tla",
   "items": {
     "REQ-500": {
@@ -37,7 +37,7 @@
     "REQ-507": {
       "hash": "7f22c0f680883fc760b4b0cc74b267f62abc3297ccdc2ae7c17156b2bbef0245",
       "reviewed": false,
-      "note": "DetectReset(n) (DetectCond), also on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): run 6, the replacement is one atomic step with the read that found the marker missing or older (A-19 is now the requirement); server-clock value as value and last-reset value, flagged; StoreWasReset always; restarts the REQ-509 wait. Run-5 F-1 resolved: Redis_Hide.cfg and Redis_Hide2.cfg hold; the run-5 wording (SplitCAS) is the counterfactual Redis_HideRace.cfg, violated in 14 steps. Run 7: ReplyLost(n) (environment switch LostReply) makes the store side of this write without the node side (A-32); F-1."
+      "note": "DetectReset(n) (DetectCond), also on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): run 6, the replacement is one atomic step with the read that found the marker missing or older (A-19 is now the requirement); server-clock value as value and last-reset value, flagged; StoreWasReset always; restarts the REQ-509 wait. Run-5 F-1 resolved: Redis_Hide.cfg and Redis_Hide2.cfg hold; the run-5 wording (SplitCAS) is the counterfactual Redis_HideRace.cfg, violated in 14 steps. Run 7: ReplyLost(n) (environment switch LostReply) makes the store side of this write without the node side (A-32); F-1. Run 9: after a lost reply, a rollback to the image before the flush is not detected, because no node saw the new marker (probe P2, F-1; NFR-31's undetected-rollback window)."
     },
     "REQ-508": {
       "hash": "b8e5cd7efad11922fb20840fbf7eaf6a1b5a50c6d450d97cce23a687c3250daf",
@@ -102,12 +102,12 @@
     "REQ-523": {
       "hash": "476711187dedada7d0ed0194e5fc4e96095c5ff3a34dac0e08831d634528d70e",
       "reviewed": false,
-      "note": "DetectReset(n) and the store side of ReplyLost(n): run 8, the record is written in the same atomic step as the replacement (TECH-130), so ReplyLost writes it too; the ERROR lines and the memory still need the reply. New Inv_RecordUntilAck passes on Redis.cfg, Redis_Flush2.cfg, Redis_LateJoin.cfg, Redis_RestoreFR.cfg, Redis_ReplyLost.cfg and Redis_ReplyLost2.cfg (4,494,908); the run-7 wording (RecordAfterReply, Redis_ReplyLostRun7.cfg) violates it in 9 steps. Lost log lines accepted (Inv_EveryResetLogged, 9 steps). F-1 (gap, medium): with no node remembering a lost-reply reset, an unreported late-join flush erases its record (Redis_LivReplyLostLateAdv.cfg Liv_RecordRestored, 21 steps)."
+      "note": "DetectReset(n) and the store side of ReplyLost(n): the record is written in the same atomic step as the replacement (TECH-130), so ReplyLost writes it too; the ERROR lines and the memory still need the reply. Run 9 (annotation only, model unchanged): the f2bc587 notes re-checked. Lost log lines and kept record: Redis_ReplyLost.cfg (Inv_EveryResetLogged 9 states, accepted; Inv_RecordUntilAck passes, 178,576), Redis_SCN500LostReply.cfg (12 states, Degraded on the record alone). Run 8 F-1 resolved (documented): Redis_LivReplyLostLateAdv.cfg Liv_RecordRestored (20 states) and probe P4 (14 states, no read between the flushes) moved to Accepted. F-1 (gap, low): 'with one exception' misses a second one, an undetected rollback to an image from before the flush after a lost reply (probe P2, 10 states; P2b without a lost reply passes, 1,247,312)."
     },
     "REQ-524": {
       "hash": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
       "reviewed": false,
-      "note": "HealthCheck rule r524. Run 8: also checked after a lost reply (Redis_SCN500LostReply.cfg, Inv_RecordUntilAck)."
+      "note": "HealthCheck rule r524. Also checked after a lost reply (Redis_SCN500LostReply.cfg, rerun in run 9, 12 states). Run 9 F-1: health returns to Healthy without acknowledgement after a lost reply and an undetected rollback (probe P2)."
     },
     "REQ-525": {
       "hash": "f23a4c822608f90fa87cf6c5cb09b4dcf6995b731fe6129617745ca8aabb71db",
@@ -127,7 +127,7 @@
     "REQ-528": {
       "hash": "38b21a33dacebe00746692a4112eac362f6c998e6c857d784e0185ce620f3bf2",
       "reviewed": false,
-      "note": "InitMarker(n) (InitCond, also on every claim, heartbeat and completion read): lowest value, flagged, last-reset = server clock, in the same atomic step as the read that found the marker missing (run 6); Reconciling, no report. Run-5 F-1 resolved."
+      "note": "InitMarker(n) (InitCond, also on every claim, heartbeat and completion read): lowest value, flagged, last-reset = server clock, in the same atomic step as the read that found the marker missing (run 6); Reconciling, no report. Run-5 F-1 resolved. Run 9: the late-join flush's erasure of a lost-reply record re-checked (Redis_LivReplyLostLateAdv.cfg, probe P4); Redis_LivLateJoinAdv.cfg Liv_LossReported violated as accepted (15 states)."
     },
     "REQ-529": {
       "hash": "9ec746459993be5849d8ce8fe98f27c3f349b5bb5617cd82b14c4342484f8bd0",
@@ -147,7 +147,7 @@
     "REQ-532": {
       "hash": "f73d75bb1dc8e61f3a25e890980154d4e132bc32949d5cd51fb0a112ba18b0f2",
       "reviewed": false,
-      "note": "RewriteRecord(n). Impacted (run 8), re-checked: Liv_UnackedRestored passes on Redis_Liveness.cfg (33,469) and Redis_LivFlush2.cfg (318,426); Liv_RecordRestored passes on Redis_LivFlush2.cfg, Redis_LivReplyLost.cfg, Redis_LivReplyLost2.cfg (199,106) and Redis_LivLateAdv2.cfg (175,022), and is violated on Redis_LivReplyLostLateAdv.cfg (F-1: no node remembers a lost-reply reset)."
+      "note": "RewriteRecord(n). Run 9 (annotation only): the run-8 note re-checked. Detected later flush keeps the record: Redis_ReplyLost2.cfg Inv_RecordUntilAck (4,494,908), probe P3 with a late first look (962,678), Redis_LivReplyLost2.cfg Liv_RecordRestored (199,106). Undetected later flush erases it: Redis_LivReplyLostLateAdv.cfg (20 states), probe P4 (14). Safe-direction exception to 'only if': a node remembering an earlier unacknowledged reset re-writes it (probe P1, 17 states; optional wording, not a finding). Baseline Redis_LivLateAdv2.cfg passes (175,022). A-35: the guard does not require the node's own connection; no result depends on it."
     },
     "REQ-533": {
       "hash": "a1f41ff73b6c692e68595220b089dbfd4fb0c5d7ceed70b152f493087654af66",
