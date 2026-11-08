@@ -1,8 +1,10 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash 5a8b9d80683d) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash 551cdd1a5b91) — edit the requirements, not this file.
 \* Run 7 (INV-212): every write that changes a job's state or nextRunAt, or removes it, is written here as a guard
 \* (what its read checks) and a ...Write operator (what it lands). This module keeps each as one atomic step (A-2);
 \* RecurringRace.tla splits them into a read and a write and checks INV-212's compare-and-set.
+\* Run 8: REQ-203 also fires from the scheduler (CreateDeclared, fair); INV-212 also covers definition writes and,
+\* for a trigger, maintenance (both only visible in RecurringRace.tla).
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -147,8 +149,9 @@ Decide(o, r, sched) ==
                                    THEN [job[x] EXCEPT !.st = "Cancelled"]
                                  ELSE job[x]]
 
-\* @req REQ-216  Active, maintenance off, nextRunAt passed: one compare-and-set on the job's state and nextRunAt
-\*              (INV-212) advances nextRunAt and creates what the misfire policy calls for.
+\* @req REQ-216  Active, maintenance off, nextRunAt passed: one compare-and-set as INV-212 describes (state, nextRunAt,
+\*              definition, and maintenance off at the write) advances nextRunAt and creates what the misfire policy
+\*              calls for.
 \* @req REQ-217, REQ-218, REQ-219, INV-207, REQ-234  misfire handling; REQ-220 recorded in .miss.
 \* @req REQ-242  when one or more instants were missed, the same CAS writes one missed-instant record:
 \*              how the instants were handled (the created occurrence's start / wait / overlap skip, or
@@ -305,6 +308,16 @@ ReapplyCode(r) ==
   /\ \E n \in DeclaringNodes(r), schedChanged \in BOOLEAN :
        ReapplyWrite(r, CodeDef(node[n].ver), schedChanged, HasMissed(r))
 
+\* @req REQ-203  the scheduler finds a code-defined job that a running worker node declares and that has no stored
+\*              definition with its name: create it from the code definition of a node that declares it, Active,
+\*              nextRunAt from now. (The node-start branch of the same sentence is in NodeStart.) An insert keyed by
+\*              name, so it fails if the name is stored by then (A-8).
+CreateGuard(r) == SchedulerRuns /\ rj[r].st = "none" /\ Declared(r)
+CreateWrite(r, d) ==
+  /\ rj' = [rj EXCEPT ![r] = [NoRj EXCEPT !.st = "Active", !.origin = "code", !.hash = d, !.def = d]]
+  /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
+CreateDeclared(r) == CreateGuard(r) /\ \E n \in DeclaringNodes(r) : CreateWrite(r, CodeDef(node[n].ver))
+
 \* @req REQ-208  operator adds a runtime job when no definition with its name exists.
 \* @req INV-211  a name that is already stored is rejected (guard), whatever its origin.
 OperatorAdd(r) ==
@@ -406,7 +419,7 @@ Archive(o) ==
 Next ==
   \/ \E r \in Names : \/ Trigger(r) \/ TriggerNow(r) \/ Orphan(r) \/ Restore(r) \/ OperatorAdd(r)
                       \/ OperatorUpdate(r) \/ OperatorRemove(r) \/ Pause(r) \/ Resume(r) \/ TimePasses(r)
-                      \/ ReapplyCode(r)
+                      \/ ReapplyCode(r) \/ CreateDeclared(r)
   \/ \E n \in Nodes : NodeStop(n) \/ \E v \in Releases : NodeStart(n, v)
   \/ \E o \in OccIds : \/ StartWaiting(o) \/ Claim(o) \/ Complete(o) \/ RetryDue(o) \/ LeaseLost(o)
                        \/ AbandonOnTimeout(o) \/ ZombieEnds(o) \/ BecomeUnroutable(o) \/ Reroute(o)
@@ -415,9 +428,13 @@ Next ==
 
 \* Only actor: system transitions are fair.
 Fairness == /\ \A r \in Names : WF_vars(Trigger(r)) /\ WF_vars(Orphan(r)) /\ WF_vars(ReapplyCode(r))
+                                /\ WF_vars(CreateDeclared(r))                     \* @req REQ-203 (actor system, run 8)
             /\ \A o \in OccIds : WF_vars(StartWaiting(o))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
+\* Not the requirements as written: REQ-206's actor is Host, so its restore is not fair in Spec. SpecRestoreFair also makes it
+\* weakly fair, which is what the run-8 finding's option 1 (actor system) would mean.
+SpecRestoreFair == Spec /\ \A r \in Names : WF_vars(Restore(r))
 
 \* A-22: missRec is written only by Trigger, the schedule-change steps and Pause / Orphan / OperatorRemove (REQ-242) and read by no guard or
 \* other update, so states that differ only in missRec have the same futures. Checks that do not mention missRec may use this VIEW (the 3-slot Queue cfgs).
@@ -492,6 +509,19 @@ Liv_DefinitionSettles == \A r \in Names : Stale(r) ~> ~Stale(r)
 \*              once the set of running nodes stops changing.
 Prop_StaleOnlyWhenNodeStops ==
   [][\A r \in Names : ~Stale(r) /\ Stale(r)' => \E n \in Nodes : node[n].st = "Running" /\ node'[n].st = "Down"]_vars
+
+\* @req REQ-203, REQ-206, REQ-241, INV-212 (notes)  run 8: stored definitions converge to what running nodes declare. A
+\*              code-defined name that a running worker node declares is eventually stored, not orphaned, with the
+\*              code definition of a declaring node, and stays so, unless the running nodes keep changing for ever or
+\*              an operator keeps removing the job for ever (REQ-213, each removal undoes the healing). A runtime job
+\*              with that name counts as settled: REQ-203 does not apply to it, and REQ-236 refuses the next start of a
+\*              node that declares it (A-33).
+Settled(r) == \/ rj[r].origin = "runtime"
+              \/ /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code"
+                 /\ \E n \in DeclaringNodes(r) : rj[r].hash = CodeDef(node[n].ver)
+NodesChange == node' # node
+Liv_DeclaredConverges ==
+  \A r \in Names : <>[](Declared(r) => Settled(r)) \/ []<><<NodesChange>>_vars \/ []<><<OperatorRemove(r)>>_vars
 
 \* A step that moves nextRunAt by a schedule change (REQ-227 via REQ-204, REQ-241 or REQ-212).
 ScheduleChange(r) == OperatorUpdate(r) \/ ReapplyCode(r) \/ \E n \in Nodes, v \in Releases : NodeStart(n, v)

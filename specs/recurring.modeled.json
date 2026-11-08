@@ -1,7 +1,7 @@
 {
   "module": "recurring",
-  "specHash": "5a8b9d80683d76515031d1f076cd2d97ed5d3d355e5ff295cca716cc3d8f014b",
-  "generatedAt": "2026-11-08T21:00:00Z",
+  "specHash": "551cdd1a5b91826016b1ab6d48225767e703a4fe7b6248422189f6a3f1dfee0d",
+  "generatedAt": "2026-11-08T23:30:00Z",
   "model": "model/recurring/Recurring.tla",
   "items": {
     "REQ-201": {
@@ -15,14 +15,14 @@
       "note": "origins code and runtime; configuration origin not modeled (INV-209/REQ-232 are 'may')"
     },
     "REQ-203": {
-      "hash": "5bfdf1a3d39ec5ddd7b39d56c4935f14811a5fb52dc573a1316f84db3ea56b98",
+      "hash": "408786982ba691fc09dd82121f33cb1727e143352282df55affa9f8cebef701c",
       "reviewed": false,
-      "note": "part of NodeStart; atomic per start step (A-8) | run 7 F-2 option 2 would extend it to the scheduler (not model-checked)"
+      "note": "run 8: node-start branch in NodeStart (A-8); scheduler branch is CreateDeclared (guard CreateGuard, insert keyed by name, code of one declaring node), weakly fair (actor system). Adds no state to any Recurring cfg (same counts as run 7). Split in RecurringRace (Race_Create): every other check holds; it can land after the declaring node stopped (Race_CreateDecl, same kind of transient, healed by the sweep or REQ-241). Healing of a deleted job holds as written (Liv_ConvergeDel, Race_LiveConvDel)."
     },
     "REQ-204": {
       "hash": "57bff9f1854378a72b526dc9f51994fc530174d471d1660b8196fbb6b04acaeb",
       "reviewed": false,
-      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards. | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: not split (one step for every declared name at node start, A-30); F-3 applies to its 'if the schedule changed'"
+      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards. | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: not split (one step for every declared name at node start, A-30); F-3 applies to its 'if the schedule changed' | run 8: in the ...Sch race cfgs a reapply changes the schedule iff the release's code schedule differs from the stored one (StartSch, A-32); still one atomic step per start (A-30)."
     },
     "INV-200": {
       "hash": "aabda1e033f251ea9cd5f8aafa56fce146593e49cb567fae992f9d330ce8b050",
@@ -32,17 +32,17 @@
     "REQ-205": {
       "hash": "88a059aa7f91df1c924769442cacda04a6e0262552844a42e376663df669371a",
       "reviewed": false,
-      "note": "per-job orphanPolicy Orphan; same action as REQ-207; skips waiting occurrences (REQ-237) | run 7: OrphanGuard + OrphanWrite (same behaviour). Split: Prop_OrphanRecordsCurrentState holds with the state compared, fails on nextRunAt only (Race_CF_OrphanNra); F-2: heartbeats not compared (Race_OrphDecl), holds with F-2 option 1 (Race_OrphanOpt 2,731,146)"
+      "note": "per-job orphanPolicy Orphan; same action as REQ-207; skips waiting occurrences (REQ-237) | run 7: OrphanGuard + OrphanWrite (same behaviour). Split: Prop_OrphanRecordsCurrentState holds with the state compared, fails on nextRunAt only (Race_CF_OrphanNra); F-2: heartbeats not compared (Race_OrphDecl), holds with F-2 option 1 (Race_OrphanOpt 2,731,146) | run 8: orphan sweep split as written: accepted transient (Race_OrphDecl), every other check holds (Race_Orphan); without the state in the CAS records the wrong earlier state (Race_CF_OrphanNra)."
     },
     "REQ-206": {
       "hash": "ef83e3180bd8455403659bee9823ac4b334ac5cdf6fb9d5ef97f7b74c09f9234",
       "reviewed": false,
-      "note": "restores the earlier state and takes the definition of one declaring running node (nondeterministic when several) | run 7: RestoreWrite (same behaviour). Split: unconditional loses an operator pause (Race_CF_Restore); F-2: restores with the code of a node that stopped (Race_RestoreDecl), holds with F-2 option 1 (Race_RestoreOpt 3,328,446)"
+      "note": "restores the earlier state and takes the definition of one declaring running node (nondeterministic when several) | run 7: RestoreWrite (same behaviour). Split: unconditional loses an operator pause (Race_CF_Restore); F-2: restores with the code of a node that stopped (Race_RestoreDecl), holds with F-2 option 1 (Race_RestoreOpt 3,328,446) | run 8 F-1: actor Host, so not weakly fair; Liv_DeclaredConverges fails for an orphaned declared job (Liv_Converge, Race_LiveConvW) and holds when REQ-206 is fair (Liv_ConvergeOpt, Race_LiveConv 272,096). Restore split as written: heartbeat transient accepted (Race_RestoreDecl), every other check holds (Race_Restore)."
     },
     "REQ-207": {
       "hash": "91514861ca4d1c05d3ca17e649a02bbe60e84a2ae0de4fbb10b63a4ee7ecfcb7",
       "reviewed": false,
-      "note": "per-job orphanPolicy Delete; same action as REQ-205; skips waiting occurrences (REQ-237) | run 7 F-2: a sweep in flight deletes a job that a node which has just started declares (Race_OrphDecl, 7 states); nothing re-creates it until the next node start"
+      "note": "per-job orphanPolicy Delete; same action as REQ-205; skips waiting occurrences (REQ-237) | run 7 F-2: a sweep in flight deletes a job that a node which has just started declares (Race_OrphDecl, 7 states); nothing re-creates it until the next node start | run 8: notes accept the transient (Race_OrphDecl, 7 states); healed by REQ-203's scheduler branch as written (Liv_ConvergeDel, Race_LiveConvDel)."
     },
     "REQ-208": {
       "hash": "8e271faa2399833189982413780b3741de828f8a8d970738bfc2d0fdf74abb40",
@@ -57,7 +57,7 @@
     "REQ-212": {
       "hash": "e9a08be600b4835eef50b1e7f58bc8ddf96b386d5eff60960cdbe9c41ca706c1",
       "reviewed": false,
-      "note": "OperatorUpdate | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: UpdateGuard + UpdateWrite (same behaviour). Split with a schedule change: holds (Race_Sched 3,482,736); unconditional records an instant twice (Race_CF_Sched). F-3 for edits that change no schedule"
+      "note": "OperatorUpdate | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: UpdateGuard + UpdateWrite (same behaviour). Split with a schedule change: holds (Race_Sched 3,482,736); unconditional records an instant twice (Race_CF_Sched). F-3 for edits that change no schedule | run 8: split as 'Update' (any definition update, with or without a schedule change): holds incl. Prop_Refines (Race_Update 5,229,816; with schedule content Race_UpdateSch 8,741,112, Race_UpdateSchO); unconditional records an instant twice (Race_CF_Update); without the definition in the CAS stores a schedule beside a nextRunAt from another (Race_CF_DefUpdate)."
     },
     "REQ-213": {
       "hash": "bfe77dff0a33782eda594ad8d235be54f67df825134805b6430376aa27d88298",
@@ -80,9 +80,9 @@
       "note": "Inv_NoScheduleWhilePaused — holds | run 7: Prop_NoScheduledOccurrenceWhilePaused holds in every race cfg; fails with a trigger CAS on nextRunAt only (Race_CF_TriggerNra)"
     },
     "REQ-216": {
-      "hash": "5e1e582130185a8f8fbfe05c36f507044e2895acf562044aedb8609a0b874d7e",
+      "hash": "8f9c827892e050b726b262788af75545d62b2fe1d48af357746afad748b21d59",
       "reviewed": false,
-      "note": "run 7: TriggerGuard + TriggerWrite (same behaviour as run 6, atomic in Recurring, A-2). Split in RecurringRace: with the CAS on state and nextRunAt, INV-201 and INV-203 hold; on nextRunAt only a pause in between gives an occurrence for a paused job (Race_CF_TriggerNra, SCN-217 RSCN217n); on state only a second occurrence for one instant (Race_CF_TriggerSt). F-1: maintenance is not compared, so a trigger in flight lands while maintenance is on (Race_MainMaint); with F-1 option 1 every check holds (Race_TriggerOpt 2,885,304)."
+      "note": "run 8: TriggerGuard + TriggerWrite (atomic in Recurring, same behaviour). Split, INV-212 as written (incl. maintenance): every check incl. Prop_Refines holds (Race_Trigger 2,885,304; Race_TriggerSch 2,891,016). Without maintenance the run-7 F-1 trace (Race_CF_TriggerMaint, 6 states); without the state INV-201 (Race_CF_TriggerNra, RSCN217n); without nextRunAt INV-203 (Race_CF_TriggerSt). Run-7 F-1 resolved."
     },
     "INV-203": {
       "hash": "8e2c452774097e70067d3887f0cb4ae7ce7169aee397d4c020f883268a0a4ff7",
@@ -147,7 +147,7 @@
     "REQ-227": {
       "hash": "0456d4ac404753c0f7bc1930c019abc8826494d16ae7cc4cd854d676ee3c7eea",
       "reviewed": false,
-      "note": "OperatorUpdate with schedule change; also the 'from now' rule used by REQ-204, REQ-241 | run 7: F-3 (does INV-212 cover a definition write that judged 'no schedule change' from its read; not model-checked)"
+      "note": "OperatorUpdate with schedule change; also the 'from now' rule used by REQ-204, REQ-241 | run 7: F-3 (does INV-212 cover a definition write that judged 'no schedule change' from its read; not model-checked) | run 8: checked with schedule content as Inv_NextRunAtFromStoredSchedule (Race_UpdateSch, Race_ResumeSch, Race_TriggerSch, Race_ReapplySch, Race_UpdateSchO hold; Race_CF_DefReapply, Race_CF_DefUpdate fail). Run-7 F-3 resolved."
     },
     "REQ-233": {
       "hash": "3adcf32f8ee6d694d87f9327de77ca9d9828ba5acdbaf88f5f5b689bdf4783a2",
@@ -187,12 +187,12 @@
     "REQ-241": {
       "hash": "359c92303bfac13c34e9c67cad41f49eb2efb4c92cb1d173c67a612c16f00f2e",
       "reviewed": false,
-      "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check) | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: ReapplyWrite (same behaviour). Split with a schedule change: unconditional records an instant a trigger ran (Race_CF_Reapply); F-2: its node can stop before the write (Race_ReapplyDecl), holds with F-2 option 1 (Race_ReapplyOpt 4,130,946). F-3: whether a write without a schedule change is covered by INV-212 (not model-checked)"
+      "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check) | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: ReapplyWrite (same behaviour). Split with a schedule change: unconditional records an instant a trigger ran (Race_CF_Reapply); F-2: its node can stop before the write (Race_ReapplyDecl), holds with F-2 option 1 (Race_ReapplyOpt 4,130,946). F-3: whether a write without a schedule change is covered by INV-212 (not model-checked) | run 8: with schedule content, REQ-241 split against operator edits keeps nextRunAt from the stored schedule (Race_ReapplySch); without the definition in the CAS the run-7 F-3 trace (Race_CF_DefReapply, 7 states). Heartbeat transient accepted (Race_ReapplyDecl; Race_Reapply: also lands after a matching node started, a settled result)."
     },
     "REQ-242": {
       "hash": "16a541fb186741cc853952021d95b94a2bb699ef04972c821a8c1487c2d6833b",
       "reviewed": false,
-      "note": "run 7: written by the ...Write operators (TriggerWrite, UpdateWrite, ReapplyWrite, PauseWrite, OrphanWrite, RemoveWrite) atomically in Recurring (same state counts as run 6) and split in RecurringRace. The seven REQ-242 properties (Prop_RecordOnlyUnhandledInstants + the six of run 6) hold in every as-written race cfg and with both options; judged at the read instead of at the write the pause drops a passed instant without a record (Race_CF_PauseAtRead), and unconditional pause / schedule change / REQ-241 / removal record a handled instant (Race_CF_Pause, _Sched, _Reapply, _Remove). Run-6 F-1 resolved."
+      "note": "run 7: written by the ...Write operators (TriggerWrite, UpdateWrite, ReapplyWrite, PauseWrite, OrphanWrite, RemoveWrite) atomically in Recurring (same state counts as run 6) and split in RecurringRace. The seven REQ-242 properties (Prop_RecordOnlyUnhandledInstants + the six of run 6) hold in every as-written race cfg and with both options; judged at the read instead of at the write the pause drops a passed instant without a record (Race_CF_PauseAtRead), and unconditional pause / schedule change / REQ-241 / removal record a handled instant (Race_CF_Pause, _Sched, _Reapply, _Remove). Run-6 F-1 resolved. | run 8 (impacted): all seven REQ-242 properties hold in every as-written race cfg; the heartbeat-write cfgs use Prop_RecordSaysOutcomeR (accepts the split write as the step). Counterfactuals unchanged (Race_CF_Pause, _PauseAtRead, _Update, _Reapply, _Remove)."
     },
     "INV-206": {
       "hash": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",
@@ -207,7 +207,7 @@
     "INV-210": {
       "hash": "b4f87cd091157f02198e42618c29d2f63807b7cdbc1221adc8363a4cadcf4625",
       "reviewed": false,
-      "note": "narrowed: Inv_NoScheduleInMaintenance and Prop_NoScheduledAdvanceInMaintenance hold | run 7 F-1: with the trigger split as INV-212 says, Prop_NoTriggerWriteInMaintenance fails (Race_MainMaint, 6 states); holds with F-1 option 1 (Race_TriggerOpt)"
+      "note": "narrowed: Inv_NoScheduleInMaintenance and Prop_NoScheduledAdvanceInMaintenance hold | run 7 F-1: with the trigger split as INV-212 says, Prop_NoTriggerWriteInMaintenance fails (Race_MainMaint, 6 states); holds with F-1 option 1 (Race_TriggerOpt) | run 8: Prop_NoTriggerWriteInMaintenance holds as written with the trigger split (Race_Trigger); fails with run 7's wording (Race_CF_TriggerMaint). Run-7 F-1 resolved."
     },
     "INV-211": {
       "hash": "b420ce59db5d026d5868c574b5f9737f4120b2a3efabcf463533d5b88751513b",
@@ -215,24 +215,24 @@
       "note": "Scn_StoredNameCannotBeAdded holds (Defs)"
     },
     "INV-212": {
-      "hash": "e04d245b7b821fe70015a492a9ef3306fcc2efde74fd964f208ecf86ffd61a69",
+      "hash": "b96223e91d476bd5138fd1c35c1d4aa9d2f73bcee4cc554e911389247431e596",
       "reviewed": false,
-      "note": "run 7: RecurringRace.tla splits trigger, operator schedule change, REQ-241, pause, resume, orphan sweep, restore and removal into a read and a write (one split write per cfg, A-28); the write compares state and nextRunAt (ghosts, A-27), judges at the write, and a lost write reads again (A-28). Holds with every check incl. Prop_Refines for pause, resume, schedule change and removal (Race_Pause 4,349,520, Race_Resume, Race_Sched, Race_Remove, Race_OPause, Race_OResume, Race_ORemove). Not as written for the trigger (F-1, maintenance not compared) and the orphan sweep / restore / REQ-241 (F-2, heartbeats not compared); with those options every check holds. Each part is needed: 12 counterfactual cfgs (Race_CF_*) fail without it. Reread: Liv_WriterSettles holds (Race_Live, Race_LiveOrph); starvation under endless interference is reachable and accepted (Race_LiveStarve). Scope question for definition writes: F-3 (not model-checked)."
+      "note": "run 8: RecurringRace.tla compares state, nextRunAt, definition (ghost cd) and, for a trigger, maintenance (CasOn = all four), judged at the write; a lost write reads again (A-28). Definitions get schedule content in the ...Sch cfgs (A-32). Holds with every check incl. Prop_Refines for trigger, pause, resume, operator update, removal (Race_Trigger 2,885,304, Race_Pause 4,349,520, Race_Resume, Race_Update 5,229,816, Race_Remove, Race_OPause, Race_OResume, Race_ORemove, Race_TriggerSch, Race_ResumeSch, Race_UpdateSch 8,741,112, Race_UpdateSchO) and for REQ-241 against operator edits (Race_ReapplySch, Inv_NextRunAtFromStoredSchedule). Each part needed: 15 Race_CF_* fail without it (incl. CF_TriggerMaint = run-7 F-1 trace, CF_DefReapply = run-7 F-3 trace, CF_DefUpdate). Heartbeats not compared (notes): transients reachable as accepted (Race_OrphDecl, Race_RestoreDecl, Race_ReapplyDecl); every other check holds with those writes split (Race_Orphan, Race_Restore, Race_Reapply). Healing: run-8 F-1 (REQ-206 not obliged). Reread: Liv_WriterSettles holds (Race_Live, Race_LiveOrph)."
     },
     "SCN-200": {
       "hash": "fa41a99be34596e66466472c7275874a429b00c26c61307f7792ad4db56ab2e0",
       "reviewed": false,
-      "note": "Scn_SecondCasImpossible — holds (by construction) | run 7 (impacted by REQ-216): Scn_SecondCasImpossible holds in Main/MainR/Misfire; with the trigger split, Prop_OneOccurrencePerInstant holds (Race_TriggerOpt) and fails without nextRunAt in the CAS (Race_CF_TriggerSt)"
+      "note": "Scn_SecondCasImpossible — holds (by construction) | run 7 (impacted by REQ-216): Scn_SecondCasImpossible holds in Main/MainR/Misfire; with the trigger split, Prop_OneOccurrencePerInstant holds (Race_TriggerOpt) and fails without nextRunAt in the CAS (Race_CF_TriggerSt) | run 8 (impacted): Scn_SecondCasImpossible holds (Main, MainR, Misfire); Prop_OneOccurrencePerInstant holds with the trigger split (Race_Trigger, Race_TriggerSch); fails without nextRunAt (Race_CF_TriggerSt)."
     },
     "SCN-201": {
       "hash": "aaa1a789d897952d87d8463352685cb7d12ebe9f4872b753a7938ee348700799",
       "reviewed": false,
-      "note": "Recurring_SCN201.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 2 states"
+      "note": "Recurring_SCN201.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 2 states | run 8 (impacted): still reachable (2 states)."
     },
     "SCN-202": {
       "hash": "37258689921b2f1bcd2583997a82c86f84899e4247c6802221d3ba9b2047a27f",
       "reviewed": false,
-      "note": "Inv_NoScheduleWhilePaused — holds | run 7 (impacted by REQ-216): Inv_NoScheduleWhilePaused and Prop_NoScheduledOccurrenceWhilePaused hold in every race cfg"
+      "note": "Inv_NoScheduleWhilePaused — holds | run 7 (impacted by REQ-216): Inv_NoScheduleWhilePaused and Prop_NoScheduledOccurrenceWhilePaused hold in every race cfg | run 8 (impacted): Inv_NoScheduleWhilePaused and Prop_NoScheduledOccurrenceWhilePaused hold everywhere they run."
     },
     "SCN-203": {
       "hash": "f4f67a5017644d0c6ccdb802a384abbabf96d8ad4cc27e2c3660656d45de2f1b",
@@ -252,12 +252,12 @@
     "SCN-206": {
       "hash": "1b2d6755bbd82bef9d7632efde47470e81d189abb4e2154848add7eabe29323b",
       "reviewed": false,
-      "note": "Recurring_SCN206.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 3 states"
+      "note": "Recurring_SCN206.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 3 states | run 8 (impacted): still reachable (3 states)."
     },
     "SCN-207": {
       "hash": "d1d384389f797004dcac08dd7ddfeca43fae49588dc58b6f1079f539fdf206f7",
       "reviewed": false,
-      "note": "holds by construction (A-8); not a meaningful check"
+      "note": "holds by construction (A-8); not a meaningful check | run 8 (impacted via REQ-203): both branches of REQ-203 are inserts keyed by name, still holds by construction (A-8)."
     },
     "SCN-208": {
       "hash": "b665d03060766dd2446d58f8026ed84feebbd670009dcc8c31674d309c7bfd39",
@@ -267,17 +267,17 @@
     "SCN-209": {
       "hash": "ed40976cd08e8633ac064c22d1a5e0bfde53788b10d709ad3cb1ef9626b42413",
       "reviewed": false,
-      "note": "Recurring_SCN209.cfg + Recurring_SCN209b.cfg (two legs) — reachable"
+      "note": "Recurring_SCN209.cfg + Recurring_SCN209b.cfg (two legs) — reachable | run 8: still reachable; F-1: its restore (leg b) is not obliged (REQ-206 actor Host, Liv_Converge)."
     },
     "SCN-210": {
       "hash": "109b4964349917cfdcfccd6b199d5ab9444dbbd41c7fe2db2e7c0af945a4f936",
       "reviewed": false,
-      "note": "Recurring_SCN210.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 4 states"
+      "note": "Recurring_SCN210.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 4 states | run 8 (impacted): still reachable (4 states)."
     },
     "SCN-211": {
       "hash": "c779d4d0bb9823ce667d57875510938b4af3ade95eae90daa3fd529f37dd7ed6",
       "reviewed": false,
-      "note": "Recurring_SCN211.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 2 states"
+      "note": "Recurring_SCN211.cfg — reachable | run 7 (impacted by REQ-216): still reachable, 2 states | run 8 (impacted): still reachable (2 states)."
     },
     "SCN-212": {
       "hash": "fcf75dd532c8a848bc24e90250043f171e6a18950363accb6bb72d887c0403b7",
@@ -287,7 +287,7 @@
     "SCN-213": {
       "hash": "1a91921db3e4a874eb9c309076a9886938bed558a20794898d1ae81ea79dff9b",
       "reviewed": false,
-      "note": "reachable (Recurring_SCN213.cfg, 5 states) | run 7 (impacted by REQ-216): still reachable, 4 states"
+      "note": "reachable (Recurring_SCN213.cfg, 5 states) | run 7 (impacted by REQ-216): still reachable, 4 states | run 8 (impacted): still reachable (4 states)."
     },
     "SCN-214": {
       "hash": "b7dd2723277b51f719d3f495faf12a546b4eed2b9f6744480ae0109c2004ab3c",
@@ -302,12 +302,12 @@
     "SCN-216": {
       "hash": "faaf47259286a77a435b3b042fbd69f5de9edf6d0a161589e7a332811afc670c",
       "reviewed": false,
-      "note": "Recurring_RSCN216a.cfg (its own steps: the trigger lands, the pause loses and reads again, 3 states) and Recurring_RSCN216.cfg (its end, 4 states) - reachable with INV-212; impossible with the run-6 unconditional pause (RSCN216u passes, 516,664)."
+      "note": "Recurring_RSCN216a.cfg (its own steps: the trigger lands, the pause loses and reads again, 3 states) and Recurring_RSCN216.cfg (its end, 4 states) - reachable with INV-212; impossible with the run-6 unconditional pause (RSCN216u passes, 516,664). | run 8 (impacted): RSCN216a 3 states, RSCN216 5 states (reachable); RSCN216u passes (516,664): impossible with the run-6 unconditional pause."
     },
     "SCN-217": {
       "hash": "e47e92d8f3b392c58a4401c833ec8147a3f6b7d818a98d0fe3e4fa7630e5cbb4",
       "reviewed": false,
-      "note": "Recurring_RSCN217.cfg: Scn217_TriggerLosesToPause and Prop_NoScheduledOccurrenceWhilePaused hold (2,189,264 distinct); step 1 reachable (RSCN217a, 2 states); with a CAS on nextRunAt only the trigger lands on the paused job (RSCN217n, 3 states)."
+      "note": "Recurring_RSCN217.cfg: Scn217_TriggerLosesToPause and Prop_NoScheduledOccurrenceWhilePaused hold (2,189,264 distinct); step 1 reachable (RSCN217a, 2 states); with a CAS on nextRunAt only the trigger lands on the paused job (RSCN217n, 3 states). | run 8 (impacted): RSCN217 passes (2,189,264); RSCN217a reachable (2 states); without the state in the CAS the trigger lands on the paused job (RSCN217n, 3 states)."
     }
   },
   "skipped": {
