@@ -1,8 +1,8 @@
 {
   "module": "jobs",
   "specHash": "d1c4f5af9f87339150943337d04b6b0e155d916eaf43724355ad60b513bb826c",
-  "generatedAt": "2026-11-08T15:47:17Z",
-  "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla, model/jobs/Jobs_AfterChk.tla, model/jobs/Jobs_AfterChkG.tla, model/jobs/Jobs_AfterChk9.tla (run 9 probes over the unchanged Jobs.tla and run-8 probes)",
+  "generatedAt": "2026-11-08T16:05:35Z",
+  "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla, model/jobs/Jobs_AfterChk.tla, model/jobs/Jobs_AfterChkG.tla, model/jobs/Jobs_AfterChk9.tla (all unchanged since run 9; run 10 reran the GAP7, GAP8, AfterChk and AfterChk9 cfgs only)",
   "items": {
     "INV-100": {
       "hash": "2aa323d1daab6e7fc06862824dea5a1c1c8ae7e6819f9bbb460b4d19a6d5fea0",
@@ -427,7 +427,7 @@
     "REQ-190": {
       "hash": "892f41e1de46b3c9528bafcca71660dc86b798ca71086fff0f86a568c2532445",
       "reviewed": false,
-      "note": "Jobs.tla unchanged since run 7 (runs 8 and 9: notes-only changes, no regeneration). The shutdown branch is the draining node's check (ReleaseOnShutdown, once per run, flag chk); ShutdownCheckLeaves is the check's third outcome; NodeStop waits until every in-flight run was checked. Prop_LateCancelNotLeft holds, Reach_LateCancelled reachable (Jobs_P4). Run 9: the run-8 F-1 traces (Jobs_AfterChk_O/R/EC/ED/T) are the handler outcomes the note now defers to, Chk8_Exits holds, Jobs_GAP8 is the accepted after-stop path. Run 9 F-1: Jobs_AfterChk9_LA shows lease expiry after the stop with attempts left is this requirement's lease branch (Cancelled), not REQ-132 as the note cites; Jobs_AfterChk9_LB shows lease expiry can also decide before the stop (not reported)"
+      "note": "Jobs.tla unchanged since run 7 (runs 8 to 10: notes-only changes, no regeneration). The shutdown branch is the draining node's check (ReleaseOnShutdown, once per run, flag chk); ShutdownCheckLeaves is the check's third outcome; NodeStop waits until every in-flight run was checked. Prop_LateCancelNotLeft holds, Reach_LateCancelled reachable (Jobs_P4). Run 10: run 9 F-1 resolved; the note now names no rules for a post-check request ('ends as any cancel-requested job that is still processing does, by its handler's outcome or by lease expiry'). Chk8_Exits holds (Jobs_AfterChk_X/X1); Jobs_AfterChk_O/R/EC/ED/T are the handler outcomes, Jobs_AfterChk9_LA/LB and Jobs_GAP7/GAP8 the lease-expiry endings (this requirement's lease branch with attempts left, REQ-133 at the last)"
     },
     "REQ-191": {
       "hash": "bdb68e3bab58b68400780ce25a29759a14ea1c707feba5a01bc51f95695e2fee",
