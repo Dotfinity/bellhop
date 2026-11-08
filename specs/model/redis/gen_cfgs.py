@@ -1,15 +1,15 @@
-"""Writes the Redis*.cfg files of run 7. Each cfg = BASE constants + overrides + checks.
+"""Writes the Redis*.cfg files of run 8. Each cfg = BASE constants + overrides + checks.
 Run from specs/model/redis:  python gen_cfgs.py   (removes Redis*.cfg files it no longer writes)"""
 import pathlib
 
 BASE = dict(Nodes="{n1, n2}", WorkerNodes="{n1, n2}", Jobs="{j1, j2}", QueueA="{j1}", KeyMax="1",
             UniqueKeys="FALSE", Recurring="FALSE", ShardByQueue="FALSE", FreshStore="FALSE",
             LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE",
-            SplitCAS="FALSE", LostReply="FALSE", TrackHidden="FALSE",
+            SplitCAS="FALSE", LostReply="FALSE", RecordAfterReply="FALSE", TrackHidden="FALSE",
             MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
             CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", MaxDrops="0", NULL="NULL")
 SAFETY = ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost",
-          "Inv_UnackedUntilOperator", "Inv_ConcurrencyKeyMax", "Inv_SingleClaim"]
+          "Inv_UnackedUntilOperator", "Inv_ConcurrencyKeyMax", "Inv_SingleClaim", "Inv_RecordUntilAck"]
 CFGS = {
   "Redis": ("Main run: two workers, one concurrency key (Max 1), one FLUSHALL, every worker read the marker first.",
             dict(), SAFETY + ["Scn_NoClaimWhileFlagged"], []),
@@ -43,9 +43,25 @@ CFGS = {
                       " connection (LostReply, REQ-529). Inv_HiddenOnlyIfPaused tells whether the flush can then go unreported.",
             dict(Jobs="{j1}", MaxDrops="1", LostReply="TRUE", TrackHidden="TRUE"),
             ["Inv_HiddenOnlyIfPaused", "Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome",
-             "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax", "Inv_SingleClaim"], []),
+             "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax", "Inv_SingleClaim", "Inv_RecordUntilAck",
+             "Inv_UnackedUntilOperator", "Inv_EveryResetLogged"], []),
   "Redis_LivReplyLost": ("Run 7 liveness: as LivDrop with LostReply (the drop may take the reply of the REQ-507 write with it).",
-            dict(Jobs="{j1}", MaxDrops="1", LostReply="TRUE"), [], ["Liv_LossReported", "Liv_Reseeded"]),
+            dict(Jobs="{j1}", MaxDrops="1", LostReply="TRUE"), [], ["Liv_LossReported", "Liv_Reseeded", "Liv_RecordRestored"]),
+  "Redis_ReplyLostRun7": ("COUNTERFACTUAL (run-7 wording of REQ-523): as ReplyLost, the record is written by the node after the"
+                          " reply (RecordAfterReply). Expected: Inv_RecordUntilAck VIOLATED (shows the check catches run 7 F-1).",
+            dict(Jobs="{j1}", MaxDrops="1", LostReply="TRUE", RecordAfterReply="TRUE"), ["Inv_RecordUntilAck"], []),
+  "Redis_ReplyLost2": ("Run 8: one job, two flushes, up to two lost replies (one per flush, or both on one node).",
+            dict(Jobs="{j1}", MaxLosses="2", MaxAdvances="0", MaxTok="2", MaxDrops="2", LostReply="TRUE"),
+            ["Inv_RecordUntilAck", "Inv_UnackedUntilOperator", "Inv_NoFalseReset", "Inv_OneEventPerReset"], []),
+  "Redis_LivReplyLost2": ("Run 8 liveness: as ReplyLost2 (a second flush erases the record of a reset nobody remembers).",
+            dict(Jobs="{}", QueueA="{}", MaxLosses="2", MaxAdvances="0", MaxTok="0", MaxDrops="2", LostReply="TRUE"), [],
+            ["Liv_RecordRestored", "Liv_LossReported", "Liv_Reseeded"]),
+  "Redis_LivReplyLostLateAdv": ("Run 8 liveness: one lost reply, two flushes, a late first look and one advance (the second"
+                                " flush can be the hidden late-join flush NFR-31 accepts).",
+            dict(Jobs="{}", QueueA="{}", LateJoin="TRUE", MaxLosses="2", MaxTok="0", MaxDrops="1", LostReply="TRUE"), [],
+            ["Liv_RecordRestored"]),
+  "Redis_LivLateAdv2": ("Run 8 baseline for LivReplyLostLateAdv: the same without a lost reply (REQ-532 has a node that remembers).",
+            dict(Jobs="{}", QueueA="{}", LateJoin="TRUE", MaxLosses="2", MaxTok="0"), [], ["Liv_RecordRestored"]),
   "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit (REQ-522, REQ-534).",
             dict(UniqueKeys="TRUE", KeyMax="2"), ["Inv_UniqueKey"], []),
   "Redis_Unique2": ("Unique keys across two flushes, the second after the first reconciliation ended (ACTION_CONSTRAINT); no concurrency limit.",
@@ -60,7 +76,8 @@ CFGS = {
             dict(LossKinds='{"restore"}', MaxTok="2"),
             ["Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
   "Redis_RestoreFR": ("False-reset check under rollbacks: one job, one claim (Redis_Restore times out on this check).",
-            dict(LossKinds='{"restore"}', Jobs="{j1}", MaxTok="1"), ["Inv_NoFalseReset", "Inv_OneEventPerReset"], []),
+            dict(LossKinds='{"restore"}', Jobs="{j1}", MaxTok="1"),
+            ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_RecordUntilAck"], []),
   "Redis_RestoreOlder": ("Rollback to an image with an OLDER marker only (the detectable kind; ACTION_CONSTRAINT).",
             dict(LossKinds='{"restore"}', MaxAdvances="2", MaxTok="2"),
             ["Inv_NoLostOutcome", "Inv_SingleClaim", "Inv_ConcurrencyKeyMax"], []),
@@ -75,7 +92,8 @@ CFGS = {
   "Redis_Liveness": ("Liveness: two workers, one job, one flush.",
             dict(Jobs="{j1}"), [], ["Liv_Reseeded", "Liv_MarkerWritten", "Liv_LossReported", "Liv_UnackedRestored"]),
   "Redis_LivFlush2": ("Liveness: two workers, one job, two flushes (a flush during reconciliation; redis F-8).",
-            dict(Jobs="{j1}", MaxLosses="2", MaxAdvances="0"), [], ["Liv_LossReported", "Liv_UnackedRestored", "Liv_Reseeded"]),
+            dict(Jobs="{j1}", MaxLosses="2", MaxAdvances="0"), [],
+            ["Liv_LossReported", "Liv_UnackedRestored", "Liv_Reseeded", "Liv_RecordRestored"]),
   "Redis_LivRestore": ("Liveness: two workers, one job, one rollback.",
             dict(Jobs="{j1}", LossKinds='{"restore"}'), [], ["Liv_LossReported", "Liv_Reseeded"]),
   "Redis_LivOutage": ("Liveness: one worker, one job, one flush and one outage (REQ-529 reconnect during reconciliation; run-2 F-4).",
@@ -90,6 +108,10 @@ CFGS = {
             dict(WorkerNodes="{n1}", Jobs="{j1}", AllowStop="TRUE"), ["Scn_ClientNoDetect"], ["Liv_Reseeded"]),
   "Redis_SCN500": ("Scenario SCN-500 (positive), --no-deadlock. Expected: trap VIOLATED (the trace is the example run).",
             dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", CheckHealth="TRUE"), ["Scn_FlushRecovered_NotReached"], []),
+  "Redis_SCN500LostReply": ("Run 8: SCN-500 with the reply of n1's REQ-507 write lost: no ERROR, but the record exists and"
+                            " health stays Degraded. Expected: trap VIOLATED.",
+            dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", CheckHealth="TRUE", MaxDrops="1", LostReply="TRUE"),
+            ["Scn_FlushRecordedReplyLost_NotReached"], []),
   "Redis_SCN501": ("Scenario SCN-501 (negative, impossibleAt 2): Scn_NoEvalNoReady must HOLD.",
             dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", LossKinds="{}", MaxLosses="0"), ["TypeInv", "Scn_NoEvalNoReady"], []),
   "Redis_SCN503": ("Scenario SCN-503 (positive): trap VIOLATED expected.",

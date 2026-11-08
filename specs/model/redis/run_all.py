@@ -9,7 +9,7 @@ import json, os, pathlib, re, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RUN_TLC = pathlib.Path.home() / ".claude-personal/skills/refiner-model/scripts/run_tlc.py"
-SCENARIO = re.compile(r"_SCN\d+(Reach)?$")
+SCENARIO = re.compile(r"_SCN\d+\w*$")
 
 
 def split(cfg_text):

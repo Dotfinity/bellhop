@@ -1,13 +1,17 @@
 ----------------------------- MODULE Redis -----------------------------
 \* Generated from specs/redis.json - edit the requirements, not this file.
-\* Run 7 (2026-11-08): regenerated from handoff.json (change: REQ-523's trigger is now "this node
-\* replaces the generation marker under REQ-507", which DetectReset already encoded as A-31). The
-\* run-6 counterfactual Req523Literal (the old wording, which never fired) is removed. Impacted ids
-\* re-checked: REQ-532, SCN-500. New environment switch LostReply: the reply of a script that made the
-\* REQ-507 write is lost with the connection (REQ-529), so the node does not learn it made it.
+\* Run 7 (2026-11-08): REQ-523's trigger is "this node replaces the generation marker under REQ-507"
+\* (DetectReset, A-31). Environment switch LostReply: the reply of a script that made the REQ-507 write
+\* is lost with the connection (REQ-529), so the node does not learn it made it.
+\* Run 8 (2026-11-08): regenerated from handoff.json (change: REQ-523 records the reset as
+\* unacknowledged "in the same atomic step as that replacement", TECH-130: the script writes it). So
+\* ReplyLost now writes the record too; the ERROR lines and the node's memory still need the reply.
+\* New history variables owed and silentReset, new checks Inv_RecordUntilAck, Liv_RecordRestored,
+\* Inv_EveryResetLogged. Impacted ids re-checked: REQ-532, SCN-500.
 \* Switches that are not requirements: TrackHidden (history variables), SplitCAS (COUNTERFACTUAL: the
-\* run-5 wording, a read followed by a separate compare-and-set) and LostReply (environment). With all
-\* FALSE the extra variables (xVars) stay constant, except claimLR (a requirement since run 5).
+\* run-5 wording, a read followed by a separate compare-and-set), LostReply (environment) and
+\* RecordAfterReply (COUNTERFACTUAL: the run-7 wording, the record written by the node after the reply).
+\* With all FALSE the extra variables (xVars) stay constant, except claimLR (a requirement since run 5).
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (hosting.Node, hosting.Health, jobs.Job, jobs.Maintenance,
 \* recurring.RecurringJob) are abstracted to the few fields the redis requirements touch;
@@ -31,6 +35,8 @@ CONSTANTS Nodes,         \* hosting.Node instances (bound 2)
                          \*   compare-and-set are two steps (FALSE = run 6: one atomic step)
           LostReply,     \* environment (run 7): a script that made the REQ-507 write loses its reply with the
                          \*   connection (REQ-529); the write stands, the node never learns it made it
+          RecordAfterReply, \* COUNTERFACTUAL (run-7 wording, not a requirement): REQ-523's record is written by
+                         \*   the node after the reply, so a lost reply loses it (FALSE = run 8: the script writes it)
           TrackHidden,   \* model switch: keep the history variables of Inv_HiddenOnlyIfPaused (xVars)
           MaxAdvances,   \* REQ-527 advances in one run (environment bound)
           MaxTok,        \* lease tokens issued in one run (fresh GUIDs, bounded)
@@ -52,7 +58,8 @@ ASSUME /\ WorkerNodes \subseteq Nodes /\ QueueA \subseteq Jobs
        /\ MaxLosses \in Nat /\ MaxAdvances \in Nat /\ MaxTok \in Nat
        /\ ShardByQueue \in BOOLEAN /\ FreshStore \in BOOLEAN /\ AllowStop \in BOOLEAN
        /\ UniqueKeys \in BOOLEAN /\ Recurring \in BOOLEAN /\ PolicyChange \in BOOLEAN
-       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ LostReply \in BOOLEAN /\ TrackHidden \in BOOLEAN
+       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ LostReply \in BOOLEAN /\ RecordAfterReply \in BOOLEAN
+       /\ TrackHidden \in BOOLEAN
        /\ CheckHealth \in BOOLEAN /\ MemToggle \in BOOLEAN /\ MaxOutages \in Nat /\ MaxDrops \in Nat
 
 VARIABLES
@@ -98,6 +105,8 @@ VARIABLES
   \* history (observation only - no action is guarded by these)
   created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections, losses,
   everAcked, inits,
+  owed,         \* run 8: a replacement under REQ-507 happened and no operator has acknowledged since
+  silentReset,  \* run 8: a replacement whose reply was lost (no StoreWasReset, no REQ-523 ERROR)
   \* run 4/5 extras (xVars): constant unless TrackHidden / SplitCAS is on, except claimLR
   claimLR,      \* last-reset value read when this node's job was claimed (glossary resetSinceClaim, run 5)
   sawAtLoss,    \* history: this node had seen a marker when the last FLUSHALL happened (TrackHidden)
@@ -112,7 +121,7 @@ nodeVars  == <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen
 storeVars == <<marker, flagged, lastReset, codeRec, registry, resetRec, maint, jobRec, snap>>
 envVars   == <<evalOK, evicting, reachable, memHigh, outages, drops, tokens, advances, clock>>
 histVars  == <<created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
-               losses, everAcked, inits>>
+               losses, everAcked, inits, owed, silentReset>>
 xVars     == <<claimLR, sawAtLoss, readInWindow, runAtLoss, casPending, found, foundLR>>
 vars      == <<nodeVars, storeVars, envVars, histVars, xVars>>
 
@@ -157,6 +166,7 @@ TypeInv ==
   /\ created \in [Jobs -> BOOLEAN] /\ maintIntent \in BOOLEAN
   /\ pendingLoss \in BOOLEAN /\ falseReset \in BOOLEAN /\ lostOutcome \in BOOLEAN /\ lostOutcomeLL \in BOOLEAN
   /\ detections \in Nat /\ losses \in 0..MaxLosses /\ everAcked \in BOOLEAN /\ inits \in Nat
+  /\ owed \in BOOLEAN /\ silentReset \in BOOLEAN
   /\ claimLR \in [Nodes -> Gens]
   /\ sawAtLoss \in [Nodes -> BOOLEAN] /\ readInWindow \in [Nodes -> BOOLEAN] /\ runAtLoss \in [Nodes -> BOOLEAN]
   /\ casPending \in [Nodes -> BOOLEAN] /\ found \in [Nodes -> Gens] /\ foundLR \in [Nodes -> Gens]
@@ -202,6 +212,7 @@ Init ==
   /\ maintIntent = FALSE
   /\ pendingLoss = FALSE /\ falseReset = FALSE /\ lostOutcome = FALSE /\ lostOutcomeLL = FALSE
   /\ detections = 0 /\ losses = 0 /\ everAcked = FALSE /\ inits = 0
+  /\ owed = FALSE /\ silentReset = FALSE
   /\ claimLR = [n \in Nodes |-> 0]
   /\ sawAtLoss = [n \in Nodes |-> FALSE] /\ readInWindow = [n \in Nodes |-> FALSE]
   /\ runAtLoss = [n \in Nodes |-> FALSE]
@@ -337,6 +348,7 @@ DetectReset(n) ==
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
   /\ StartWait(n)
   /\ resetRec' = "unacked"
+  /\ owed' = TRUE
   /\ remembers' = [remembers EXCEPT ![n] = TRUE]
   /\ learned' = [learned EXCEPT ![n] = (run[n] # NULL) \/ learned[n]]
   /\ detections' = detections + 1
@@ -345,18 +357,27 @@ DetectReset(n) ==
   /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, runAtLoss, found, foundLR, node, health, chk, run, claimGen,
                  claimTok, reseeded, done, leaseLost, codeRec,
                  registry, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, drops,
-                 tokens, advances, created, maintIntent, lostOutcome, lostOutcomeLL, losses, everAcked, inits>>
+                 tokens, advances, created, maintIntent, lostOutcome, lostOutcomeLL, losses, everAcked, inits,
+                 silentReset>>
 
 \* environment LostReply (run 7, @req REQ-507 REQ-523 REQ-529, TECH-130): the script makes REQ-507's
 \*   write in the same atomic step as its read, then the connection drops before its reply arrives
 \*   ("the connection to the server is lost", REQ-529). The store side of DetectReset happens; the
-\*   node side does not: it does not learn that it replaced the marker, logs nothing, records
-\*   nothing, remembers nothing and does not move lastSeen. Its store is connecting, as in
-\*   DropConnection. Not fair (environment).
+\*   node side does not: it does not learn that it replaced the marker, logs nothing (no StoreWasReset,
+\*   no REQ-523 ERROR: silentReset), remembers nothing and does not move lastSeen. Its store is
+\*   connecting, as in DropConnection. Not fair (environment).
+\*   @req REQ-523 (run 8): "record the reset as unacknowledged in the store in the same atomic step as
+\*   that replacement" - the script writes the record (TECH-130), so it is part of the store side.
+\*   The loss counts as detected (pendingLoss ends, A-33): a replacement under REQ-507 happened.
+\*   COUNTERFACTUAL RecordAfterReply (run-7 wording): the record is the node's, and is lost with the reply.
 ReplyLost(n) ==
   /\ LostReply /\ ~SplitCAS /\ DetectCond(n) /\ drops < MaxDrops
   /\ LET v == clock + 1 IN
        /\ marker' = v /\ flagged' = TRUE /\ lastReset' = v /\ clock' = v
+  /\ resetRec' = IF RecordAfterReply THEN resetRec ELSE "unacked"
+  /\ owed' = TRUE /\ silentReset' = TRUE
+  /\ falseReset' = (falseReset \/ ~pendingLoss)
+  /\ pendingLoss' = FALSE
   /\ MarkRead(n)
   /\ rs' = [rs EXCEPT ![n] = "Connecting"]
   /\ drops' = drops + 1
@@ -364,8 +385,8 @@ ReplyLost(n) ==
   /\ hbPending' = [hbPending EXCEPT ![n] = {}]
   /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, casPending, found, foundLR, node, health, chk, run, claimGen,
                  claimTok, learned, lastSeen, reseeded, resetVal, done, remembers, leaseLost, codeRec, registry,
-                 resetRec, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, tokens,
-                 advances, histVars>>
+                 maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, tokens,
+                 advances, created, maintIntent, lostOutcome, lostOutcomeLL, detections, losses, everAcked, inits>>
 
 \* @req REQ-528  Marker missing on a worker that has not seen one since it started -> write the
 \*   first marker at the lowest value, with the server's current time as its last-reset value
@@ -389,7 +410,7 @@ InitMarker(n) ==
                  leaseLost, codeRec, registry, resetRec, maint, jobRec, snap, evalOK, evicting, reachable,
                  memHigh, outages, drops, tokens, advances,
                  created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
-                 losses, everAcked>>
+                 losses, everAcked, owed, silentReset>>
 
 \* @req REQ-530  Marker flagged with a value whose reconciliation this node has not finished, if that
 \*   value is not older than the last value this node saw (run 4) -> re-seed without logging
@@ -514,10 +535,10 @@ ForgetReset(n) ==
 \* @req REQ-525  Operator acknowledges the reset on the dashboard (human actor: not fair).
 Acknowledge ==
   /\ resetRec = "unacked" /\ reachable
-  /\ resetRec' = "acked" /\ everAcked' = TRUE
+  /\ resetRec' = "acked" /\ everAcked' = TRUE /\ owed' = FALSE
   /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, maint, jobRec, snap, envVars,
                  created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
-                 losses, inits>>
+                 losses, inits, silentReset>>
 
 ---------------------------------------------------------------------------
 \* Environment: data loss
@@ -541,7 +562,7 @@ Flush ==
             /\ runAtLoss' = [n \in Nodes |-> run[n] # NULL]
        ELSE UNCHANGED <<sawAtLoss, readInWindow, runAtLoss>>
   /\ UNCHANGED <<claimLR, casPending, found, foundLR, nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
-                 detections, everAcked, inits>>
+                 detections, everAcked, inits, owed, silentReset>>
 
 \* The policy changes to evicting while nodes run (failover to a differently configured replica,
 \* CONFIG SET). REQ-531 logs an ERROR at the next connection; nothing else changes.
@@ -559,7 +580,7 @@ EvictJob(j) ==
   /\ losses' = losses + 1
   /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, envVars,
                  created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
-                 everAcked, inits>>
+                 everAcked, inits, owed, silentReset>>
 
 \* An RDB/AOF snapshot is taken, or a replica lags behind (REQ-504: replication is async).
 TakeSnapshot ==
@@ -581,7 +602,7 @@ Restore ==
   /\ pendingLoss' = (pendingLoss \/ snap.marker < marker)
   /\ losses' = losses + 1
   /\ UNCHANGED <<xVars, nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
-                 detections, everAcked, inits>>
+                 detections, everAcked, inits, owed, silentReset>>
 
 \* Action constraint for Redis_RestoreOlder.cfg: only rollbacks to an older marker value (the
 \* detectable kind; same-marker rollbacks are documented as undetected, NFR-31).
@@ -615,7 +636,7 @@ Enqueue(j) ==
   /\ created' = [created EXCEPT ![j] = TRUE]
   /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, envVars,
                  maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections, losses,
-                 everAcked, inits>>
+                 everAcked, inits, owed, silentReset>>
 
 \* context: jobs REQ-123 - claim with the concurrency key counted by the store (INV-108 notes) and
 \* the maintenance pause (INV-114); @req REQ-526: no claim while the marker is missing or flagged.
@@ -711,17 +732,18 @@ Complete(n) ==
   /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
   /\ UNCHANGED <<claimLR, sawAtLoss, casPending, found, foundLR, node, rs, health, chk, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
                  remembers, waitDone, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap,
-                 envVars, created, maintIntent, pendingLoss, falseReset, detections, losses, everAcked, inits>>
+                 envVars, created, maintIntent, pendingLoss, falseReset, detections, losses, everAcked, inits,
+                 owed, silentReset>>
 
 \* context: jobs REQ-162 / REQ-163 - operator turns maintenance on / off.
 MaintOn  == /\ reachable /\ ~maint /\ maint' = TRUE  /\ maintIntent' = TRUE
             /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, jobRec, snap,
                            envVars, created, pendingLoss, falseReset, lostOutcome, lostOutcomeLL,
-                           detections, losses, everAcked, inits>>
+                           detections, losses, everAcked, inits, owed, silentReset>>
 MaintOff == /\ reachable /\ maint /\ maint' = FALSE /\ maintIntent' = FALSE
             /\ UNCHANGED <<xVars, nodeVars, marker, flagged, lastReset, codeRec, registry, resetRec, jobRec, snap,
                            envVars, created, pendingLoss, falseReset, lostOutcome, lostOutcomeLL,
-                           detections, losses, everAcked, inits>>
+                           detections, losses, everAcked, inits, owed, silentReset>>
 
 ---------------------------------------------------------------------------
 \* Health (hosting.Health per node)
@@ -830,6 +852,11 @@ Liv_UnackedRestored ==
   (detections >= 1 /\ ~everAcked /\ resetRec # "unacked" /\ RunningWorker)
     ~> (resetRec = "unacked" \/ everAcked \/ ~RunningWorker)
 
+\* @req REQ-523 REQ-532 (run 8)  A record erased by a later loss is eventually written again: by the
+\*   detection of that loss (REQ-523) or by a node that remembers the reset (REQ-532).
+Liv_RecordRestored ==
+  (owed /\ resetRec # "unacked" /\ RunningWorker) ~> (resetRec = "unacked" \/ ~owed \/ ~RunningWorker)
+
 \* @req REQ-507  A reset is reported only when data was actually lost.
 Inv_NoFalseReset == ~falseReset
 
@@ -847,6 +874,16 @@ Inv_NoLostOutcomeLeaseLost == ~lostOutcomeLL
 \* @req REQ-523 REQ-524 REQ-525  Once a reset has been detected, it stays recorded as unacknowledged
 \*   until an operator acknowledges it, except between a further loss and its repair (REQ-532).
 Inv_UnackedUntilOperator == (detections >= 1 /\ ~everAcked /\ ~pendingLoss) => resetRec = "unacked"
+
+\* @req REQ-523 REQ-524 REQ-525 (run 8; proposed by run 7 F-1)  Every replacement under REQ-507, lost
+\*   reply included, leaves the reset recorded as unacknowledged until an operator acknowledges it,
+\*   except between a further loss and its detection (pendingLoss). Unlike Inv_UnackedUntilOperator it
+\*   does not need a StoreWasReset log (detections) and restarts after each acknowledgement (owed).
+Inv_RecordUntilAck == (owed /\ ~pendingLoss) => resetRec = "unacked"
+
+\* @req REQ-507 REQ-523 (run 8)  Every replacement under REQ-507 is logged (StoreWasReset and the
+\*   REQ-523 ERROR). Expected VIOLATED with LostReply: REQ-523's notes accept losing the log lines.
+Inv_EveryResetLogged == ~silentReset
 
 \* context jobs INV-108  Never more handlers running under one concurrency key than its Max
 \*   (A-9: handlers running under a claim their node still holds). A run whose lease expired is
@@ -891,6 +928,15 @@ Scn_FlushRecovered_NotReached ==
   ~(\E n \in Nodes :
       /\ losses = 1 /\ codeRec /\ marker # 0 /\ ~flagged /\ rs[n] = "Ready"
       /\ detections = 1 /\ resetRec = "unacked" /\ health[n] = "Degraded"
+      /\ Outcomes(n) = {"Degraded"})
+
+\* @req SCN-500 REQ-523 REQ-524 (run 8)  SCN-500's end state with the reply of n1's REQ-507 write lost:
+\*   no ERROR was logged, but the record exists and the next health check keeps n1 Degraded
+\*   (Redis_SCN500LostReply.cfg; trap expected to be VIOLATED).
+Scn_FlushRecordedReplyLost_NotReached ==
+  ~(\E n \in Nodes :
+      /\ losses = 1 /\ codeRec /\ marker # 0 /\ ~flagged /\ rs[n] = "Ready"
+      /\ silentReset /\ detections = 0 /\ resetRec = "unacked" /\ health[n] = "Degraded"
       /\ Outcomes(n) = {"Degraded"})
 
 \* @req SCN-503  Positive scenario (Redis_SCN503.cfg): a new server is initialised (flagged first

@@ -1,7 +1,7 @@
 {
   "module": "redis",
-  "specHash": "ea2b1eed07d1d2f91c3186134a26d94364d3a3d09b50c21722f1bbd714c3e4d1",
-  "generatedAt": "2026-11-08T13:26:40Z",
+  "specHash": "7bcd94d03e2daf303b36f0c332801df8419a33efeadb775b52a9515abc20bb8b",
+  "generatedAt": "2026-11-08T16:01:38Z",
   "model": "model/redis/Redis.tla",
   "items": {
     "REQ-500": {
@@ -100,19 +100,19 @@
       "note": "Heartbeat(n) re-creation branch with the run-5 resetSinceClaim; marker missing or flagged, record missing, not leaseLost (A-18). The heartbeat read applies REQ-507/528/530 first (ReadOK). Re-checked: Redis_Unique2(During), Recurring2(During), SCN-510 hold."
     },
     "REQ-523": {
-      "hash": "278732eaa3cc6370b8a70ebd290b28c886068bb6eec1bb4e089f486c35c6b0f4",
+      "hash": "476711187dedada7d0ed0194e5fc4e96095c5ff3a34dac0e08831d634528d70e",
       "reviewed": false,
-      "note": "DetectReset(n): run 7, the trigger 'this node replaces the generation marker under REQ-507' is this action (A-31 is the requirement); InitMarker (REQ-528) and Learn (REQ-530) record nothing. Req523Literal counterfactual retired. Inv_UnackedUntilOperator holds on Redis.cfg, Redis_Flush2.cfg and Redis_LateJoin.cfg; Inv_OneEventPerReset holds. F-1 (gap, high): with LostReply the script's replacement happens but the node never learns it, so nothing is logged or recorded (Redis_ReplyLost.cfg Inv_HiddenOnlyIfPaused, 13 steps; Redis_LivReplyLost.cfg Liv_LossReported, 16 steps)."
+      "note": "DetectReset(n) and the store side of ReplyLost(n): run 8, the record is written in the same atomic step as the replacement (TECH-130), so ReplyLost writes it too; the ERROR lines and the memory still need the reply. New Inv_RecordUntilAck passes on Redis.cfg, Redis_Flush2.cfg, Redis_LateJoin.cfg, Redis_RestoreFR.cfg, Redis_ReplyLost.cfg and Redis_ReplyLost2.cfg (4,494,908); the run-7 wording (RecordAfterReply, Redis_ReplyLostRun7.cfg) violates it in 9 steps. Lost log lines accepted (Inv_EveryResetLogged, 9 steps). F-1 (gap, medium): with no node remembering a lost-reply reset, an unreported late-join flush erases its record (Redis_LivReplyLostLateAdv.cfg Liv_RecordRestored, 21 steps)."
     },
     "REQ-524": {
       "hash": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
       "reviewed": false,
-      "note": "HealthCheck rule r524."
+      "note": "HealthCheck rule r524. Run 8: also checked after a lost reply (Redis_SCN500LostReply.cfg, Inv_RecordUntilAck)."
     },
     "REQ-525": {
       "hash": "f23a4c822608f90fa87cf6c5cb09b4dcf6995b731fe6129617745ca8aabb71db",
       "reviewed": false,
-      "note": "Acknowledge."
+      "note": "Acknowledge. Run 8: also checked after a lost reply (Redis_SCN500LostReply.cfg, Inv_RecordUntilAck)."
     },
     "REQ-526": {
       "hash": "4362701203fdc12a12e8df139d066dc4da3e5460ec7a91e53b09a000c8222a06",
@@ -147,7 +147,7 @@
     "REQ-532": {
       "hash": "f73d75bb1dc8e61f3a25e890980154d4e132bc32949d5cd51fb0a112ba18b0f2",
       "reviewed": false,
-      "note": "RewriteRecord(n). Impacted (run 7), re-checked: Liv_UnackedRestored passes on Redis_Liveness.cfg (33,469) and Redis_LivFlush2.cfg (318,426)."
+      "note": "RewriteRecord(n). Impacted (run 8), re-checked: Liv_UnackedRestored passes on Redis_Liveness.cfg (33,469) and Redis_LivFlush2.cfg (318,426); Liv_RecordRestored passes on Redis_LivFlush2.cfg, Redis_LivReplyLost.cfg, Redis_LivReplyLost2.cfg (199,106) and Redis_LivLateAdv2.cfg (175,022), and is violated on Redis_LivReplyLostLateAdv.cfg (F-1: no node remembers a lost-reply reset)."
     },
     "REQ-533": {
       "hash": "a1f41ff73b6c692e68595220b089dbfd4fb0c5d7ceed70b152f493087654af66",
@@ -162,7 +162,7 @@
     "SCN-500": {
       "hash": "d96390722d6195a6601a18e35e50686174663a28e1b222a2ed1df52de27ee7fc",
       "reviewed": false,
-      "note": "Impacted (run 7), re-checked: Redis_SCN500.cfg trap violated as expected (10 steps); the trap now also requires the next health check to keep the node Degraded (Outcomes = {\"Degraded\"}), so REQ-524's share is shown rather than a Degraded left by hosting REQ-58."
+      "note": "Impacted (run 8), re-checked: Redis_SCN500.cfg trap violated as expected (10 steps, next health check kept Degraded by REQ-524). New Redis_SCN500LostReply.cfg: with the reply lost the record alone keeps health Degraded (12 steps); the two ERROR lines are not logged (accepted, REQ-523 notes)."
     },
     "SCN-501": {
       "hash": "6c5d66c00775a24165e0d4c05eae7c4eead5939da1a3adcd64c524287f3698c4",
