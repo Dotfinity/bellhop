@@ -1225,4 +1225,4 @@ Format: refiner-tech/1
 ## Open questions
 
 - TECH-129: exact API for the alerts registration: app.UseBellhopAlerts() as the owner suggested, or AddAlerts() on the AddBellhop builder like AddClient()/AddWorker() (TECH-128)? A hosted background duty is normally registered on the service collection. Owner to decide.
-- TECH-130: under ShardByQueue (Redis Cluster), is one generation marker per hash tag with detection per tag acceptable, given that compare-and-set and advancing are then not atomic across the whole namespace? Owner to decide.
+- TECH-130: under ShardByQueue (Redis Cluster), is one generation marker per hash tag with detection per tag acceptable, given that the REQ-507/REQ-528 marker write, REQ-523's record written with it, and REQ-527's advance are then not atomic across the whole namespace, and which hash slot REQ-523's record lives in? Owner to decide.
