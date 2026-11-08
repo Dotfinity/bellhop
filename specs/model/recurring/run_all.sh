@@ -12,11 +12,11 @@ ALL="Defs Main MainR Misfire OverlapAll OverlapQueue OverlapQueue2 F_WaitingRace
      P_OneUnroutable F_OverdueRecorded P_CatchUpSkipped F_OverduePaused F_OverdueOrphaned F_PassedInstant P_RecordedWaiterSkipped
      Liv_Settles Liv_Settles3
      SCN201 SCN203 SCN204 SCN206 SCN209 SCN209b SCN210 SCN211 SCN213 SCN215
-     Liv_Converge Liv_ConvergeOpt Liv_ConvergeDel
+     SCN209L SCN209LH Liv_Converge Liv_CF_ConvergeHost Liv_ConvergeDel Liv_ReconcileFlip P_RestoreDropsEdit F_RestoreKeepsEditOpt
      Race_Pause Race_Resume Race_Update Race_Remove Race_Trigger Race_UpdateSch Race_ResumeSch Race_TriggerSch
-     Race_ReapplySch Race_UpdateSchO Race_OPause Race_OResume Race_ORemove Race_Orphan Race_Restore Race_Reapply Race_Create
+     Race_ReapplySch Race_UpdateSchO Race_OPause Race_OResume Race_OTrigger Race_ORemove Race_Orphan Race_Restore Race_Reapply Race_RestoreSchO Race_UpdateSchOrph Race_Create
      Race_OrphDecl Race_RestoreDecl Race_ReapplyDecl Race_CreateDecl
-     Race_Live Race_LiveOrph Race_LiveStarve Race_LiveConv Race_LiveConvW Race_LiveConvDel
+     Race_Live Race_LiveOrph Race_LiveStarve Race_LiveConv Race_LiveConvDel Race_CF_LiveConvHost
      Race_CF_Pause Race_CF_PauseAtRead Race_CF_TriggerNra Race_CF_TriggerSt Race_CF_TriggerMaint Race_CF_Update Race_CF_Remove
      Race_CF_RemoveRestore Race_CF_OrphanNra Race_CF_PauseNra Race_CF_ResumeNra Race_CF_Restore Race_CF_Reapply
      Race_CF_DefReapply Race_CF_DefUpdate

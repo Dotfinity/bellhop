@@ -1,7 +1,7 @@
 {
   "module": "recurring",
-  "specHash": "551cdd1a5b91826016b1ab6d48225767e703a4fe7b6248422189f6a3f1dfee0d",
-  "generatedAt": "2026-11-08T23:30:00Z",
+  "specHash": "0737c73dad5917b30ea6271c4b79240e557492a905b0d8e31802056e6326afc5",
+  "generatedAt": "2026-11-08T19:30:00Z",
   "model": "model/recurring/Recurring.tla",
   "items": {
     "REQ-201": {
@@ -22,7 +22,7 @@
     "REQ-204": {
       "hash": "57bff9f1854378a72b526dc9f51994fc530174d471d1660b8196fbb6b04acaeb",
       "reviewed": false,
-      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards. | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: not split (one step for every declared name at node start, A-30); F-3 applies to its 'if the schedule changed' | run 8: in the ...Sch race cfgs a reapply changes the schedule iff the release's code schedule differs from the stored one (StartSch, A-32); still one atomic step per start (A-30)."
+      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards. | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged). | run 7: not split (one step for every declared name at node start, A-30); F-3 applies to its 'if the schedule changed' | run 8: in the ...Sch race cfgs a reapply changes the schedule iff the release's code schedule differs from the stored one (StartSch, A-32); still one atomic step per start (A-30). | run 9 F-1: REQ-204 keeps a runtime edit when the code hash is unchanged, REQ-206 does not (P_RestoreDropsEdit)."
     },
     "INV-200": {
       "hash": "aabda1e033f251ea9cd5f8aafa56fce146593e49cb567fae992f9d330ce8b050",
@@ -32,17 +32,17 @@
     "REQ-205": {
       "hash": "88a059aa7f91df1c924769442cacda04a6e0262552844a42e376663df669371a",
       "reviewed": false,
-      "note": "per-job orphanPolicy Orphan; same action as REQ-207; skips waiting occurrences (REQ-237) | run 7: OrphanGuard + OrphanWrite (same behaviour). Split: Prop_OrphanRecordsCurrentState holds with the state compared, fails on nextRunAt only (Race_CF_OrphanNra); F-2: heartbeats not compared (Race_OrphDecl), holds with F-2 option 1 (Race_OrphanOpt 2,731,146) | run 8: orphan sweep split as written: accepted transient (Race_OrphDecl), every other check holds (Race_Orphan); without the state in the CAS records the wrong earlier state (Race_CF_OrphanNra)."
+      "note": "per-job orphanPolicy Orphan; same action as REQ-207; skips waiting occurrences (REQ-237) | run 7: OrphanGuard + OrphanWrite (same behaviour). Split: Prop_OrphanRecordsCurrentState holds with the state compared, fails on nextRunAt only (Race_CF_OrphanNra); F-2: heartbeats not compared (Race_OrphDecl), holds with F-2 option 1 (Race_OrphanOpt 2,731,146) | run 8: orphan sweep split as written: accepted transient (Race_OrphDecl), every other check holds (Race_Orphan); without the state in the CAS records the wrong earlier state (Race_CF_OrphanNra). | run 9: Liv_ReconcileStops (no orphan/restore flip-flop once nodes stop changing) holds (Liv_Converge, Race_LiveConv); without the escape violated (Liv_ReconcileFlip)."
     },
     "REQ-206": {
-      "hash": "ef83e3180bd8455403659bee9823ac4b334ac5cdf6fb9d5ef97f7b74c09f9234",
+      "hash": "f417cb7b9d6147f6d883320c43ba598fb2afc1970e8c8494ee474e0e02178702",
       "reviewed": false,
-      "note": "restores the earlier state and takes the definition of one declaring running node (nondeterministic when several) | run 7: RestoreWrite (same behaviour). Split: unconditional loses an operator pause (Race_CF_Restore); F-2: restores with the code of a node that stopped (Race_RestoreDecl), holds with F-2 option 1 (Race_RestoreOpt 3,328,446) | run 8 F-1: actor Host, so not weakly fair; Liv_DeclaredConverges fails for an orphaned declared job (Liv_Converge, Race_LiveConvW) and holds when REQ-206 is fair (Liv_ConvergeOpt, Race_LiveConv 272,096). Restore split as written: heartbeat transient accepted (Race_RestoreDecl), every other check holds (Race_Restore)."
+      "note": "restores the earlier state and takes the definition of one declaring running node (nondeterministic when several) | run 7: RestoreWrite (same behaviour). Split: unconditional loses an operator pause (Race_CF_Restore); F-2: restores with the code of a node that stopped (Race_RestoreDecl), holds with F-2 option 1 (Race_RestoreOpt 3,328,446) | run 8 F-1: actor Host, so not weakly fair; Liv_DeclaredConverges fails for an orphaned declared job (Liv_Converge, Race_LiveConvW) and holds when REQ-206 is fair (Liv_ConvergeOpt, Race_LiveConv 272,096). Restore split as written: heartbeat transient accepted (Race_RestoreDecl), every other check holds (Race_Restore). | run 9: actor system, trigger \"the scheduler finds\": Restore is weakly fair in Spec (Recurring) and SpecRC (RecurringRace); run 8 kept as counterfactuals SpecCF_RestoreHost / SpecRC_CF_RestoreHost. Liv_DeclaredConverges holds as written (Liv_Converge 30,854; Race_LiveConv 272,096), fails with run 8's REQ-206 (Liv_CF_ConvergeHost, Race_CF_LiveConvHost). Restore split racing operator edits with schedule content holds (Race_RestoreSchO 526,176). Run-9 F-1: the definition update is unconditional, so a runtime edit (AllowRuntimeOverride) is lost even with unchanged code (P_RestoreDropsEdit, 8 states); option 1 (hash condition, SpecOpt206) holds (F_RestoreKeepsEditOpt)."
     },
     "REQ-207": {
       "hash": "91514861ca4d1c05d3ca17e649a02bbe60e84a2ae0de4fbb10b63a4ee7ecfcb7",
       "reviewed": false,
-      "note": "per-job orphanPolicy Delete; same action as REQ-205; skips waiting occurrences (REQ-237) | run 7 F-2: a sweep in flight deletes a job that a node which has just started declares (Race_OrphDecl, 7 states); nothing re-creates it until the next node start | run 8: notes accept the transient (Race_OrphDecl, 7 states); healed by REQ-203's scheduler branch as written (Liv_ConvergeDel, Race_LiveConvDel)."
+      "note": "per-job orphanPolicy Delete; same action as REQ-205; skips waiting occurrences (REQ-237) | run 7 F-2: a sweep in flight deletes a job that a node which has just started declares (Race_OrphDecl, 7 states); nothing re-creates it until the next node start | run 8: notes accept the transient (Race_OrphDecl, 7 states); healed by REQ-203's scheduler branch as written (Liv_ConvergeDel, Race_LiveConvDel). | run 9: Liv_ReconcileStops holds with Delete (Liv_ConvergeDel, Race_LiveConvDel)."
     },
     "REQ-208": {
       "hash": "8e271faa2399833189982413780b3741de828f8a8d970738bfc2d0fdf74abb40",
@@ -217,7 +217,7 @@
     "INV-212": {
       "hash": "b96223e91d476bd5138fd1c35c1d4aa9d2f73bcee4cc554e911389247431e596",
       "reviewed": false,
-      "note": "run 8: RecurringRace.tla compares state, nextRunAt, definition (ghost cd) and, for a trigger, maintenance (CasOn = all four), judged at the write; a lost write reads again (A-28). Definitions get schedule content in the ...Sch cfgs (A-32). Holds with every check incl. Prop_Refines for trigger, pause, resume, operator update, removal (Race_Trigger 2,885,304, Race_Pause 4,349,520, Race_Resume, Race_Update 5,229,816, Race_Remove, Race_OPause, Race_OResume, Race_ORemove, Race_TriggerSch, Race_ResumeSch, Race_UpdateSch 8,741,112, Race_UpdateSchO) and for REQ-241 against operator edits (Race_ReapplySch, Inv_NextRunAtFromStoredSchedule). Each part needed: 15 Race_CF_* fail without it (incl. CF_TriggerMaint = run-7 F-1 trace, CF_DefReapply = run-7 F-3 trace, CF_DefUpdate). Heartbeats not compared (notes): transients reachable as accepted (Race_OrphDecl, Race_RestoreDecl, Race_ReapplyDecl); every other check holds with those writes split (Race_Orphan, Race_Restore, Race_Reapply). Healing: run-8 F-1 (REQ-206 not obliged). Reread: Liv_WriterSettles holds (Race_Live, Race_LiveOrph)."
+      "note": "run 8: RecurringRace.tla compares state, nextRunAt, definition (ghost cd) and, for a trigger, maintenance (CasOn = all four), judged at the write; a lost write reads again (A-28). Definitions get schedule content in the ...Sch cfgs (A-32). Holds with every check incl. Prop_Refines for trigger, pause, resume, operator update, removal (Race_Trigger 2,885,304, Race_Pause 4,349,520, Race_Resume, Race_Update 5,229,816, Race_Remove, Race_OPause, Race_OResume, Race_ORemove, Race_TriggerSch, Race_ResumeSch, Race_UpdateSch 8,741,112, Race_UpdateSchO) and for REQ-241 against operator edits (Race_ReapplySch, Inv_NextRunAtFromStoredSchedule). Each part needed: 15 Race_CF_* fail without it (incl. CF_TriggerMaint = run-7 F-1 trace, CF_DefReapply = run-7 F-3 trace, CF_DefUpdate). Heartbeats not compared (notes): transients reachable as accepted (Race_OrphDecl, Race_RestoreDecl, Race_ReapplyDecl); every other check holds with those writes split (Race_Orphan, Race_Restore, Race_Reapply). Healing: run-8 F-1 (REQ-206 not obliged). Reread: Liv_WriterSettles holds (Race_Live, Race_LiveOrph). | run 9: notes now accept the REQ-203 create transient (Race_CreateDecl, accepted). New as-written splits: Race_OTrigger (2,548,546), Race_UpdateSchOrph (693,360), Race_RestoreSchO (526,176) hold; every run-8 race cfg reproduces its run-8 count. Reconciliation stops once nodes stop changing (Liv_ReconcileStops in Race_LiveConv, Race_LiveConvDel)."
     },
     "SCN-200": {
       "hash": "fa41a99be34596e66466472c7275874a429b00c26c61307f7792ad4db56ab2e0",
@@ -267,7 +267,7 @@
     "SCN-209": {
       "hash": "ed40976cd08e8633ac064c22d1a5e0bfde53788b10d709ad3cb1ef9626b42413",
       "reviewed": false,
-      "note": "Recurring_SCN209.cfg + Recurring_SCN209b.cfg (two legs) — reachable | run 8: still reachable; F-1: its restore (leg b) is not obliged (REQ-206 actor Host, Liv_Converge)."
+      "note": "Recurring_SCN209.cfg + Recurring_SCN209b.cfg (two legs) — reachable | run 8: still reachable; F-1: its restore (leg b) is not obliged (REQ-206 actor Host, Liv_Converge). | run 9: legs still reachable; leg (b) now an obligation: Liv_Scn209Restored + Inv_NoScheduleWhilePaused hold (SCN209L, SpecSCN209b, 73,000), fail with run 8's REQ-206 (SCN209LH)."
     },
     "SCN-210": {
       "hash": "109b4964349917cfdcfccd6b199d5ab9444dbbd41c7fe2db2e7c0af945a4f936",

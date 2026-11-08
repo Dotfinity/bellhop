@@ -1,5 +1,5 @@
 ---------------------------- MODULE RecurringRace ----------------------------
-\* Generated from specs/recurring.json (specHash 551cdd1a5b91) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash 0737c73dad59) — edit the requirements, not this file.
 \* @req INV-212  every store write that changes a recurring job's state, nextRunAt or definition, or removes it (a
 \*              trigger, a schedule change, a definition update by REQ-204, REQ-212 or REQ-241, a pause, a resume, an
 \*              orphaning, a restore or a removal) is a compare-and-set on the state, nextRunAt and definition it read,
@@ -221,12 +221,14 @@ SpecR == InitR /\ [][NextR]_varsR
 \* The writer's own steps are system steps (the call is in flight), so they are fair; nothing else is assumed.
 FairR == \A r \in Names : WF_varsR(Write(r))
 SpecRL == SpecR /\ FairR
-\* Convergence (run 8): also the scheduler's own steps (actor system): REQ-203's create, the orphan sweep, REQ-241.
-FairSched == \A r \in Names : /\ WF_varsR(Atomic /\ CreateDeclared(r)) /\ WF_varsR(Atomic /\ Orphan(r))
-                              /\ WF_varsR(Atomic /\ ReapplyCode(r))
+\* Convergence (run 8): also the scheduler's own steps (actor system): REQ-203's create, the orphan sweep, REQ-241, and
+\* (run 9) REQ-206's restore.
+FairSchedHost == \A r \in Names : /\ WF_varsR(Atomic /\ CreateDeclared(r)) /\ WF_varsR(Atomic /\ Orphan(r))
+                                  /\ WF_varsR(Atomic /\ ReapplyCode(r))
+FairSched == FairSchedHost /\ \A r \in Names : WF_varsR(Atomic /\ Restore(r))            \* @req REQ-206 (run 9)
 SpecRC == SpecRL /\ FairSched
-\* Not the requirements as written: REQ-206 (actor Host) also weakly fair, the run-8 finding's option 1.
-SpecRCF == SpecRC /\ \A r \in Names : WF_varsR(Atomic /\ Restore(r))
+\* Not the requirements as written: run 8's REQ-206 (actor Host), whose restore is not fair. Counterfactual only.
+SpecRC_CF_RestoreHost == SpecRL /\ FairSchedHost
 
 -----------------------------------------------------------------------------
 \* Properties (each one applies to atomic steps too, so a split write that behaves like its atomic action passes)

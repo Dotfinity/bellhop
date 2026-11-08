@@ -1,10 +1,12 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash 551cdd1a5b91) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash 0737c73dad59) — edit the requirements, not this file.
 \* Run 7 (INV-212): every write that changes a job's state or nextRunAt, or removes it, is written here as a guard
 \* (what its read checks) and a ...Write operator (what it lands). This module keeps each as one atomic step (A-2);
 \* RecurringRace.tla splits them into a read and a write and checks INV-212's compare-and-set.
 \* Run 8: REQ-203 also fires from the scheduler (CreateDeclared, fair); INV-212 also covers definition writes and,
 \* for a trigger, maintenance (both only visible in RecurringRace.tla).
+\* Run 9: REQ-206's restore is the scheduler's too (actor system), so Restore is weakly fair in Spec. SpecCF_RestoreHost
+\* is run 8's reading (REQ-206 not fair), kept as a counterfactual.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -277,8 +279,9 @@ OrphanWrite(r, before, missed) ==
 OrphanGuard(r) == SchedulerRuns /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code" /\ ~Declared(r)
 Orphan(r) == OrphanGuard(r) /\ OrphanWrite(r, rj[r].st, HasMissed(r))
 
-\* @req REQ-206  a running worker node declares an orphaned job again: back to its earlier state,
-\*              definition and definitionHash from that node's code, nextRunAt from now.
+\* @req REQ-206  the scheduler finds an orphaned job that a running worker node declares: back to its earlier state,
+\*              definition and definitionHash from that node's code, nextRunAt from now. (run 9: actor system, fair. A
+\*              declaring running node is a running worker, so the scheduler runs; A-6.)
 RestoreWrite(r, st, d) ==
   /\ rj' = [rj EXCEPT ![r].st = st, ![r].before = "none", ![r].behind = 0, ![r].hash = d, ![r].def = d]
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
@@ -427,14 +430,14 @@ Next ==
   \/ ToggleMaintenance
 
 \* Only actor: system transitions are fair.
-Fairness == /\ \A r \in Names : WF_vars(Trigger(r)) /\ WF_vars(Orphan(r)) /\ WF_vars(ReapplyCode(r))
-                                /\ WF_vars(CreateDeclared(r))                     \* @req REQ-203 (actor system, run 8)
-            /\ \A o \in OccIds : WF_vars(StartWaiting(o))
+FairnessHost == /\ \A r \in Names : WF_vars(Trigger(r)) /\ WF_vars(Orphan(r)) /\ WF_vars(ReapplyCode(r))
+                                    /\ WF_vars(CreateDeclared(r))                 \* @req REQ-203 (actor system, run 8)
+                /\ \A o \in OccIds : WF_vars(StartWaiting(o))
+Fairness == FairnessHost /\ \A r \in Names : WF_vars(Restore(r))                   \* @req REQ-206 (actor system, run 9)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
-\* Not the requirements as written: REQ-206's actor is Host, so its restore is not fair in Spec. SpecRestoreFair also makes it
-\* weakly fair, which is what the run-8 finding's option 1 (actor system) would mean.
-SpecRestoreFair == Spec /\ \A r \in Names : WF_vars(Restore(r))
+\* Not the requirements as written: run 8's REQ-206 (actor Host), whose restore is not fair. Counterfactual only.
+SpecCF_RestoreHost == Init /\ [][Next]_vars /\ FairnessHost
 
 \* A-22: missRec is written only by Trigger, the schedule-change steps and Pause / Orphan / OperatorRemove (REQ-242) and read by no guard or
 \* other update, so states that differ only in missRec have the same futures. Checks that do not mention missRec may use this VIEW (the 3-slot Queue cfgs).
@@ -522,6 +525,19 @@ Settled(r) == \/ rj[r].origin = "runtime"
 NodesChange == node' # node
 Liv_DeclaredConverges ==
   \A r \in Names : <>[](Declared(r) => Settled(r)) \/ []<><<NodesChange>>_vars \/ []<><<OperatorRemove(r)>>_vars
+
+\* @req REQ-205, REQ-206, REQ-207, REQ-203, REQ-241  run 9: the scheduler's reconciliation stops once the running nodes
+\*              stop changing: no flip-flop between orphaning or deleting a job and restoring or re-creating it, and no
+\*              definition rewritten back and forth, unless an operator keeps removing the job for ever. ReconView is what
+\*              those steps change (an operator's pause or resume is not reconciliation and is not looked at).
+ReconView(r) == <<rj[r].st \in {"Orphaned", "none"}, rj[r].origin, rj[r].hash>>
+Liv_ReconcileStops ==
+  \A r \in Names : ~[]<><<ReconView(r)' # ReconView(r)>>_vars \/ []<><<NodesChange>>_vars \/ []<><<OperatorRemove(r)>>_vars
+\* ... and without the escape for nodes that keep changing (expected VIOLATED: nodes that keep being redeployed change the
+\* stored job each time, by REQ-204 rewriting the definition, as its notes accept for a rolling deploy, or by orphaning and
+\* restoring it, as REQ-205 and REQ-206 say).
+Liv_ReconcileStopsAlways ==
+  \A r \in Names : ~[]<><<ReconView(r)' # ReconView(r)>>_vars \/ []<><<OperatorRemove(r)>>_vars
 
 \* A step that moves nextRunAt by a schedule change (REQ-227 via REQ-204, REQ-241 or REQ-212).
 ScheduleChange(r) == OperatorUpdate(r) \/ ReapplyCode(r) \/ \E n \in Nodes, v \in Releases : NodeStart(n, v)
@@ -622,6 +638,14 @@ Scn209a_NotReached == ~(rj[J1].st = "Orphaned" /\ rj[J1].before = "Paused" /\ Li
 Init_SCN209b == BaseInit([CodeRj("Orphaned") EXCEPT !.before = "Paused"], AllRunning("v2"))
 Scn209b_NotReached ==
   ~(rj[J1].st = "Paused" /\ rj[J1].before = "none" /\ Live = {} /\ \E n \in RunningNodes : node[n].ver = "v1")
+\* Run 9 (REQ-206 actor system): SCN-209 leg (b) is now an obligation, not only reachable. From the orphaned state that
+\* remembers Paused, once the rolled-back release runs for good (it declares weekly-report), weekly-report eventually
+\* leaves Orphaned, Paused (the restore takes stateBeforeOrphan), unless an operator removed it first (REQ-213, not part
+\* of the scenario). "No occurrence was created meanwhile" is Inv_NoScheduleWhilePaused in the same cfg. Leg (a), the
+\* orphaning, is the orphan sweep, fair since run 1. SpecSCN209bH is the counterfactual with run 8's REQ-206 (not fair).
+SpecSCN209b  == Init_SCN209b /\ [][Next]_vars /\ Fairness
+SpecSCN209bH == Init_SCN209b /\ [][Next]_vars /\ FairnessHost
+Liv_Scn209Restored == <>[]Declared(J1) => <>(rj[J1].st \in {"Paused", "none"})
 
 \* @req SCN-210  Queue(max 1): the 10:00 run is processing at 10:02 (10:01 and 10:02 on schedule).
 Init_SCN210 == Init_SCN201
@@ -677,6 +701,28 @@ Scn215_NotReached ==
 Probe_StaleDefinitionAfterRestore ==
   ~(\E r \in Names : rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code" /\ RunningNodes # {}
       /\ \A n \in RunningNodes : r \in Decl(node[n].ver) /\ rj[r].hash # CodeDef(node[n].ver))
+
+\* Run 9 (probe, action): a restore by a node whose code definition has the stored definitionHash (the code did not change)
+\* keeps an operator's runtime edit (AllowRuntimeOverride), as REQ-204 and REQ-241 do. Expected VIOLATED as written:
+\* REQ-206 updates the stored definition to the node's code whatever the hash.
+ProbeAct_RestoreKeepsRuntimeEdit ==
+  [][\A r \in Names : rj[r].st = "Orphaned" /\ rj[r].def = "edited" /\ rj'[r].st \in {"Active", "Paused"}
+        /\ rj'[r].hash = rj[r].hash => rj'[r].def = "edited"]_vars
+
+\* Not the requirements as written: the run-9 finding's option 1, REQ-206 updates the definition only if the hash of
+\* that node's code definition differs from the stored definitionHash (as REQ-204). The only step from Orphaned to
+\* Active or Paused is Restore, so NextOpt206 is Next with Restore replaced by RestoreOpt206.
+RestoreOpt206(r) ==
+  /\ rj[r].st = "Orphaned"
+  /\ \E n \in RunningNodes :
+       /\ r \in Decl(node[n].ver)
+       /\ LET d == CodeDef(node[n].ver) IN
+            /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0, ![r].hash = d,
+                                ![r].def = IF rj[r].hash = d THEN rj[r].def ELSE d]
+            /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
+NextOpt206 == \/ Next /\ ~\E r \in Names : rj[r].st = "Orphaned" /\ rj'[r].st \in {"Active", "Paused"}
+              \/ \E r \in Names : RestoreOpt206(r)
+SpecOpt206 == Init /\ [][NextOpt206]_vars /\ FairnessHost /\ \A r \in Names : WF_vars(RestoreOpt206(r))
 
 \* F: a runtime job whose name later appears in code is rewritten by code but stays "runtime".
 Probe_RuntimeJobTakenOverByCode ==

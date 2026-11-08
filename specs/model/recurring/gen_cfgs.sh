@@ -11,6 +11,8 @@
 # Run 6: REQ-242 also records pauses, orphanings and removals, and REQ-234 makes every passed-over instant missed; the
 # run-5 F-1/F-2 probes are now the regression checks in REC, and PROBEOD is PROBE with both orphan policies.
 # Run 8: SPEC chooses the specification of a Recurring cfg (default Spec); DEFR, LIVE3 and LIVE3D are new sets (see below).
+# Run 9: REQ-206 is actor system, so its restore is fair in Spec and SpecRC (as written); run 8's reading is the
+# counterfactual SpecCF_RestoreHost / SpecRC_CF_RestoreHost. ORPHO is a new set (see below).
 consts() {
   case $1 in
     MAIN)   set -- "{j1}" "{o1, o2}" "{a}" '{"v1"}' "{j1}" "{}" "{}" "{}" 1 '{"Skip", "Queue"}' '{"RunOnce", "Skip"}' '{"Orphan"}' FALSE ;;
@@ -32,6 +34,7 @@ consts() {
     DEFR)   set -- "{j1}" "{o1}" "{a, b}" '{"v1", "v2"}' "{j1}" "{j1}" "{}" "{j1}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
     LIVE3)  set -- "{j1}" "{}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan", "Delete"}' FALSE ;;
     LIVE3D) set -- "{j1}" "{}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{}" 1 '{"Skip"}' '{"RunOnce"}' '{"Delete"}' FALSE ;;
+    ORPHO)  set -- "{j1}" "{}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{}" "{j1}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
     SETTLE3) set -- "{j1}" "{o1}" "{a, b}" '{"v1", "v2", "v3"}' "{j1}" "{j1}" "{j1}" "{j1}" 1 '{"Skip"}' '{"RunOnce"}' '{"Orphan"}' FALSE ;;
   esac
   printf 'CONSTANTS\n  Names = %s\n  OccIds = %s\n  Nodes = %s\n  Releases = %s\n  DeclV1 = %s\n  DeclV2 = %s\n  DeclV3 = %s\n  Override = %s\n  MaxQueued = %s\n  OverlapPolicies = %s\n  MisfirePolicies = %s\n  OrphanPolicies = %s\n  RerouteOn = %s\n  NULL = NULL\n' "$@"
@@ -81,16 +84,24 @@ cfg Recurring_F_PassedInstant.cfg   MAIN    "Run-5 F-2: a passed, not-yet-trigge
 cfg Recurring_P_RecordedWaiterSkipped.cfg MAIN "Run-5 F-3 (accepted in REQ-242's notes): $P a REQ-242 record that says the catch-up occurrence is waiting, then REQ-237 skips it; $V" ProbeAct_RecordedWaiterNeverSkipped
 # Run 8 (REQ-203 also from the scheduler): convergence of the stored definitions to what running nodes declare, in the
 # atomic model. LIVE3 is two nodes on three releases (v1 and v2 declare j1, v3 does not), no occurrence slots.
-SPEC=Spec; cfg Recurring_Liv_Converge.cfg    LIVE3 "Run 8: a declared code-defined job is eventually stored, not orphaned, with a declaring node's code (fairness as written: REQ-206's actor is Host, not fair); $V" Liv_DeclaredConverges
-SPEC=SpecRestoreFair; cfg Recurring_Liv_ConvergeOpt.cfg LIVE3 "Run 8 finding option 1: the same with REQ-206 weakly fair (actor system); $H" Liv_DeclaredConverges
+# Run 9: as written REQ-206 is fair too; Liv_ReconcileStops says the reconciliation stops once the nodes stop changing.
+SPEC=Spec; cfg Recurring_Liv_Converge.cfg    LIVE3 "Run 9: a declared code-defined job is eventually stored, not orphaned, with a declaring node's code, and the reconciliation stops once the nodes stop changing (as written: REQ-206 is actor system, fair); $H" Liv_DeclaredConverges Liv_ReconcileStops
+SPEC=SpecCF_RestoreHost; cfg Recurring_Liv_CF_ConvergeHost.cfg LIVE3 "Counterfactual (not as written): run 8's REQ-206, actor Host, not fair (run-8 F-1 trace); expected VIOLATED; run with --stop-at-first." Liv_DeclaredConverges
 SPEC=Spec
-cfg Recurring_Liv_ConvergeDel.cfg LIVE3D "Run 8: the same with orphanPolicy Delete only: REQ-203's scheduler branch re-creates, fairness as written; $H" Liv_DeclaredConverges
+cfg Recurring_Liv_ConvergeDel.cfg LIVE3D "Run 8: the same with orphanPolicy Delete only: REQ-203's scheduler branch re-creates, fairness as written; $H" Liv_DeclaredConverges Liv_ReconcileStops
+# Run 9: a restore with unchanged code discards a runtime edit (finding), and the finding's option 1 (SpecOpt206).
+cfg Recurring_P_RestoreDropsEdit.cfg ORPHO "Run 9: $P a restore by a node whose code has the stored hash keeps a runtime edit (AllowRuntimeOverride); $V" ProbeAct_RestoreKeepsRuntimeEdit
+SPEC=SpecOpt206; cfg Recurring_F_RestoreKeepsEditOpt.cfg ORPHO "Run 9 finding option 1 (not as written): REQ-206 updates the definition only if the hash differs; $H" TypeInv ProbeAct_RestoreKeepsRuntimeEdit Prop_StaleOnlyWhenNodeStops Liv_DeclaredConverges Liv_ReconcileStops Liv_DefinitionSettles $REC
+SPEC=Spec
+cfg Recurring_Liv_ReconcileFlip.cfg LIVE3 "Run 9: Liv_ReconcileStops without the escape for nodes that keep changing (nodes redeployed back and forth change the stored job each time: REQ-204 rewrites its definition, or REQ-205 and REQ-206 orphan and restore it); $V" Liv_ReconcileStopsAlways
 # Run 7/8 (INV-212): RecurringRace.tla splits every write named in Split into a read and a write (SpecR). The
 # constants say what the write compares (CasOn), when it judges (AtWrite) and whether definitions have schedule content
 # (SchedOn); INV-212 as written (run 8) is CasOn = {"st", "nra", "def", "maint"}, AtWrite = TRUE.
 # ORPH2 is PROBEOD with two nodes, so a node can start (and declare the job) while another node's sweep is in flight.
 # DEFR is two nodes on v1/v2, both declaring j1 with AllowRuntimeOverride: an operator edit can race REQ-241.
 # LIVE, LIVE2 and LIVE3 are the smallest sets, for the liveness checks.
+# ORPHO (run 9) is ORPH2 with AllowRuntimeOverride and no occurrence slots: an operator edit, with schedule content, can
+# race the orphan sweep and the restore.
 race() {
   f=$1; c=$2; split=$3; cas=$4; atw=$5; sch=$6; h=$7; shift 7
   spec=SpecR; for i in "$@"; do case $i in Liv_WriterSettles*) spec=SpecRL ;; Liv_DeclaredConverges) spec=$RSPEC ;; esac; done
@@ -130,23 +141,27 @@ race Recurring_Race_ReapplySch.cfg DEFR  '{"Reapply"}' "$FULL" TRUE TRUE "Run 8:
 race Recurring_Race_UpdateSchO.cfg DEFR  '{"Update"}'  "$FULL" TRUE TRUE "Run 8: operator edit of a code-defined job split, racing REQ-241 and node starts, schedule content; $RH" $RALL $RDECL Inv_NextRunAtFromStoredSchedule
 race Recurring_Race_OPause.cfg     ORPH2 '{"Pause"}'   "$FULL" TRUE FALSE "Run 8: pause split, two nodes, three releases, both orphan policies; $RH" $RALL $RDECL
 race Recurring_Race_OResume.cfg    ORPH2 '{"Resume"}'  "$FULL" TRUE FALSE "Run 8: resume split, two nodes, three releases, both orphan policies; $RH" $RALL $RDECL
+race Recurring_Race_OTrigger.cfg   ORPH2 '{"Trigger"}' "$FULL" TRUE FALSE "Run 9: trigger split, two nodes, three releases, both orphan policies: the job can be orphaned and restored between the trigger's read and its write; $RH" $RALL $RDECL
 race Recurring_Race_ORemove.cfg    ORPH2 '{"Remove"}'  "$FULL" TRUE FALSE "Run 8: removal (of an orphan, REQ-213) split, two nodes, three releases; $RH" $RALL $RDECL
 race Recurring_Race_Orphan.cfg     ORPH2 '{"Orphan"}'  "$FULL" TRUE FALSE "Run 8: orphan sweep split; heartbeats not compared (accepted); every other check; $RH" $RBASEH Prop_RestoreOnlyDeclared Prop_StaleOnlyWhenNodeStops Prop_CodeJobCreatedOnlyDeclared
 race Recurring_Race_Restore.cfg    ORPH2 '{"Restore"}' "$FULL" TRUE FALSE "Run 8: restore split; heartbeats not compared (accepted); every other check; $RH" $RBASEH Prop_CodeJobLeavesOnlyUndeclared Prop_CodeJobCreatedOnlyDeclared
 race Recurring_Race_Reapply.cfg    ORPH2 '{"Reapply"}' "$FULL" TRUE FALSE "Run 8: REQ-241 split; heartbeats not compared (accepted); every other check; $RH" $RBASEH Prop_RestoreOnlyDeclared Prop_CodeJobLeavesOnlyUndeclared Prop_CodeJobCreatedOnlyDeclared
+race Recurring_Race_RestoreSchO.cfg ORPHO '{"Restore"}' "$FULL" TRUE TRUE "Run 9: restore split racing operator edits (AllowRuntimeOverride) and the sweep, schedule content; heartbeats not compared (accepted); $RH" $RBASEH Prop_CodeJobLeavesOnlyUndeclared Prop_CodeJobCreatedOnlyDeclared Inv_NextRunAtFromStoredSchedule
+race Recurring_Race_UpdateSchOrph.cfg ORPHO '{"Update"}' "$FULL" TRUE TRUE "Run 9: operator edit of a code-defined job split, racing the sweep and the restore, schedule content; $RH" $RALL $RDECL Inv_NextRunAtFromStoredSchedule
 race Recurring_Race_Create.cfg     ORPH2 '{"Create"}'  "$FULL" TRUE FALSE "Run 8: REQ-203's scheduler create split; heartbeats not compared; every other check; $RH" $RBASEH Prop_RestoreOnlyDeclared Prop_CodeJobLeavesOnlyUndeclared
 race Recurring_Race_OrphDecl.cfg   ORPH2 '{"Orphan"}'  "$FULL" TRUE FALSE "Run-7 F-2: the sweep lands after a node that declares the job started; $AC" Prop_CodeJobLeavesOnlyUndeclared
 race Recurring_Race_RestoreDecl.cfg ORPH2 '{"Restore"}' "$FULL" TRUE FALSE "Run-7 F-2: a restore lands after its node stopped; $AC" Prop_RestoreOnlyDeclared
 race Recurring_Race_ReapplyDecl.cfg ORPH2 '{"Reapply"}' "$FULL" TRUE FALSE "Run-7 F-2: REQ-241 lands after its node stopped; $AC" Prop_StaleOnlyWhenNodeStops
-race Recurring_Race_CreateDecl.cfg ORPH2 '{"Create"}'  "$FULL" TRUE FALSE "Run 8: REQ-203's scheduler create lands after the declaring node stopped (same kind of transient); expected VIOLATED; run with --stop-at-first." Prop_CodeJobCreatedOnlyDeclared
+race Recurring_Race_CreateDecl.cfg ORPH2 '{"Create"}'  "$FULL" TRUE FALSE "Run 8: REQ-203's scheduler create lands after the declaring node stopped (run 9: accepted in INV-212's notes); $AC" Prop_CodeJobCreatedOnlyDeclared
 race Recurring_Race_Live.cfg       LIVE  '{"Pause", "Resume", "Update", "Remove"}' "$FULL" TRUE FALSE "Run 8: a writer that loses its CAS eventually acts or finds nothing to do (weak fairness of the writer only); $RH" TypeInvR Liv_WriterSettles
 race Recurring_Race_LiveStarve.cfg LIVE  '{"Pause"}' "$FULL" TRUE FALSE "Run 8: ... without the escape clause; $V" Liv_WriterSettlesAlways
 race Recurring_Race_LiveOrph.cfg   LIVE2 '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Run 8: the same for the scheduler's writes, two nodes; $RH" TypeInvR Liv_WriterSettles
-RSPEC=SpecRCF
-race Recurring_Race_LiveConv.cfg   LIVE3 '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Run 8 finding option 1 (REQ-206 fair): the accepted transients heal, the stored definition converges; $H" TypeInvR Liv_DeclaredConverges
 RSPEC=SpecRC
-race Recurring_Race_LiveConvDel.cfg LIVE3D '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Run 8: orphanPolicy Delete only, fairness as written: a sweep that deletes a declared job is healed by REQ-203; $H" TypeInvR Liv_DeclaredConverges
-race Recurring_Race_LiveConvW.cfg  LIVE3 '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Run 8: the same with fairness as written (REQ-206 not fair); $V" TypeInvR Liv_DeclaredConverges
+race Recurring_Race_LiveConv.cfg   LIVE3 '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Run 9: the four heartbeat writes split, as written (REQ-206 fair): the accepted transients heal, the stored definition converges and the reconciliation stops; $H" TypeInvR Liv_DeclaredConverges Liv_ReconcileStops
+race Recurring_Race_LiveConvDel.cfg LIVE3D '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Run 8: orphanPolicy Delete only, fairness as written: a sweep that deletes a declared job is healed by REQ-203; $H" TypeInvR Liv_DeclaredConverges Liv_ReconcileStops
+RSPEC=SpecRC_CF_RestoreHost
+race Recurring_Race_CF_LiveConvHost.cfg LIVE3 '{"Orphan", "Restore", "Reapply", "Create"}' "$FULL" TRUE FALSE "Counterfactual (not as written): the same with run 8's REQ-206, actor Host, not fair (run-8 F-1); expected VIOLATED; run with --stop-at-first." TypeInvR Liv_DeclaredConverges
+RSPEC=SpecRC
 # Counterfactuals: one per part of INV-212, each expected to fail.
 race Recurring_Race_CF_Pause.cfg         MAIN  '{"Pause"}'   "$NONE" FALSE FALSE "Run-6 F-1 trace: the pause write unconditional, decided at the read; $CF" Prop_RecordOnlyUnhandledInstants
 race Recurring_Race_CF_PauseAtRead.cfg   MAIN  '{"Pause"}'   "$FULL" FALSE FALSE "Compare-and-set, but missed instants judged at the read (drops 'by the database clock at that write'); $CF" Prop_LeaveRecordsMissed
