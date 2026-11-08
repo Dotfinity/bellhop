@@ -1,8 +1,8 @@
 {
   "module": "jobs",
   "specHash": "d1c4f5af9f87339150943337d04b6b0e155d916eaf43724355ad60b513bb826c",
-  "generatedAt": "2026-11-08T15:02:33Z",
-  "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla, model/jobs/Jobs_AfterChk.tla, model/jobs/Jobs_AfterChkG.tla (run 8 probes over the unchanged Jobs.tla)",
+  "generatedAt": "2026-11-08T15:47:17Z",
+  "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla, model/jobs/Jobs_AfterChk.tla, model/jobs/Jobs_AfterChkG.tla, model/jobs/Jobs_AfterChk9.tla (run 9 probes over the unchanged Jobs.tla and run-8 probes)",
   "items": {
     "INV-100": {
       "hash": "2aa323d1daab6e7fc06862824dea5a1c1c8ae7e6819f9bbb460b4d19a6d5fea0",
@@ -252,7 +252,7 @@
     "REQ-140": {
       "hash": "b503e05d234d7e1b312008d934ca61c718bd06eaae587ac4cfe25b3ec48296c7",
       "reviewed": false,
-      "note": "Jobs.tla ReleaseOnShutdown (run 7: the node's check, once per run, shared with REQ-190) + ShutdownCheckLeaves (timed-out outcome) + R140; Chk_TimeoutReleaseSplit, Chk_TimeoutVsShutdown and Scn124_TimedOutNotReleased hold; hosting REQ-29 in NodeStop (every in-flight run checked). Run 8: re-checked against the notes; Reach8_TimeoutAfterShutdownTimeout (Jobs_AfterChk_ST) shows REQ-138/186 can still count a timed-out run after ShutdownTimeout passed, before the node stops (F-1)"
+      "note": "Jobs.tla ReleaseOnShutdown (run 7: the node's check, once per run, shared with REQ-190) + ShutdownCheckLeaves (timed-out outcome) + R140; Chk_TimeoutReleaseSplit, Chk_TimeoutVsShutdown and Scn124_TimedOutNotReleased hold; hosting REQ-29 in NodeStop (every in-flight run checked). Run 9: the corrected note ('if the node stops before REQ-138 or REQ-186 settles it') matches Reach8_TimeoutAfterShutdownTimeout (Jobs_AfterChk_ST) and Jobs_P2"
     },
     "REQ-141": {
       "hash": "25daec5403a37590cc9c8d5a490fde9cceca1fbace087d0fdcbe8ee103fcb431",
@@ -427,7 +427,7 @@
     "REQ-190": {
       "hash": "892f41e1de46b3c9528bafcca71660dc86b798ca71086fff0f86a568c2532445",
       "reviewed": false,
-      "note": "Jobs.tla unchanged since run 7 (run 8: notes-only change, no regeneration). The shutdown branch is the draining node's check (ReleaseOnShutdown, once per run, flag chk); ShutdownCheckLeaves is the check's third outcome; NodeStop waits until every in-flight run was checked. Run-6 F-1 regression Prop_LateCancelNotLeft holds, Reach_LateCancelled reachable (Jobs_P4). Run 7 F-1 path (request after the check, left to lease expiry, Jobs_GAP8) now accepted in this note and hosting REQ-29's. Run 8 F-1: Jobs_AfterChk.tla shows the handler can still settle a post-check request before the node stops through REQ-136, REQ-127, REQ-131 and this requirement's exception branch, which the note's 'otherwise left to lease expiry' leaves out; Chk8_Exits holds"
+      "note": "Jobs.tla unchanged since run 7 (runs 8 and 9: notes-only changes, no regeneration). The shutdown branch is the draining node's check (ReleaseOnShutdown, once per run, flag chk); ShutdownCheckLeaves is the check's third outcome; NodeStop waits until every in-flight run was checked. Prop_LateCancelNotLeft holds, Reach_LateCancelled reachable (Jobs_P4). Run 9: the run-8 F-1 traces (Jobs_AfterChk_O/R/EC/ED/T) are the handler outcomes the note now defers to, Chk8_Exits holds, Jobs_GAP8 is the accepted after-stop path. Run 9 F-1: Jobs_AfterChk9_LA shows lease expiry after the stop with attempts left is this requirement's lease branch (Cancelled), not REQ-132 as the note cites; Jobs_AfterChk9_LB shows lease expiry can also decide before the stop (not reported)"
     },
     "REQ-191": {
       "hash": "bdb68e3bab58b68400780ce25a29759a14ea1c707feba5a01bc51f95695e2fee",

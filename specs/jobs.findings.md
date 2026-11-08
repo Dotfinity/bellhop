@@ -1,11 +1,11 @@
 # Findings: Bellhop job lifecycle
 
-<!-- refiner-findings v1 | module: jobs | specHash: d1c4f5af9f87339150943337d04b6b0e155d916eaf43724355ad60b513bb826c | run: 2026-11-08 | previous: specs/model/jobs/previous.findings.md (run 7, specHash d1c4f5af9f87) -->
+<!-- refiner-findings v1 | module: jobs | specHash: d1c4f5af9f87339150943337d04b6b0e155d916eaf43724355ad60b513bb826c | run: 2026-11-08 | previous: specs/model/jobs/previous.findings.md (run 8, specHash d1c4f5af9f87) -->
 
-**Run:** 2026-11-08 (run 8, from `specs/model/jobs/handoff.json`, base ed02be0) · **Requirements file:** `specs/jobs.json` (specHash `d1c4f5af9f87`, unchanged: run 7's fix is notes only) · **Model:** `model/jobs/Jobs.tla`, `Jobs_Unique.tla`, `Jobs_Throttle.tla`, `Jobs_Flow.tla`, plus the new probe modules `Jobs_AfterChk.tla` and `Jobs_AfterChkG.tla` · **TLC:** 2.19. The full batch ran with `TLC_WORKERS=4 TLC_TIMEOUT=400 sh run_all.sh`, every check alone with `--stop-at-first`, while three other modules were being checked on the same machine. No timeouts and no TLC exceptions in the run this report rests on. A first batch hit an error in the new probe module only: the cfgs that use `Spec` failed with "current state is not a legal state", because the history variable `g8` was declared in the same module and `Spec` does not constrain it. The probes were split into `Jobs_AfterChk.tla` (no history) and `Jobs_AfterChkG.tla` (with `g8`), and then the full batch was rerun from the start. The largest runs were 7,433,296 distinct states in 172 s (`Jobs_HoldsQ.cfg`) and 3,555,212 in 41–75 s (`Jobs_Holds.cfg`, the CHK, GAP and `Jobs_AfterChk_X` runs).
-**Result:** 1 finding: 0 contradictions · 0 gaps · 1 ambiguity · 0 unprovable · 0 modeling notes. Run 7's F-1 is resolved: its path is now accepted in both notes (see *Accepted*).
+**Run:** 2026-11-08 (run 9, no handoff: commit 24b1e08 changed notes only) · **Requirements file:** `specs/jobs.json` (specHash `d1c4f5af9f87`, unchanged) · **Model:** `model/jobs/Jobs.tla`, `Jobs_Unique.tla`, `Jobs_Throttle.tla`, `Jobs_Flow.tla`, the run-8 probe modules `Jobs_AfterChk.tla` and `Jobs_AfterChkG.tla`, plus the new probe module `Jobs_AfterChk9.tla` · **TLC:** 2.19. The full batch ran with `TLC_WORKERS=4 TLC_TIMEOUT=400 sh run_all.sh`, every check alone with `--stop-at-first`, while two other modules were being checked on the same machine. All 79 runs finished, with no timeouts and no TLC exceptions. The largest runs were 7,433,296 distinct states in 174 s (`Jobs_HoldsQ.cfg`) and 3,555,212 in 40–72 s (`Jobs_Holds.cfg`, the CHK, GAP, `Jobs_SCN124` and `Jobs_AfterChk_X` runs).
+**Result:** 1 finding: 0 contradictions · 0 gaps · 1 ambiguity · 0 unprovable · 0 modeling notes. Run 8's F-1 is resolved: the notes now name the node's stop as the boundary and defer to the job's rules, and every run-8 trace is covered by them (see *Accepted*).
 
-The handoff is empty (no semantic change), so no requirement was regenerated. `Jobs.tla`, `Jobs_Unique.tla`, `Jobs_Throttle.tla` and `Jobs_Flow.tla` are byte-for-byte as in run 7, and so are all their cfgs. Run 7's fix (commit d3e5d8e) changed only two notes: jobs REQ-190's and hosting REQ-29's. This run checks those notes against the model, and re-reads the rest of the REQ-140, REQ-190 and REQ-191 notes and hosting REQ-29's notes.
+No requirement was regenerated. `Jobs.tla`, `Jobs_Unique.tla`, `Jobs_Throttle.tla`, `Jobs_Flow.tla`, `Jobs_AfterChk.tla`, `Jobs_AfterChkG.tla` and all their cfgs are byte-for-byte as in run 8. Commit 24b1e08 changed three notes: jobs REQ-190's last part, one clause of jobs REQ-140's, and two sentences of hosting REQ-29's. This run checks those notes against the model and the run-8 probes. It also re-reads the rest of the REQ-136, REQ-138, REQ-140, REQ-186, REQ-190 and REQ-191 notes and hosting REQ-29's notes.
 
 | File | Covers |
 |---|---|
@@ -13,13 +13,13 @@ The handoff is empty (no semantic change), so no requirement was regenerated. `J
 | `Jobs_Unique.tla` | unique keys (FEAT-103) on every creating call, and the unique-key side of single and bulk requeue |
 | `Jobs_Throttle.tla` | claim order, concurrency keys, rate limits, queue limits, the LongRunning limit, LIV-100 (FEAT-104) |
 | `Jobs_Flow.tla` | continuations, chains and batches (FEAT-106), including INV-138, batch-member retention and batch removal (REQ-192) |
-| `Jobs_AfterChk.tla`, `Jobs_AfterChkG.tla` | *(new, probes only)* `EXTENDS Jobs`. What can settle a run whose cancellation was requested after its draining node's check, and a timed-out run after ShutdownTimeout. They add no action and change no guard |
+| `Jobs_AfterChk.tla`, `Jobs_AfterChkG.tla` | *(run 8 probes)* `EXTENDS Jobs`. What can settle a run whose cancellation was requested after its draining node's check, and a timed-out run after ShutdownTimeout |
+| `Jobs_AfterChk9.tla` | *(new, probes only)* `EXTENDS Jobs_AfterChk`. Which lease-expiry rule decides a post-check cancellation, after the stop and before it. It adds no action and changes no guard |
 
 What is new:
 
-- **`Jobs_AfterChk.tla`.** `LateRun(r)` is a run that the check left on its timeout path (`chk` is set only by `ShutdownCheckLeaves`, which needs no request), whose cancellation was requested afterwards, and which still holds its job's lease on its draining node. Five action properties, `Reach8_*`, each say that one rule never settles such a run. Each is expected to be violated, which means reachable. `Chk8_Exits` says every step that ends `LateRun(r)` is a handler outcome, a lease-expiry recovery, the node's stop or a crash. It holds. On a scratch copy that drops the normal return from the list, it is violated in 11,770 states, so it is not vacuous. `Reach8_TimeoutAfterShutdownTimeout` checks REQ-140's note.
-- `Spec8` (in `Jobs_AfterChkG.tla`) is `Jobs`' `Spec` plus one history variable `g8`, which no action reads. It records whether a run's TimeoutGracePeriod ended after ShutdownTimeout or after the check. Only the two timeout probes (`Jobs_AfterChk_T`, `Jobs_AfterChk_ST`) use it. Without it, a grace period that ended *before* the check would count, because grace passing and the abandonment are two steps in the model.
-- `run_all.sh` runs the eight `Jobs_AfterChk_*.cfg` too. TLC reports a violated action property as an error, so `run_all.log` shows `error None` for the six `Reach8_` cfgs (`T`, `O`, `R`, `EC`, `ED`, `ST`). That is the expected result.
+- **`Jobs_AfterChk9.tla`.** Two properties, each expected to be violated (= reachable), both at MaxAttempts = 2 so that the job has attempts left. `Reach9_LeaseAfterStop` (state invariant, `Jobs_AfterChk9_LA.cfg`) says no job left in flight at its node's stop with a post-check request (`DrainLeftCancel`) is later cancelled by lease expiry (`LeaseCancel`) with attempts left. `Reach9_LeaseBeforeStop` (action property, `Jobs_AfterChk9_LB.cfg`) says no running worker node recovers such a run's expired lease while its draining node still holds it.
+- `run_all.sh` runs the two new cfgs after the run-8 probes. TLC reports a violated action property as an error, so `run_all.log` shows `error None` for `Jobs_AfterChk9_LB`, as for the six `Reach8_` cfgs. That is the expected result.
 
 To reproduce, run `TLC_WORKERS=4 TLC_TIMEOUT=400 sh run_all.sh` from `specs/model/jobs`.
 
@@ -27,158 +27,141 @@ To reproduce, run `TLC_WORKERS=4 TLC_TIMEOUT=400 sh run_all.sh` from `specs/mode
 
 | Finding | Status |
 |---|---|
-| F-1 (run 7) | resolved. Hosting REQ-29's note now names the node's shutdown check as the boundary, and says a request after it is left to lease expiry unless REQ-190's timeout branch or REQ-136 settles it first. REQ-190's note says the same thing, but with the timeout branch only. `Jobs_GAP8` (`Chk_NoCancelLeftAtStop`) is still violated by the same path, which both notes now describe (10 states this run, 11 in run 7: TLC's multi-worker search does not always return the same shortest trace). Moved to *Accepted* |
-| F-1 | new: the two notes list different and incomplete outcomes for a request after the check, and REQ-140's note puts the same kind of boundary at ShutdownTimeout. In each case the handler can still settle the job until the node stops |
+| F-1 (run 8) | resolved. REQ-190's and hosting REQ-29's notes now say the job's ordinary rules decide a request after the check: the handler's own outcome until the node stops, lease expiry after it. REQ-140's note and hosting REQ-29's run-3 sentence put the boundary at the node's stop instead of ShutdownTimeout. Each run-8 probe trace is one of those outcomes, and `Chk8_Exits` still holds. Moved to *Accepted* |
+| F-1 | new: the notes' pointer for "lease expiry after it" names REQ-132, which never applies to a job whose cancellation was requested. With attempts left the rule is REQ-190's own lease branch, and the job is Cancelled, not returned to Enqueued |
 
 `findings_delta.py specs/model/jobs/previous.findings.md specs/jobs.findings.md`:
 
 | Finding | Status | Fingerprint |
 |---|---|---|
-| F-1 | resolved | ambiguity · Chk_NoCancelLeftAtStop · REQ-140,REQ-190,hosting.REQ-29 |
-| F-1 | new | ambiguity · Chk8_Exits · REQ-136,REQ-140,REQ-190,hosting.REQ-29 |
+| F-1 | resolved | ambiguity · Chk8_Exits · REQ-136,REQ-140,REQ-190,hosting.REQ-29 |
+| F-1 | new | ambiguity · Reach9_LeaseAfterStop · REQ-132,REQ-133,REQ-190,hosting.REQ-29 |
 
-1 resolved, 1 new, 0 still open. (The "resolved" row uses run 7's number.)
+1 resolved, 1 new, 0 still open. (The "resolved" row uses run 8's number.)
 
 ## Summary
 
 | # | Kind | Severity | Requirements | One line |
 |---|---|---|---|---|
-| F-1 | ambiguity | low | REQ-190, REQ-140, REQ-136, REQ-127, REQ-131, hosting REQ-29 | REQ-190's note says a request after the check is cancelled by the timeout branch "and otherwise left to lease expiry". Hosting REQ-29's note adds REQ-136. Until the node stops, the handler can also end the job through REQ-136 (left out of REQ-190's note), a normal return (REQ-127, Succeeded) or another exception (REQ-190's exception branch, or REQ-131). REQ-140's note says lease expiry counts the attempt "if ShutdownTimeout passes first", but REQ-138/186 can still count it before the node stops |
+| F-1 | ambiguity | low | REQ-190, REQ-132, REQ-133, hosting REQ-29 | For a cancellation requested after the check, REQ-190's and hosting REQ-29's notes say lease expiry decides after the stop and cite "(REQ-132, REQ-133)". REQ-132's while needs "its cancellation was not requested", so it never applies to that job. With attempts left the rule that applies is REQ-190's lease branch (Cancelled), which the note in REQ-190 itself does not name |
 
 ---
 
-## F-1 · ambiguity · low — Three notes say lease expiry decides, but until the node stops the handler's own outcome still can
-<!-- finding: ambiguity | Chk8_Exits | REQ-190,REQ-140,REQ-136,hosting.REQ-29 -->
+## F-1 · ambiguity · low — The notes cite REQ-132 for lease expiry of a job whose cancellation was requested
+<!-- finding: ambiguity | Reach9_LeaseAfterStop | REQ-190,REQ-132,REQ-133,hosting.REQ-29 -->
 
 **Requirements involved**
-- REQ-190 notes (run 7 F-1, new): *"A request made after that check can only find a timed-out handler still in its grace period, because the check released or cancelled every other one; **it is cancelled by the timeout branch if the node is still running when TimeoutGracePeriod ends, and otherwise left to lease expiry**, which dead-letters it at its last attempt (REQ-133)."*
-- hosting REQ-29 notes (run 7 F-1, new): *"a request made after that check can only find a timed-out handler still in its grace period. The node does not wait for it, so **unless jobs REQ-190's timeout branch or REQ-136 settles it before the node stops, lease expiry decides** (cancelled with attempts left, dead-lettered at the last attempt), as after a crash."*
-- REQ-140 notes (run 3 F-1): *"… the draining node counts it as in flight until it settles, up to ShutdownTimeout (hosting REQ-29); **if ShutdownTimeout passes first, lease expiry counts the attempt** (REQ-132, REQ-133)."*
-- REQ-136: *While a job is processing and its cancellation was requested, when its handler throws OperationCanceledException, the system shall mark the job cancelled.* Notes: *"If it returns normally the job is Succeeded (REQ-127) … any other exception takes the normal failure path (REQ-129, REQ-131) … If the handler throws another exception … REQ-190 marks it cancelled …"*
-- REQ-127: *While a job is processing, when its handler returns without an exception, the system shall mark the job succeeded.*
-- REQ-131: *While a job is processing, when its handler throws an exception, if the exception is not an OperationCanceledException thrown after the job's token was cancelled for shutdown, and the attempt number has reached maxAttempts, the retry policy declines another attempt, or the exception is a PermanentJobFailureException, then the system shall move the job to dead-lettered.*
-- REQ-190's exception branch: *"… or its handler throws an exception other than OperationCanceledException or PermanentJobFailureException while the attempt number is below maxAttempts and the retry policy allows another attempt"*, which makes the job Cancelled.
+- REQ-190 notes (run 8 F-1, new): *"A request made after that check is not part of the shutdown. Only a timed-out handler still in its grace period can be in flight then, because the check released or cancelled every other one; the node does not wait for it, and the job's ordinary rules decide, the handler's own outcome until the node stops and **lease expiry (REQ-132, REQ-133) after it**."*
+- hosting REQ-29 notes (run 8 F-1, new): *"… the job's ordinary rules decide, the handler's own outcome until the node stops and **lease expiry (jobs REQ-132, REQ-133) after it**, as after a crash."* Run 7's wording here had said *"(cancelled with attempts left, dead-lettered at the last attempt)"*. That parenthesis is gone.
+- REQ-132: *While a job is processing **and its cancellation was not requested**, when its leaseExpiresAt has passed according to the database clock, if the attempt number is below maxAttempts, the system shall let any running worker node return the job to enqueued with reason Interrupted, keeping the attempt counted.* Notes: *"a job whose cancellation was requested is marked cancelled instead (REQ-190)."*
+- REQ-190: *While a job is processing and its cancellation was requested, when **its lease expires with attempts left**, … the system shall … mark the job cancelled instead of returning it to enqueued …*
+- REQ-133: *While a job is processing, when its leaseExpiresAt has passed …, if the attempt number has reached maxAttempts, the system shall let any running worker node move the job to dead-lettered with reason Interrupted.*
 
-**What happens** (`Jobs_AfterChk_O.cfg`: `Reach8_OCE` is violated, a 10-state trace at MaxAttempts = 1.)
-1. j1 is enqueued and node n1 claims it at attempt 1, its last attempt (REQ-120, REQ-123).
-2. j1 runs past its timeout, so its timeout token is signalled (REQ-137). TimeoutGracePeriod starts (REQ-187).
-3. The host stops n1, so n1 drains (hosting REQ-27). ShutdownTimeout passes.
-4. n1 cancels j1's token for shutdown (REQ-139).
-5. n1 makes its check and finds the handler still running. The timeout token was signalled, so REQ-140 does not apply. No cancellation was requested, so REQ-190's shutdown branch does not apply either. j1 stays on its timeout path (`ShutdownCheckLeaves`).
-6. **An operator cancels j1** (REQ-135). The request is recorded and the handler's token is signalled.
-7. **The handler honours the token and throws OperationCanceledException.** REQ-136 marks j1 **Cancelled**. n1 is still draining. The timeout branch did not act, and neither did lease expiry.
+**What happens** (`Jobs_AfterChk9_LA.cfg`: `Reach9_LeaseAfterStop` is violated, a 12-state trace at MaxAttempts = 2.)
+1. j1 is enqueued and node n1 claims it at attempt 1 of 2 (REQ-120, REQ-123).
+2. j1's lease passes its expiry without a renewal reaching the store (A-2). No node recovers it yet. The order does not matter: the lease would also expire after step 8, once n1's heartbeats stop.
+3. j1 runs past its timeout, so its timeout token is signalled (REQ-137). TimeoutGracePeriod starts (REQ-187).
+4. The host stops n1, so n1 drains (hosting REQ-27). ShutdownTimeout passes.
+5. n1 cancels j1's token for shutdown (REQ-139).
+6. n1 makes its check and finds the handler still running with its timeout token signalled and no cancellation requested. Neither REQ-140 nor REQ-190's shutdown branch applies, so j1 stays on its timeout path.
+7. **An operator cancels j1** (REQ-135). This is the request "made after that check".
+8. n1 stops (hosting REQ-29). The run was checked, so the node does not wait for it. j1 is still Processing, with n1's lease.
+9. Node n2, running, recovers the expired lease. The attempt number (1) is below maxAttempts (2) and the cancellation was requested, so **REQ-190's lease branch marks j1 Cancelled**. REQ-132 does not apply: its while needs "its cancellation was not requested".
 
-REQ-190's note allows only the timeout branch or lease expiry here, so step 7 is the outcome it leaves out. It is also the outcome a cooperating handler gives: REQ-135 signals the token so that the handler throws. Hosting REQ-29's note names REQ-136, so the two notes disagree with each other.
+So the note's pointer is wrong for this case. A reader who follows "(REQ-132, REQ-133)" to REQ-132 reads that the job returns to Enqueued with reason Interrupted and runs again. That is the outcome F-7 (REQ-190's purpose: "a cancelled job does not run again") rules out. REQ-132's own note redirects to REQ-190, so a careful reader gets there in the end. But the note that gives the wrong pointer is REQ-190's, and its own lease branch is the rule that applies. At the last attempt REQ-133 applies and dead-letters j1, which is the run-7 path (`Jobs_GAP8`, MaxAttempts = 1). For a job whose cancellation was not requested, REQ-132 is right, but the sentence is only about a job whose cancellation was requested.
 
-The same prefix (steps 1–6) leads to three more outcomes that neither note names. Each one happens on the draining node before it stops:
+The model follows the sentences. `Recover` is the one lease-expiry action, with the three complementary guards, and it takes REQ-190's branch whenever the request is recorded and attempts are left. So a post-check request never comes back as Interrupted. That follows from the guards themselves, and no property is needed to show it.
 
-| Probe | Trace | After step 6 | Outcome |
-|---|---|---|---|
-| `Jobs_AfterChk_R` (`Reach8_Return`) | 10 states | the handler returns normally | **Succeeded** (REQ-127; REQ-136's notes: "a normal return still marks it succeeded") |
-| `Jobs_AfterChk_ED` (`Reach8_ExcDeadLettered`) | 10 states | the handler throws another exception at its last attempt | **DeadLettered** as a failure (REQ-131), not with reason Interrupted by lease expiry |
-| `Jobs_AfterChk_EC` (`Reach8_ExcCancelled`, MaxAttempts = 2) | 11 states | at attempt 1 of 2 the handler throws a retryable exception | **Cancelled** by REQ-190's *exception* branch, not its timeout branch |
-| `Jobs_AfterChk_T` (`Reach8_Timeout`, `Spec8`) | 12 states | the grace period ends after the request, and n1 is still draining | **Cancelled** by REQ-190's timeout branch, handler abandoned and recorded (REQ-191). This is the case both notes name |
-
-`Chk8_Exits` holds over 3,555,212 states (MaxAttempts = 2) and 1,858,324 states (MaxAttempts = 1). Nothing else settles such a run. The other ways out are lease expiry recovered by a running worker node (REQ-190's lease branch, REQ-132/133), the node's stop (after which lease expiry decides, `Jobs_GAP8`) and a crash.
-
-REQ-140's note has the same shape for a timed-out job with no request (`Jobs_AfterChk_ST.cfg`, `Spec8`: `Reach8_TimeoutAfterShutdownTimeout` is violated, an 8-state trace at MaxAttempts = 1):
-1. j1 is claimed at attempt 1 of 1, and its timeout token is signalled.
-2. n1 drains and ShutdownTimeout passes. j1 has not settled, so this is the note's "if ShutdownTimeout passes first".
-3. TimeoutGracePeriod ends after ShutdownTimeout, before n1 stops.
-4. REQ-186 abandons the handler and moves j1 to **DeadLettered with reason Timeout**. Lease expiry does not count this attempt, REQ-186 does.
-
-**Why.** For a request after the check, the boundary is not the check itself. The check only decides that the node will not wait. Until the node stops, the handler is still running on a live node, so every handler-outcome rule still applies to it. Lease expiry decides only once the node has stopped. REQ-140's note puts the same boundary at ShutdownTimeout, but a draining node still cancels the tokens and makes its check after ShutdownTimeout, so the timeout path can still settle the job in that window. Two smaller points:
-- REQ-190's "if the node is still running" names a hosting Node state, `Running`. A draining node has left that state (`Node.states`: Starting, Running, Draining, Stopped, StartupFailed). Read literally, the timeout branch never applies here, but the model shows that it does (`Reach8_Timeout`). Hosting REQ-29's note says "before the node stops", which is the reading the sentences support.
-- The window is short in practice: it lasts from ShutdownTimeout, or from the check, until the node's own stop sequence ends. The model has no clocks and cannot judge how short (A-1). The outcomes are still reachable whatever the durations are, and REQ-136 needs no timing at all: the request signals the token, and a cooperating handler throws at once.
-
-No sentence is wrong. The behaviour follows REQ-127, REQ-131, REQ-136 and REQ-190 as written, and REQ-136's own notes already list the handler outcomes. The notes are not normative, so the severity is low. They are, however, what an implementer of the drain reads to learn what to expect, and REQ-190's note says something that is not true.
+**Why.** Commit 24b1e08 replaced the lists of outcomes with a pointer to the rules, so that the notes cannot fall out of step with the rules again. For lease expiry the pointer names the rules for a job *without* a request (REQ-132/133), which is what REQ-140's note and hosting REQ-29's run-3 sentence describe. The job in this sentence always has a request, and lease expiry has three rules with complementary guards: REQ-132 (no request, attempts left), REQ-190's lease branch (request, attempts left) and REQ-133 (last attempt). Only the last two can apply here. No requirement is wrong and behaviour does not change. The notes are not normative, so the severity is low.
 
 **Options**
-1. *(recommended)* **Correct the three notes.** Put the boundary at the node's stop, and point to the handler-outcome rules instead of listing two of them. No behaviour changes. The fix is in jobs REQ-190 and REQ-140, and in **hosting.json** (REQ-29, another module).
-2. **Shorten instead of correcting.** Delete the run-7 sentence from REQ-190's notes and the run-3 clause from REQ-140's notes, and keep only hosting REQ-29's note, corrected as in option 1. There is less to keep in step later, but the jobs module then says nothing about a request after the check.
-3. **Accept as is.** REQ-136's notes already give the handler outcomes, so a careful reader can piece it together. REQ-190's note keeps saying something false, and the two notes keep disagreeing.
+1. *(recommended)* **Point to the two rules that can apply.** In REQ-190's note, "lease expiry (this requirement's lease branch, or REQ-133 at the last attempt)". In hosting REQ-29's note, "(jobs REQ-190's lease branch, or REQ-133 at the last attempt)". It is still a pointer to rules, not a list of outcomes, so it keeps 24b1e08's intent. The fix is in jobs REQ-190 and in **hosting.json** (REQ-29, another module).
+2. **Point to the whole event.** Write "lease expiry (REQ-132, REQ-133, REQ-190)" and let the guards pick. Nothing has to be redone if the guards change later, but the pointer names one rule that cannot apply here.
+3. **Accept as is.** REQ-132's notes already redirect to REQ-190. The pointer in REQ-190's own notes stays wrong for the attempts-left case.
 
 **Ready to apply (option 1)**
 
-In `specs/jobs.json`, REQ-190 `notes`: replace the last two sentences ("A request made after that check can only find … (REQ-133). Run 7 F-1 spelled this out.") with
+In `specs/jobs.json`, REQ-190 `notes`: replace "and lease expiry (REQ-132, REQ-133) after it." with
 ```json
-{ "id": "REQ-190", "notes": "… A request made after that check can only find a timed-out handler still in its grace period, because the check released or cancelled every other one. The node does not wait for it, but until the node stops the handler's own outcome decides, as for any cancel-requested job: REQ-136 if it throws OperationCanceledException, this requirement's timeout branch if it is still running when TimeoutGracePeriod ends, REQ-127 if it returns normally, and this requirement's exception branch or REQ-131 for any other exception. Once the node has stopped, lease expiry decides, and it dead-letters the job at its last attempt (REQ-133). Run 7 F-1 spelled this out; run 8 F-1 completed the list and put the boundary at the node's stop." }
+{ "id": "REQ-190", "notes": "… the job's ordinary rules decide, the handler's own outcome until the node stops and lease expiry after it (this requirement's lease branch, or REQ-133 at the last attempt; REQ-132 excludes a requested cancellation). Run 7 and run 8 F-1: … Run 9 F-1: the lease-expiry pointer named REQ-132, which never applies to a cancel-requested job." }
 ```
-In `specs/jobs.json`, REQ-140 `notes`: replace "if ShutdownTimeout passes first, lease expiry counts the attempt (REQ-132, REQ-133)." with
+In `specs/hosting.json`, REQ-29 `notes`: replace "and lease expiry (jobs REQ-132, REQ-133) after it, as after a crash." with
 ```json
-{ "id": "REQ-140", "notes": "… if the node stops first, lease expiry counts the attempt (REQ-132, REQ-133); between ShutdownTimeout and the node's stop, REQ-138 or REQ-186 can still settle it (run 8 F-1)." }
+{ "id": "REQ-29", "notes": "… the job's ordinary rules decide, the handler's own outcome until the node stops and lease expiry (jobs REQ-190's lease branch, or REQ-133 at the last attempt) after it, as after a crash." }
 ```
-In `specs/hosting.json`, REQ-29 `notes`: replace the last sentence ("jobs run 7 F-1: a request made after that check … as after a crash.") with
-```json
-{ "id": "REQ-29", "notes": "… jobs run 7 F-1: a request made after that check can only find a timed-out handler still in its grace period. The node does not wait for it. Until the node stops, the handler's own outcome decides (jobs REQ-127, REQ-131, REQ-136, and REQ-190's timeout and exception branches); once the node has stopped, lease expiry decides (cancelled with attempts left, dead-lettered at the last attempt), as after a crash. jobs run 8 F-1 completed this list." }
-```
+Leave REQ-140's note and hosting REQ-29's run-3 sentence ("Only a handler that jobs REQ-138 or REQ-186 has not settled when the node stops is left to lease expiry, and its attempt counts (jobs REQ-132, REQ-133)") as they are. They are about a timed-out job with no request, and for that job REQ-132/133 is right.
 
 ---
 
 ## Also checked (not findings)
 
-- **"Can only find a timed-out handler still in its grace period"** (both notes). This holds. `ReleaseOnShutdown` takes every other checked run out of flight (released or cancelled), and only `ShutdownCheckLeaves` sets `chk`, which needs the timeout signal. A draining node claims nothing (REQ-123 needs a running node), so after the check no other run of that node can meet the request. One modeling artefact: grace passing and the abandonment are separate steps (A-1), so the model can also check a run whose grace period has just ended and has not yet been abandoned. In the sentences that is one event (REQ-138/186 "still running TimeoutGracePeriod later"), so it is not reported.
-- **"The node does not wait for it"** (hosting REQ-29). This holds. `NodeStop` needs only that every in-flight run was checked (`Jobs_GAP8`, 10 states). `Liv_DrainEnds` holds (`Jobs_LIV29.cfg`).
-- **A request before the check ends Cancelled at a graceful stop, "even at its last attempt"** (hosting REQ-29). This holds as in run 7. `Prop_LateCancelNotLeft` holds in both holds cfgs, and `Reach_LateCancelled` is reachable (`Jobs_P4`). The exceptions are the ones REQ-190's notes already accept: an exception at the last attempt before the check (REQ-131), and the lease-expiry race (`Jobs_P5`, `Reach_LateLeaseExpiryFirst`).
-- **REQ-140's run-6 F-1 note** ("a cancellation requested before that check makes the job cancelled (REQ-190), not released"). This holds. It is the same check as above.
-- **REQ-140's run-3 notes** on the timeout guard covering both branches. This holds: `Scn124_TimedOutNotReleased` (both holds cfgs) and `Chk_TimeoutReleaseSplit` (`Jobs_CHK5`). Only the last clause, "if ShutdownTimeout passes first", is part of F-1.
-- **REQ-191's notes** (abandoned and lease-lost handlers are recorded; the node claims again once it holds fewer claims than its limit). This holds: `Prop_AbandonRecorded` and `Inv_NodeClaims` (both holds cfgs). `Gap_LeaseLostUnrecorded` (`Jobs_GAP6`, not run) holds by construction since run 4. In `Reach8_Timeout` the late request's handler is abandoned and tagged `Abandoned`. A run left on its timeout path that dies with its node's stop is not "abandoned" by the system (A-3), as in run 7.
-- **Hosting REQ-29's older notes** (best-effort release, a timed-out job counted as in flight up to ShutdownTimeout, "only a handler still in its grace period when ShutdownTimeout passes is left to lease expiry"). These hold. The last one is a necessary condition, and the model agrees: every run left in flight at the stop was checked with its timeout signalled.
+- **"A request made after that check is not part of the shutdown. Only a timed-out handler still in its grace period can be in flight then, because the check released or cancelled every other one"** (REQ-190; hosting REQ-29 the same without the "because"). This holds as in run 8. Only `ShutdownCheckLeaves` sets `chk`, it needs the timeout signal, and `ReleaseOnShutdown` takes every other checked run out of flight. A draining node claims nothing (REQ-123 needs a running node). The run-8 modeling artefact (grace passing and abandonment are two steps, A-1) is unchanged and not reported.
+- **"The node does not wait for it"** (both notes). This holds. `NodeStop` needs only that every in-flight run was checked (`Jobs_GAP8`), and `Liv_DrainEnds` holds (`Jobs_LIV29.cfg`).
+- **"The handler's own outcome until the node stops"** (both notes). Every run-8 probe trace is such an outcome: REQ-136 (`Jobs_AfterChk_O`), REQ-127 (`R`), REQ-190's exception branch (`EC`), REQ-131 (`ED`) and REQ-190's timeout branch (`T`). `Chk8_Exits` still holds at MaxAttempts 2 and 1 (`X`, `X1`). These are now in *Accepted*.
+- **Lease expiry before the node stops** (`Jobs_AfterChk9_LB.cfg`, `Reach9_LeaseBeforeStop` violated, an 11-state trace). It has the same prefix as F-1's steps 1–7. Then n2 recovers the expired lease while n1 is still draining, and REQ-190's lease branch marks j1 Cancelled before n1 stops. Read narrowly, this is neither "the handler's own outcome" nor "lease expiry after it". It is not reported, for three reasons. The operative clause is "the job's ordinary rules decide", and REQ-190's lease branch is one of them. REQ-136's notes count "loses its lease" among the ways a cancel-requested handler's job ends. And losing a lease while the node is alive (REQ-191's notes: "a partition or long pause, then recovery by another node") applies to every running handler, not only in this window; no handler-outcome note in the module repeats it. `Chk8_Exits` has listed this exit since run 8. If the owner wants the gloss exact, F-1's edit could read "the handler's own outcome or a lost lease until the node stops". That is optional.
+- **REQ-140's new clause** ("if the node stops before REQ-138 or REQ-186 settles it, lease expiry counts the attempt (REQ-132, REQ-133)"). This holds. `Reach8_TimeoutAfterShutdownTimeout` (`Jobs_AfterChk_ST`, 9 states) is REQ-186 settling the job after ShutdownTimeout and before the stop, which the clause now allows. `Jobs_P2` is the node stopping first, with lease expiry counting the attempt (Interrupted). The citation is right here: the sentence is about a timeout with no request, so REQ-132/133 are the rules. A request after the check moves the job to REQ-190's note (F-1).
+- **Hosting REQ-29's run-3 sentence** ("Only a handler that jobs REQ-138 or REQ-186 has not settled when the node stops is left to lease expiry, and its attempt counts"). This holds as a necessary condition. `NodeStop` needs every in-flight run checked, and only a timed-out run is checked and left in flight, so every run left at the stop is a timed-out one that REQ-138/186 (or, with a later request, REQ-190's timeout branch) has not settled. A release that fails because the store is down is the note's earlier best-effort sentence. Store outages are not modeled (A-3).
+- **Rest of the REQ-136, REQ-138, REQ-186, REQ-190 and REQ-191 notes** (unchanged since run 8). They hold as in run 8. REQ-136 is the only rule for an OCE of a cancel-requested job (`Jobs_CHK2`, `Chk_SingleRule`). Every overlap of the throw rules gives one outcome (`Jobs_CHK6`). Abandonment is recorded (`Prop_AbandonRecorded`, both holds cfgs), and a request before the check is read by it (`Prop_LateCancelNotLeft`; `Reach_LateCancelled` reachable, `Jobs_P4`). REQ-140's run-6 note and the "lease is released as soon as ShutdownTimeout passes" sentence are read at the check after the token is cancelled (A-19), as since run 6.
 
 ## Accepted (not reported as findings)
 
-- **A cancellation after the node's check, on a timed-out handler, left to lease expiry** (run 7 F-1, `Jobs_GAP8.cfg`, `Chk_NoCancelLeftAtStop`, 10 states). Both notes now say this path exists: REQ-190's ("otherwise left to lease expiry, which dead-letters it at its last attempt (REQ-133)") and hosting REQ-29's ("The node does not wait for it … lease expiry decides (… dead-lettered at the last attempt), as after a crash"). Which rules can still settle the job before the node stops is F-1, not this path.
-- **Cancellation that arrives after a draining node stopped** (`Jobs_GAP7.cfg`, run 4's probe). Its shortest trace is the GAP8 path with an earlier lease expiry (12 states). The lease-expiry outcome is the one REQ-190's notes accept, and the same as after a crash.
+- **The handler's own outcome on a post-check request, before the node stops** (run 8 F-1: `Jobs_AfterChk_O`, `R`, `EC`, `ED`, `T`). REQ-190's and hosting REQ-29's notes now say "the job's ordinary rules decide, the handler's own outcome until the node stops". REQ-136, REQ-127, REQ-131 and REQ-190's exception and timeout branches are those rules.
+- **REQ-186 counting a timed-out run after ShutdownTimeout, before the stop** (run 8 F-1: `Jobs_AfterChk_ST`). REQ-140's note now puts the boundary at the node's stop ("if the node stops before REQ-138 or REQ-186 settles it"), and so does hosting REQ-29's ("a handler that jobs REQ-138 or REQ-186 has not settled when the node stops").
+- **A cancellation after the node's check, on a timed-out handler, left to lease expiry** (run 7 F-1, `Jobs_GAP8.cfg`, `Chk_NoCancelLeftAtStop`). Both notes: "the node does not wait for it, and … lease expiry … after it". At MaxAttempts = 1 that is REQ-133, dead-lettered. Which rule decides it with attempts left is F-1.
+- **Cancellation that arrives after a draining node stopped** (`Jobs_GAP7.cfg`, run 4's probe). The lease-expiry outcome is the same as after a crash, which hosting REQ-29's note now says in so many words.
 - **LIV-100** (`accepted-unprovable`): strict queue priority and job priority can still starve a job forever (`Jobs_Throttle_L1.cfg` and `Jobs_Throttle_L2.cfg`, lassos). It holds with one queue and equal priority (`L0`) and with a shared concurrency key (`L3`).
 - **LIV-102** (`should`, `accepted-unprovable`): a continuation behind an Unroutable parent can still wait forever (`Jobs_Flow_F3.cfg`, lasso). `F1`, `F2`, `F4` and `F5` hold.
 - **REQ-143 / run 2 F-6** (accepted in REQ-143's notes): requeuing a cancelled parent does not revive the continuations cancelled with it (`Jobs_Flow_GAP3.cfg`).
 - **INV-106, former reading** (handlers executing, abandoned ones included): still violated (`Jobs_INV106.cfg`, `Chk_HandlersWithinLimit`), as the owner accepted in run 1.
 - **INV-108/109, former reading** (state invariants): still violated after an operator lowers a limit (`Jobs_Throttle.cfg`, `Chk_KeyMaxState`). The claim-time wording holds (`Jobs_Throttle_Holds.cfg`, `Jobs_Throttle_HoldsK.cfg`).
-- **Timed-out job at shutdown, recovered by lease expiry** (REQ-140 and hosting REQ-29 notes): when the node stops before TimeoutGracePeriod ends, the job comes back through REQ-132 with reason Interrupted and no backoff, rather than through REQ-138 with reason Timeout and retryAt. The attempt counts either way (`Jobs_P2.cfg`), and the notes accept it. F-1 asks only that REQ-140's note name the node's stop, not ShutdownTimeout, as the point after which this happens.
+- **Timed-out job at shutdown, recovered by lease expiry** (REQ-140 and hosting REQ-29 notes): when the node stops before REQ-138/186 settles it, the job comes back through REQ-132 with reason Interrupted and no backoff, rather than through REQ-138 with reason Timeout and retryAt. The attempt counts either way (`Jobs_P2.cfg`), and the notes accept it.
+- **A late request whose lease expires before the check** (`Jobs_P5`, `Reach_LateLeaseExpiryFirst`, run 7): dead-lettered at the last attempt by REQ-133 while the draining node still holds the run (accepted race, REQ-190's notes).
 
 ## Runs
 
 | cfg | Result | Distinct states | s |
 |---|---|---|---|
-| `Jobs_Holds` | holds | 3,555,212 | 75 |
-| `Jobs_HoldsQ` (MaxAttempts = 1) | holds | 7,433,296 | 172 |
-| `Jobs_CHK` / `CHK3` / `CHK4` / `CHK5` | hold | 3,555,212 each | 41–42 |
-| `Jobs_CHK2` (`Chk_SingleRule`) | holds | 3,555,212 | 43 |
-| `Jobs_CHK6` (`Chk_SingleOutcome`) | holds | 3,555,212 | 43 |
-| `Jobs_GAP1` / `GAP2` / `GAP5` | hold | 3,555,212 each | 41–47 |
+| `Jobs_Holds` | holds | 3,555,212 | 72 |
+| `Jobs_HoldsQ` (MaxAttempts = 1) | holds | 7,433,296 | 174 |
+| `Jobs_CHK` / `CHK3` / `CHK4` / `CHK5` | hold | 3,555,212 each | 42–43 |
+| `Jobs_CHK2` (`Chk_SingleRule`) | holds | 3,555,212 | 44 |
+| `Jobs_CHK6` (`Chk_SingleOutcome`) | holds | 3,555,212 | 42 |
+| `Jobs_GAP1` / `GAP2` / `GAP5` | hold | 3,555,212 each | 41–42 |
 | `Jobs_GAP6` | not run: holds by construction since run 4; the full two-slot space does not finish in time | – | – |
-| `Jobs_GAP7` | violated, accepted path | 34,970 | 2 |
-| `Jobs_GAP8` (`Chk_NoCancelLeftAtStop`) | violated, now accepted (run 7 F-1 path, 10 states) | 11,857 | 2 |
-| `Jobs_P2` | violated (reachable, accepted path) | 29,566 | 2 |
-| `Jobs_P3` (`Reach_ShutdownCancelled`) | violated (reachable, as expected) | 2,872 | 1 |
-| `Jobs_P4` (`Reach_LateCancelled`) | violated (reachable, as expected, 9 states) | 3,238 | 1 |
-| `Jobs_P5` (`Reach_LateLeaseExpiryFirst`) | violated (reachable, accepted race, 9 states) | 5,245 | 1 |
-| `Jobs_INV106` | violated (accepted) | 496 | 1 |
-| `Jobs_LIV101a` / `LIV101b` | hold | 87,496 / 664,576 | 6 / 41 |
-| `Jobs_LIV29` (`Liv_DrainEnds`, hosting REQ-29) | holds | 87,496 | 11 |
-| `Jobs_SCN100/101/102/111/112/115/122/124s/125` | traps violated (reachable, as expected) | 126–9,228 | 1 |
-| `Jobs_SCN120` / `Jobs_SCN124` | hold | 1,433,536 / 3,555,212 | 16 / 48 |
-| `Jobs_AfterChk_O` / `R` / `ED` (new, MaxAttempts = 1) | violated (reachable: REQ-136, REQ-127, REQ-131; F-1) | 12,370 / 12,348 / 12,287 | 1 |
-| `Jobs_AfterChk_EC` (new, MaxAttempts = 2) | violated (reachable: REQ-190's exception branch; F-1) | 17,331 | 2 |
-| `Jobs_AfterChk_T` (new, `Spec8`) | violated (reachable: REQ-190's timeout branch, as both notes say) | 26,326 | 2 |
-| `Jobs_AfterChk_ST` (new, `Spec8`) | violated (reachable: REQ-186 after ShutdownTimeout; F-1) | 2,958 | 1 |
-| `Jobs_AfterChk_X` / `X1` (new, `Chk8_Exits`) | hold | 3,555,212 / 1,858,324 | 46 / 27 |
+| `Jobs_GAP7` | violated, accepted path | 35,620 | 1 |
+| `Jobs_GAP8` (`Chk_NoCancelLeftAtStop`) | violated, accepted (run 7 F-1 path, 10 states) | 13,034 | 1 |
+| `Jobs_P2` | violated (reachable, accepted path) | 28,864 | 1 |
+| `Jobs_P3` (`Reach_ShutdownCancelled`) | violated (reachable, as expected) | 2,709 | 1 |
+| `Jobs_P4` (`Reach_LateCancelled`) | violated (reachable, as expected, 9 states) | 3,464 | 1 |
+| `Jobs_P5` (`Reach_LateLeaseExpiryFirst`) | violated (reachable, accepted race, 9 states) | 4,992 | 1 |
+| `Jobs_INV106` | violated (accepted) | 580 | 1 |
+| `Jobs_LIV101a` / `LIV101b` | hold | 87,496 / 664,576 | 5 / 38 |
+| `Jobs_LIV29` (`Liv_DrainEnds`, hosting REQ-29) | holds | 87,496 | 10 |
+| `Jobs_SCN100/101/102/111/112/115/122/124s/125` | traps violated (reachable, as expected) | 134–10,447 | 1 |
+| `Jobs_SCN120` / `Jobs_SCN124` | hold | 1,433,536 / 3,555,212 | 14 / 40 |
+| `Jobs_AfterChk_O` / `R` / `ED` (MaxAttempts = 1) | violated (reachable: REQ-136, REQ-127, REQ-131; accepted) | 11,782 / 12,104 / 12,713 | 1 |
+| `Jobs_AfterChk_EC` (MaxAttempts = 2) | violated (reachable: REQ-190's exception branch; accepted) | 17,244 | 1 |
+| `Jobs_AfterChk_T` (`Spec8`) | violated (reachable: REQ-190's timeout branch; accepted) | 22,653 | 2 |
+| `Jobs_AfterChk_ST` (`Spec8`) | violated (reachable: REQ-186 after ShutdownTimeout, before the stop; accepted) | 2,982 | 1 |
+| `Jobs_AfterChk_X` / `X1` (`Chk8_Exits`) | hold | 3,555,212 / 1,858,324 | 43 / 24 |
+| `Jobs_AfterChk9_LA` (new, `Reach9_LeaseAfterStop`) | violated (reachable: REQ-190's lease branch after the stop, 12 states; F-1) | 58,197 | 2 |
+| `Jobs_AfterChk9_LB` (new, `Reach9_LeaseBeforeStop`) | violated (reachable: lease expiry before the stop, 11 states; not reported) | 31,735 | 2 |
 | `Jobs_Unique`, `U1`–`U5` / `SCN105` (unchanged) | hold / trap violated | 3,220–7,794 / 51 | 1 |
 | `Jobs_Throttle_*` (unchanged) | Holds, HoldsK, T0, T2, T3, L0, L3 hold; L1 and L2 (lassos) and `Jobs_Throttle` violated, accepted | ≤ 1,692 | 1 |
-| `Jobs_Flow_Holds` / `HoldsC` / `HoldsU` (unchanged) | hold | 1,407,799 / 652,237 / 259,033 | 16 / 9 / 4 |
-| `Jobs_Flow_P1b` | holds | 3,936,009 | 42 |
-| `Jobs_Flow_F1` / `F2` / `F4` / `F5` | hold | 206,420 / 207,248 / 205,289 / 206,420 | 11–19 |
-| `Jobs_Flow_F3` | violated (accepted, LIV-102) | 66,911 | 4 |
-| `Jobs_Flow_GAP3b` / `GAP4` | hold | 1,388,164 / 1,396,162 | 9 / 12 |
-| `Jobs_Flow_GAP3` / `GAP5` / `GAP6` | violated (accepted / allowed / accepted) | 114,188 / 409 / 3,072 | 1–2 |
-| `Jobs_Flow_P1` | violated (the required case since run 4) | 458,984 | 4 |
-| `Jobs_Flow_SCN108/114/118/119/121` | traps violated (reachable, as expected) | 182–286,637 | 1–3 |
+| `Jobs_Flow_Holds` / `HoldsC` / `HoldsU` (unchanged) | hold | 1,407,799 / 652,237 / 259,033 | 16 / 8 / 4 |
+| `Jobs_Flow_P1b` | holds | 3,936,009 | 37 |
+| `Jobs_Flow_F1` / `F2` / `F4` / `F5` | hold | 206,420 / 207,248 / 205,289 / 206,420 | 11–18 |
+| `Jobs_Flow_F3` | violated (accepted, LIV-102) | 72,998 | 4 |
+| `Jobs_Flow_GAP3b` / `GAP4` | hold | 1,388,164 / 1,396,162 | 8 / 11 |
+| `Jobs_Flow_GAP3` / `GAP5` / `GAP6` | violated (accepted / allowed / accepted) | 120,358 / 389 / 3,180 | 1 |
+| `Jobs_Flow_P1` | violated (the required case since run 4) | 459,606 | 3 |
+| `Jobs_Flow_SCN108/114/118/119/121` | traps violated (reachable, as expected) | 182–286,556 | 1–2 |
 
-**Timeouts and exceptions.** No run hit the limit, and the complete rerun had no TLC exception. The one exception is described at the top: it was in the first batch's new probe cfgs, which were fixed before the rerun. `Jobs.cfg` and `Jobs_LIV101.cfg` (all checks at once) still run split, as in runs 3 to 7, and `Jobs_GAP6` is still not run. The distinct-state counts of the unchanged models match run 7 wherever a run explores the whole bounded space. They differ only where TLC stops at the first violation, because the multi-worker search is nondeterministic there.
+**Timeouts and exceptions.** No run hit the limit and no run had a TLC exception. `Jobs.cfg` and `Jobs_LIV101.cfg` (all checks at once) still run split, as in runs 3 to 8, and `Jobs_GAP6` is still not run. The distinct-state counts match run 8 wherever a run explores the whole bounded space. They differ only where TLC stops at the first violation, because the multi-worker search is nondeterministic there. For the same reason some run-8 probe traces are one state shorter or longer than in run 8 (`EC` 10, `T` 11, `ST` 9).
 
 ## Modeling assumptions
 
-These are decisions taken where the sentences were silent. Each one shapes the results above; if one is wrong, say so and rerun. None changed in run 8.
+These are decisions taken where the sentences were silent. Each one shapes the results above; if one is wrong, say so and rerun. None changed in run 9. A-13's MaxAttempts = 2 list now includes `Jobs_AfterChk9_LA/LB`, which use the default.
 
 | # | Assumption | Affects |
 |---|---|---|
@@ -207,12 +190,12 @@ These are decisions taken where the sentences were silent. Each one shapes the r
 |---|---|
 | REQ-100–102, REQ-104, REQ-106–108, REQ-120–145, REQ-147, REQ-150–152, REQ-156, REQ-158, REQ-160–163, REQ-170–177, REQ-179–192, INV-100, INV-103, INV-104, INV-106–115, INV-118, INV-128–130, INV-135, INV-138, LIV-100–102, SCN-100–112, SCN-114, SCN-115, SCN-117–125 | Inline mode: REQ-146, INV-131–134, INV-137 (call-stack semantics) · data, not state: REQ-105, REQ-148, REQ-154, REQ-155, REQ-165–169, INV-116, INV-117, INV-119–127, INV-136 · no effect on state: REQ-103, REQ-109, INV-105 (absorbed by A-1) · transactions: INV-101, REQ-153, SCN-113 · INV-102 (one atomic call) · strength `may`: REQ-157, REQ-159, REQ-164 · SCN-116 (payload size) · REQ-178 (retired) · REQ-191's log line (only the record is state) |
 
-**Scenario results.** Unchanged from run 7. Every positive scenario is reachable (trap violated, as expected): SCN-100, 101, 102, 105, 108, 111, 112, 114, 115, 118, 119, 121, 122 and 125. Every negative scenario holds over the complete bounded state space: SCN-103, 104, 107, 110, 117 and 124 (`Jobs_Holds.cfg`, `Jobs_HoldsQ.cfg`, `Jobs_SCN124.cfg`), SCN-106 (`Jobs_Throttle_Holds/HoldsK.cfg`), SCN-120 (`Jobs_SCN120.cfg`), and SCN-109 and SCN-123 (the flow holds runs). SCN-113 is still skipped.
+**Scenario results.** Unchanged from run 8. Every positive scenario is reachable (trap violated, as expected): SCN-100, 101, 102, 105, 108, 111, 112, 114, 115, 118, 119, 121, 122 and 125. Every negative scenario holds over the complete bounded state space: SCN-103, 104, 107, 110, 117 and 124 (`Jobs_Holds.cfg`, `Jobs_HoldsQ.cfg`, `Jobs_SCN124.cfg`), SCN-106 (`Jobs_Throttle_Holds/HoldsK.cfg`), SCN-120 (`Jobs_SCN120.cfg`), and SCN-109 and SCN-123 (the flow holds runs). SCN-113 is still skipped.
 
-**Same-trigger warnings from `validate`.** REQ-127/128/184, REQ-129/131 and REQ-132/133 are modeled as one action each, and REQ-171/174 inside one resolution step. REQ-140's still-running branch and REQ-190's shutdown branch are one action by design: two outcomes of one check.
+**Same-trigger warnings from `validate`.** REQ-127/128/184, REQ-129/131 and REQ-132/133 are modeled as one action each, and REQ-171/174 inside one resolution step. REQ-140's still-running branch and REQ-190's shutdown branch are one action by design: two outcomes of one check. REQ-190's lease branch is the third outcome of the REQ-132/133 action (`Recover`), which is where F-1's trace ends.
 
-**Cross-module.** Part of F-1's fix is a note in **hosting.json** (REQ-29). The rest is in jobs REQ-190 and REQ-140. None of the three changes behaviour. Under hosting REQ-29 a draining node always stops (`Liv_DrainEnds`, `Jobs_LIV29.cfg`).
+**Cross-module.** Half of F-1's fix is a note in **hosting.json** (REQ-29); the other half is in jobs REQ-190. Neither changes behaviour. Under hosting REQ-29 a draining node always stops (`Liv_DrainEnds`, `Jobs_LIV29.cfg`).
 
 ## Next
 
-Apply the chosen option (F-1: REQ-190's and REQ-140's notes in `specs/jobs.json`, REQ-29's notes in `specs/hosting.json`) with the `refiner-requirements` skill (it validates and diffs), then run this skill again. Findings whose fingerprint disappears are listed as resolved in the next report.
+Apply the chosen option (F-1: REQ-190's notes in `specs/jobs.json`, REQ-29's notes in `specs/hosting.json`) with the `refiner-requirements` skill (it validates and diffs), then run this skill again. Findings whose fingerprint disappears are listed as resolved in the next report.

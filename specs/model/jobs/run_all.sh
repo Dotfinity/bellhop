@@ -18,6 +18,9 @@ for c in Jobs_GAP1 Jobs_GAP2 Jobs_GAP5 Jobs_GAP7 Jobs_GAP8 Jobs_P2 Jobs_P3 Jobs_
 # hosting REQ-29 notes). Reach8_ action properties are expected violated (TLC reports them as errors); Chk8_Exits holds.
 for c in Jobs_AfterChk_O Jobs_AfterChk_R Jobs_AfterChk_EC Jobs_AfterChk_ED Jobs_AfterChk_X Jobs_AfterChk_X1; do run Jobs_AfterChk $c --no-deadlock; done
 for c in Jobs_AfterChk_T Jobs_AfterChk_ST; do run Jobs_AfterChkG $c --no-deadlock; done   # Spec8: history variable g8
+# Run 9: which lease-expiry rule decides a post-check cancellation (REQ-190's lease branch, not REQ-132), and whether
+# lease expiry can decide it before the stop. Both Reach9_ properties are expected violated.
+for c in Jobs_AfterChk9_LA Jobs_AfterChk9_LB; do run Jobs_AfterChk9 $c --no-deadlock; done
 for c in Jobs_Unique Jobs_Unique_U1 Jobs_Unique_U2 Jobs_Unique_U3 Jobs_Unique_U4 Jobs_Unique_U5 Jobs_Unique_SCN105; do run Jobs_Unique $c --no-deadlock; done
 for c in Jobs_Throttle Jobs_Throttle_Holds Jobs_Throttle_HoldsK Jobs_Throttle_T0 Jobs_Throttle_T2 Jobs_Throttle_T3 Jobs_Throttle_L0 Jobs_Throttle_L1 Jobs_Throttle_L2 Jobs_Throttle_L3; do run Jobs_Throttle $c; done
 for c in Jobs_Flow_Holds Jobs_Flow_HoldsC Jobs_Flow_HoldsU Jobs_Flow_F1 Jobs_Flow_F2 Jobs_Flow_F3 Jobs_Flow_F4 Jobs_Flow_GAP3 Jobs_Flow_GAP3b Jobs_Flow_GAP4 Jobs_Flow_GAP5 Jobs_Flow_GAP6 Jobs_Flow_F5 Jobs_Flow_P1 Jobs_Flow_P1b Jobs_Flow_SCN108 Jobs_Flow_SCN114 Jobs_Flow_SCN118 Jobs_Flow_SCN119 Jobs_Flow_SCN121; do run Jobs_Flow $c --no-deadlock; done
