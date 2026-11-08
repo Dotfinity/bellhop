@@ -8,7 +8,7 @@ R=${RUN_TLC:-$HOME/.claude-personal/skills/refiner-model/scripts/run_tlc.py}
 T=${TLC_TIMEOUT:-300}
 ALL="Defs Main MainR Misfire OverlapAll OverlapQueue OverlapQueue2 F_WaitingRace F_RerouteOverlap F_RerouteQueue F_RunningHandlers
      P_QueueTwoWaiters P_StaleDefinition P_StaleDefinition2 P_RuntimeTakenOver P_UnroutableBlocks P_Req225Unroutable P_TriggerNowSuperseded
-     P_OneUnroutable P_OverdueDropped P_CatchUpSkipped
+     P_OneUnroutable F_OverdueRecorded P_CatchUpSkipped P_OverduePaused P_OverdueOrphaned P_PassedInstantDropped P_RecordedWaiterSkipped
      Liv_Settles Liv_Settles3
      SCN201 SCN203 SCN204 SCN206 SCN209 SCN209b SCN210 SCN211 SCN213 SCN215"
 for c in ${*:-$ALL}; do

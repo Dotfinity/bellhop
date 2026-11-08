@@ -1,7 +1,7 @@
 {
   "module": "recurring",
-  "specHash": "5c02192f98626fb02a908c6263bc6066f651184a484a85d701eb927a5b0b1779",
-  "generatedAt": "2026-11-07T18:27:41Z",
+  "specHash": "90327ae0b99bd7899bd5cffbe24df47baac2158ef875afd8c2048f5388b970d9",
+  "generatedAt": "2026-11-08T12:00:00Z",
   "model": "model/recurring/Recurring.tla",
   "items": {
     "REQ-201": {
@@ -22,7 +22,7 @@
     "REQ-204": {
       "hash": "57bff9f1854378a72b526dc9f51994fc530174d471d1660b8196fbb6b04acaeb",
       "reviewed": false,
-      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards."
+      "note": "code origin only (F-6); schedule change modeled as a nondeterministic choice that resets the due count. Written at node start; REQ-241 re-applies a running node's code afterwards. | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged)."
     },
     "INV-200": {
       "hash": "aabda1e033f251ea9cd5f8aafa56fce146593e49cb567fae992f9d330ce8b050",
@@ -57,7 +57,7 @@
     "REQ-212": {
       "hash": "e9a08be600b4835eef50b1e7f58bc8ddf96b386d5eff60960cdbe9c41ca706c1",
       "reviewed": false,
-      "note": "OperatorUpdate"
+      "note": "OperatorUpdate | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged)."
     },
     "REQ-213": {
       "hash": "bfe77dff0a33782eda594ad8d235be54f67df825134805b6430376aa27d88298",
@@ -187,12 +187,12 @@
     "REQ-241": {
       "hash": "359c92303bfac13c34e9c67cad41f49eb2efb4c92cb1d173c67a612c16f00f2e",
       "reviewed": false,
-      "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check)"
+      "note": "ReapplyCode (weakly fair); Liv_DefinitionSettles and Prop_StaleOnlyWhenNodeStops hold (Liv_Settles, Liv_Settles3); without REQ-241 the liveness fails (vacuity check) | run 5: the schedule-change branch also writes REQ-242's record for an Active job (regenerated with REQ-242; this item unchanged)."
     },
     "REQ-242": {
-      "hash": "b1b25065f578d3d2eabd1656e9c5d215b8c7e83f07fcdf931e562e4694b3ee72",
+      "hash": "9e04184780de2facdc49c10d6165060fc37f42c31be61c31d81d1de6d154864c",
       "reviewed": false,
-      "note": "missRec, written only in the Trigger step (same CAS, A-2) when an instant was missed (A-23); count only, content and retention not modeled (A-21); both properties pass under all three misfire policies (722,628 states); see run-4 F-1 (drops without a trigger) and F-2 (catch-up skipped)"
+      "note": "run 5: missRec per name = count + how the latest record says the instants were handled (Started/Waiting/Skipped with the occurrence, Misfire, Schedule) (A-21). Written by Trigger (same CAS, A-2) and by the schedule-change steps of REQ-204, REQ-241 and REQ-212 when the job is Active (behind = 2 always missed, behind = 1 by choice, A-25). Prop_MissRecordOnlyByMove, Prop_MissedMoveRecordsOnce, Prop_RecordSaysOutcome pass (Main, MainR, Misfire 2,153,292 states, Defs, Liv_Settles, Liv_Settles3, F_OverdueRecorded). Run-5 F-1 (pause/orphan of an overdue active job), F-2 (schedule change within MisfireThreshold), F-3 ('is waiting' goes stale)."
     },
     "INV-206": {
       "hash": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",

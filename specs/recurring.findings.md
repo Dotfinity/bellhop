@@ -1,201 +1,208 @@
 # Findings: Bellhop recurring jobs
 
-<!-- refiner-findings v1 | module: recurring | specHash: 5c02192f98626fb02a908c6263bc6066f651184a484a85d701eb927a5b0b1779 | run: 2026-11-07 (run 4) | previous: specs/model/recurring/previous.findings.md (run 3, specHash 77018f6c8a50) -->
+<!-- refiner-findings v1 | module: recurring | specHash: 90327ae0b99bd7899bd5cffbe24df47baac2158ef875afd8c2048f5388b970d9 | run: 2026-11-08 (run 5) | previous: specs/model/recurring/previous.findings.md (run 4, specHash 5c02192f9862) -->
 
-**Run:** 2026-11-07, run 4 · **Requirements file:** `specs/recurring.json` (specHash `5c02192f9862`) · **Model:** `specs/model/recurring/Recurring.tla` · **TLC:** 2.19. Every check ran alone with `--stop-at-first` and finished with no TLC exception and no timeout: 33 cfgs, up to 7,439,116 distinct states, at most 121 s each. See [How to reproduce](#how-to-reproduce).
-**Result:** 3 findings: 0 contradictions · 1 gap · 0 unprovable · 2 ambiguities · 0 modeling notes. Both run-3 findings are resolved. The new REQ-242 holds as written: one record per trigger that missed something, written in the same step, under all three misfire policies. The gap is a path that drops missed instants without a trigger.
+**Run:** 2026-11-08, run 5 · **Requirements file:** `specs/recurring.json` (specHash `90327ae0b99b`) · **Model:** `specs/model/recurring/Recurring.tla` · **TLC:** 2.19. Every check ran alone with `--stop-at-first` and finished with no TLC exception and no timeout: 37 cfgs, up to 7,439,116 distinct states, at most 148 s each. See [How to reproduce](#how-to-reproduce).
+**Result:** 3 findings: 0 contradictions · 1 gap · 0 unprovable · 2 ambiguities · 0 modeling notes. All three run-4 findings are resolved. The reworded REQ-242 holds as written: a schedule change that moves an active job's nextRunAt past missed instants now writes the record, and the record says whether the catch-up occurrence started, is waiting or was skipped. The new findings sit at the edges of the new sentence: a job that stops being active (F-1), an instant that has passed but is not yet "missed" (F-2), and a record that says "is waiting" forever (F-3).
 
 The model has no clock. It cannot judge anything that depends on real amounts of time: DST, time zones, validity windows, the 60 s misfire threshold as a number, or how long REQ-242's record is kept. See *Coverage*.
 
 ## Changes since last run
 | Finding | Status | Fingerprint |
 |---|---|---|
-| F-1 | resolved | ambiguity · REQ-240 · REQ-225,REQ-239,REQ-240 |
-| F-2 | resolved | gap · REQ-240 · REQ-226,REQ-240 |
-| F-1 | new | gap · ProbeAct_OverdueLeavesOnlyByTrigger · REQ-204,REQ-227,REQ-241,REQ-242 |
-| F-2 | new | ambiguity · ProbeAct_CatchUpNeverSkipped · REQ-217,REQ-222,REQ-242 |
-| F-3 | new | ambiguity · Probe_OneUnroutablePerJob · REQ-225,REQ-240 |
+| F-1 | resolved | gap · ProbeAct_OverdueLeavesOnlyByTrigger · REQ-204,REQ-227,REQ-241,REQ-242 |
+| F-2 | resolved | ambiguity · ProbeAct_CatchUpNeverSkipped · REQ-217,REQ-222,REQ-242 |
+| F-3 | resolved | ambiguity · Probe_OneUnroutablePerJob · REQ-225,REQ-240 |
+| F-1 | new | gap · ProbeAct_OverduePausedRecorded · REQ-205,REQ-206,REQ-214,REQ-215,REQ-242 |
+| F-2 | new | ambiguity · ProbeAct_PassedInstantRunsOrIsRecorded · REQ-227,REQ-234,REQ-242 |
+| F-3 | new | ambiguity · ProbeAct_RecordedWaiterNeverSkipped · REQ-223,REQ-237,REQ-242 |
 
-2 resolved, 3 new, 0 still open
+3 resolved, 3 new, 0 still open
 
-(Table from `findings_delta.py`.) What changed in the requirements (handoff `specs/model/recurring/handoff.json`, base 9e15c1e):
-- REQ-240 gained REQ-225 in `dependsOn`, and its notes now confirm run-3 F-1 and F-2. The sentence is unchanged.
-- REQ-236's `if` clause now says the collision is judged by each stored job's name and origin only, and that a store with no Bellhop schema stores none.
-- REQ-242 is new: a missed-instant record, written in the trigger's compare-and-set.
-- RecurringJob gained the attribute `missedInstants`, which is why the handoff lists 49 impacted ids.
+(Table from `findings_delta.py`.) What changed in the requirements (handoff `specs/model/recurring/handoff.json`, base fe77203):
+- REQ-242's sentence (resolution commit da32b43). It now fires when an active job's nextRunAt is moved past missed instants by a trigger (REQ-216) or by a schedule change (REQ-227). The record says how the instants were handled: the occurrences the misfire policy created and whether each started, is waiting or was skipped by the overlap policy, or that the misfire policy or the schedule change dropped them. "Same compare-and-set" became "same store write". `dependsOn` gained REQ-222 and REQ-227.
+- Annotation only (no hash change): REQ-227's notes (dropped instants are recorded), REQ-240's notes (run-4 F-3: "never more than one Unroutable job" is scoped to Skip and Queue), and integrations REQ-403's notes.
 
 Model changes:
-- REQ-242 is the new variable `missRec`, written only by `Trigger`, with two new properties.
-- REQ-236's encoding is unchanged; only its comment was updated (A-24).
-- REQ-240's encoding is unchanged, because run 3 already modeled the sentence as written (A-18).
-- New checks: one cfg (`Recurring_Misfire.cfg`) and three probes.
-- The five 3-slot Queue cfgs use a VIEW without `missRec` (A-22).
+- REQ-242 regenerated. `missRec` is now a record per name: the count (as before), how the latest record says the instants were handled (`Started`, `Waiting`, `Skipped` with the occurrence it names, `Misfire` or `Schedule`), and that occurrence (A-21, updated).
+- The schedule-change branches of REQ-204 (`NodeStart`), REQ-241 (`ReapplyCode`) and REQ-212/REQ-227 (`OperatorUpdate`) now write the record when the job is Active and missed instants are passed over (A-25, new). Their other behaviour is unchanged.
+- The two run-4 REQ-242 properties are replaced by three: `Prop_MissRecordOnlyByMove`, `Prop_MissedMoveRecordsOnce`, `Prop_RecordSaysOutcome`. They run in Main, MainR, Misfire, Defs, both REQ-241 settling cfgs and the new `Recurring_F_OverdueRecorded.cfg`.
+- The run-4 F-1 probe (`ProbeAct_OverdueLeavesOnlyByTrigger`, `Recurring_P_OverdueDropped.cfg`) is retired. Its path is now the regression check `Recurring_F_OverdueRecorded.cfg`, which is expected to hold. There are four new probes, one for each new finding plus F-1's orphan path.
 
-Because the state of every action changed, every check was rerun. No other action was rewritten.
+Every other action is byte-for-byte as in run 4. Every check was rerun, because the state of every action changed.
 
-How each run-3 finding was re-checked:
+How each run-4 finding was re-checked:
 
-| Run-3 finding | Requirement change | Evidence in run 4 |
+| Run-4 finding | Requirement change | Evidence in run 5 |
 |---|---|---|
-| F-1 REQ-240's sentence covers every start, its metadata only Skip and Queue | REQ-225 added to `dependsOn`; notes: every start supersedes, under every overlap policy | The model already applied the sentence to REQ-221, REQ-224 and REQ-225 starts (A-18), so the decision confirms what was checked. `Recurring_F_RerouteOverlap.cfg` covers all four policies with jobs REQ-125 and passes INV-204, the REQ-239 skip rule and the notes' "one Unroutable job" claim for Skip and Queue: 653,248 distinct states. The run-3 probe (a REQ-225 start meets an earlier Unroutable job) is still reachable in 5 states. That situation is real, and the sentence now covers it on purpose. |
-| F-2 a trigger-now run that is Unroutable is cancelled as Superseded | Accepted; REQ-240's notes say so | `ProbeAct_TriggerNowNeverSuperseded` is still violated in 6 states (`Recurring_P_TriggerNowSuperseded.cfg`). That is the accepted behaviour, and the trace matches the notes. |
+| F-1 a schedule change drops overdue instants with no record | REQ-242's `when` covers schedule changes (REQ-227) of an active job | `Prop_MissedMoveRecordsOnce` holds. It says that every step taking an Active job with missed instants to nextRunAt-from-now, by any action, writes exactly one record. Checked in `Recurring_F_OverdueRecorded.cfg` (run 4's F-1 constants: one node, three releases, REQ-204 and REQ-241; 76,500 distinct states), `Recurring_Defs.cfg` (400,968), `Recurring_Liv_Settles3.cfg` (288,234) and the main cfgs (operator edits, REQ-212). A scratch vacuity check reached a `Schedule` record written by REQ-204 at node start and one written by REQ-241. |
+| F-2 a record saying "caught up" for a run Skip dropped | The record says whether each catch-up occurrence started, is waiting or was skipped | The run-4 trace is still reachable (`Recurring_P_CatchUpSkipped.cfg`, 5 states), but the record written in step 4 now says `Skipped` and names the skipped occurrence. `Prop_RecordSaysOutcome` holds in Main, MainR and Misfire (2,153,292 distinct states, all three misfire policies). Scratch vacuity checks reached all five kinds of record. |
+| F-3 "never more than one Unroutable job" | REQ-240's notes scoped to Skip and Queue | `Note240_OneUnroutableSkipQueue` holds in `Recurring_F_RerouteOverlap.cfg` (1,736,064) and `Recurring_F_RerouteQueue.cfg` (7,439,116). `Probe_OneUnroutablePerJob` is still reached under Allow in 6 states, which the notes now say. |
 
-**REQ-240: duplicates and stranded jobs.**
-- *Duplicates:* under Skip and Queue, no two occurrences' jobs of one recurring job are ever Processing at once (INV-204) in any check, including with jobs REQ-125 returning Unroutable jobs. At most one job per recurring job is Unroutable (`Note240_OneUnroutableSkipQueue`, 653,248 and 7,439,116 distinct states). Under Allow and CancelPrevious, two jobs can be Unroutable at once (F-3). Allow permits that overlap.
-- *Stranded jobs:* REQ-240 only fires when a later occurrence starts. An Unroutable job of a recurring job that is then paused, orphaned or removed waits for jobs REQ-125 (handler back) or jobs REQ-134 (operator cancel), like any other job. That is by reading, not a TLC check. No recurring rule leaves a job in a state that no requirement can move it out of.
+**REQ-242 per path** (what the model now does; all three properties pass):
 
-**REQ-242 per misfire policy** (`Recurring_Misfire.cfg`: RunOnce, Skip and RunAll, Skip and Queue overlap, maintenance and outages; 722,628 distinct states; both properties pass):
-
-| Misfire policy | Instants missed at the trigger | Occurrence created | REQ-242 record |
-|---|---|---|---|
-| any | none (the newest instant on time, no older one passed) | the on-time one (INV-207) | none written (`Prop_MissRecordOnlyByMissedTrigger`) |
-| RunOnce | older ones and/or the newest is late | one, for all of them (REQ-217) | exactly one, same step (`Prop_MissedTriggerRecordsOnce`) |
-| Skip | the newest is late | none (REQ-218) | exactly one, same step. The record is the only stored trace of the miss. |
-| Skip | older ones, the newest is on time | the on-time one | exactly one, same step |
-| RunAll (max = 1, A-4) | as RunOnce | as RunOnce | exactly one, same step |
-
-Trigger-now (REQ-226), reconciliation (REQ-204, REQ-206, REQ-241), resume (REQ-215) and operator edits (REQ-227) never write a record. That is what REQ-242 says, but it is how F-1 arises. A RunOnce or RunAll catch-up occurrence can be skipped by the overlap policy in the same write (F-2).
-
-**REQ-236.** The model has never modeled schemas. Its initial store holds no recurring job, which is what the new wording says a store without a Bellhop schema holds. So the first start on a new database is never refused (`Recurring_Defs.cfg`, 44,552 distinct states, `Scn_RuntimeNameBlocksStart` passes). The guard reads only each stored name's origin. The claim that every schema version stores name and origin (TECH-127, "migrations only add") is taken as given (A-24).
+| Path | Job state at the move | Record written |
+|---|---|---|
+| Trigger, nothing missed (newest on time, no older one passed) | Active | none |
+| Trigger, RunOnce / RunAll (max = 1, A-4), something missed | Active | one; `Started`, `Waiting` or `Skipped`, naming the created occurrence |
+| Trigger, Skip misfire, something missed | Active | one; `Misfire` (dropped by the misfire policy) |
+| Schedule change (REQ-204, REQ-241, REQ-212 → REQ-227), older instants missed | Active | one; `Schedule` |
+| Schedule change, only the newest instant passed and not yet triggered | Active | one or none, depending on the reading of "missed" (**F-2**) |
+| Schedule change | Paused | none (REQ-242 notes: dropped on purpose) |
+| Pause (REQ-214), orphan sweep (REQ-205, REQ-207), operator removal (REQ-213) of a job with missed instants | Active → Paused / Orphaned / removed | none (**F-1**), and every way back to Active is "from now" |
+| Resume (REQ-215), restore (REQ-206), trigger-now (REQ-226) | — | none |
 
 ## Summary
 | # | Kind | Severity | Requirements | One line |
 |---|---|---|---|---|
-| F-1 | gap | medium | REQ-242, REQ-204, REQ-227, REQ-241 | A schedule change applied at a node start (or by REQ-241) moves nextRunAt past instants that were already missed; no trigger runs, so REQ-242 writes no record and the miss is never alerted |
-| F-2 | ambiguity | low | REQ-242, REQ-217, REQ-222 | "How the misfire policy handled them": a RunOnce catch-up occurrence can be skipped by the overlap policy in the same write, so a record saying "caught up" does not mean a run happened |
-| F-3 | ambiguity | low | REQ-240, REQ-225 | REQ-240's notes say a recurring job never holds more than one Unroutable job. Under Allow (and CancelPrevious) it can hold two. |
+| F-1 | gap | medium | REQ-242, REQ-214, REQ-215, REQ-205, REQ-206 | Instants missed while a job is active are dropped with no record if the job is paused or orphaned before a trigger runs. Resume and restore then compute nextRunAt from now, and REQ-242 only covers moves of an *active* job. |
+| F-2 | ambiguity | medium | REQ-242, REQ-234, REQ-227 | REQ-234 defines "missed" only for a trigger. An instant that has passed but has not been triggered yet, and is then dropped by a schedule change, gets neither an occurrence nor (under one reading) a record. |
+| F-3 | ambiguity | low | REQ-242, REQ-223, REQ-237 | The record says the catch-up occurrence "is waiting" and is never updated. When REQ-237 later skips that occurrence, the record still says it is waiting. |
 
 ---
 
-## F-1 · gap · medium — Missed instants dropped by a schedule change leave no REQ-242 record
-<!-- finding: gap | ProbeAct_OverdueLeavesOnlyByTrigger | REQ-204,REQ-227,REQ-241,REQ-242 -->
+## F-1 · gap · medium — Missed instants of a job that is then paused or orphaned leave no record
+<!-- finding: gap | ProbeAct_OverduePausedRecorded | REQ-205,REQ-206,REQ-214,REQ-215,REQ-242 -->
 
 **Requirements involved**
-- REQ-242: *When a recurring job is triggered after one or more due instants were missed, the system shall record in the job store which due instants were missed (the first, the last and how many) and how the misfire policy handled them, in the same compare-and-set that advances nextRunAt, …*
-- REQ-204: *When a node with the worker registered starts and the hash of a code-defined recurring job's code definition differs from the definitionHash of the stored code-defined job with that name, the system shall update the stored definition and definitionHash to match the code, keeping its paused or active state, and, if the schedule changed, compute nextRunAt from now as in REQ-227.*
-- REQ-227: *When a recurring job's schedule changes, the system shall compute nextRunAt from now, never from the last execution, and create no catch-up occurrence for the old schedule.*
-- REQ-241 (the scheduler re-applies a running node's code) and REQ-212 (an operator edit) also end in REQ-227.
-- integrations REQ-403 reads missed occurrences from REQ-242's record (its notes, and integrations INV-412).
+- REQ-242: *When an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227), the system shall record in the job store which due instants were missed … and how they were handled …* Notes: *"Paused and orphaned jobs are excluded: their instants are dropped on purpose (REQ-215, REQ-206)."*
+- REQ-214: *When an operator pauses a recurring job through the API or the dashboard, the system shall mark the job paused.*
+- REQ-215: *When an operator resumes a paused recurring job, the system shall mark the job active and compute nextRunAt from now.* Notes: *"instants missed while paused are dropped … Maintenance is different: instants that fall due during maintenance go through the misfire policy (INV-210)."*
+- REQ-205 / REQ-206: the orphan sweep marks a job no running node declares orphaned (REQ-207 deletes it under orphanPolicy Delete). A node that declares it again restores it and computes nextRunAt from now.
+- INV-210: *… so that instants missed meanwhile go through the misfire policy when maintenance ends.*
+- integrations REQ-403 alerts a missed occurrence from REQ-242's record.
 
-**What happens** (TLC counter-example, action probe `ProbeAct_OverdueLeavesOnlyByTrigger`, `Recurring_P_OverdueDropped.cfg`, 6 states, one node). `nightly-export` is code-defined, runs daily at 02:00 with misfire RunOnce, and the app runs on one node:
+**What happens, by pause** (TLC counter-example, action probe `ProbeAct_OverduePausedRecorded`, `Recurring_P_OverduePaused.cfg`, 5 states). `hourly-invoices` runs hourly, misfire RunOnce:
+1. An operator adds `hourly-invoices` (REQ-208). It is active.
+2. Every worker node is down (or maintenance is on, INV-210), so no trigger runs. 01:00 passes.
+3. 02:00 passes. The 01:00 instant is now more than MisfireThreshold overdue, so it is missed (REQ-234, A-3).
+4. The operator pauses `hourly-invoices` (REQ-214). **No record is written: a pause does not move nextRunAt, and REQ-242 fires only on a move.** The count stays 0.
+
+From here the model has no way to write the record. Resume (REQ-215) computes nextRunAt from now, but the job is paused at that move, so REQ-242 does not fire. A schedule change while paused does not fire it either (the sentence says *active*). The 01:00 and 02:00 runs never happen, and integrations REQ-403 never alerts them as missed. If maintenance was the cause, INV-210 promised that those instants would go through the misfire policy.
+
+**What happens, by orphaning** (`ProbeAct_OverdueOrphanedRecorded`, `Recurring_P_OverdueOrphaned.cfg`, 7 states). `nightly-export` is code-defined, daily at 02:00:
 1. The node starts on release v1, which declares `nightly-export`. The job is created Active (REQ-203).
-2. The 02:00 instant passes. Nothing has triggered it yet.
-3. The node is stopped for a deploy at 02:00:30, before its scheduler polls.
-4. The deploy stalls, and the next due instant passes too. Now at least one instant is more than MisfireThreshold overdue (REQ-234), so it is missed.
-5. The node starts on release v2, whose code moves `nightly-export` to 02:30. REQ-204 rewrites the definition and, because the schedule changed, computes nextRunAt from now (REQ-227). **The overdue instants are gone. No trigger ran, so REQ-242 wrote no record and REQ-220 wrote no log or event.** The record count stays 0. integrations REQ-403 never alerts the miss, because its "missed" branch reads only REQ-242's record. Its "has not started" branch reads the stored nextRunAt, so it catches the miss only if an alerts node was up and the rule's tolerance had passed before step 5. On a one-node app neither is true.
+2. The node goes down (an outage).
+3. 02:00 passes.
+4. The next due instant passes too, so at least one instant is missed (REQ-234, A-3).
+5. The node comes back on release v3, which no longer declares `nightly-export` (a deploy during the outage).
+6. The orphan sweep runs before the trigger. Both are enabled, and the order is up to the scheduler. The sweep marks the job orphaned and remembers Active (REQ-205). **No record is written.**
 
-With an unchanged schedule the same outage ends in a trigger that catches up under RunOnce and writes the record. The model shows that run in `Recurring_Misfire.cfg` and SCN-206. So whether a missed run leaves any trace depends on whether the deploy also changed the schedule.
+If the deploy is rolled back, REQ-206 restores the job to Active and computes nextRunAt from now. The job is orphaned at that move, so REQ-242 does not fire. Under orphanPolicy Delete (REQ-207) the definition is removed in step 6 instead. In both cases the missed run leaves no trace. Had the trigger won the race in step 6, RunOnce would have caught it up and recorded it.
 
-**Why** REQ-242 hangs the record on the trigger. Three other requirements move nextRunAt past overdue instants without a trigger, through REQ-227. REQ-227's "no catch-up" is a deliberate decision. What is missing is the record that runs were missed. INV-210's notes accept that operator and reconciliation actions keep their own "from now" rules, but they do not mention that those rules make a miss invisible to alerts. Paused and orphaned jobs are different: REQ-215's and REQ-206's notes say their instants are dropped on purpose, and nothing is due while a job is paused.
+**Why** Run-4 F-1 hung the record on the move of an *active* job's nextRunAt, and excluded paused and orphaned jobs because instants that fall due *while* paused or orphaned are dropped on purpose. The instants here fell due while the job was active, and REQ-215's own notes say maintenance-time instants go through the misfire policy. A pause or an orphaning does not move nextRunAt, so REQ-242 does not fire at that step. The later move (REQ-215 or REQ-206) happens while the job is not active, so REQ-242 does not fire then either. Removing an active runtime job with missed instants (REQ-213) is a third path, but there the job is gone. As in run-4 F-1, whether a missed run leaves a trace depends on what the operator or the deploy happened to do next.
 
 **Options**
-1. *(recommended)* **Record the drop as a miss.** Widen REQ-242's trigger to every move of an *active* job's nextRunAt past missed instants: a trigger (REQ-216) or a schedule change (REQ-227). The handling recorded is then "dropped by a schedule change". There is still one record, one sentence and one consumer, and REQ-227's "no catch-up" stays. Cost: an operator's deliberate edit during an outage also produces a miss alert, which is accurate (runs did not happen). Not model-checked as a rule; the probe shows the paths it would cover (REQ-204 here; REQ-241 and REQ-212 are the same step shape).
-2. **Accept it.** Say in REQ-227's notes and in integrations REQ-403's notes that instants dropped by a schedule change are not recorded as missed, and are alerted only by the "has not started" branch if its tolerance passed first. No behaviour change. A one-node deploy after an outage then loses a run without a trace.
-3. **Trigger before applying the new schedule.** Before REQ-204, REQ-241 or REQ-212 applies a changed schedule to an active job that is overdue, run the trigger under the old schedule (misfire policy, REQ-242 record). This catches the run up instead of dropping it. That reverses REQ-227's "no catch-up" for this case and adds an ordering rule to three requirements. Not recommended.
+1. *(recommended)* **Record them when the job stops being active.** Add a second trigger to REQ-242: an active job whose nextRunAt has already passed missed instants is paused, orphaned or removed. The record says the instants were dropped by the pause, orphaning or removal. That write is the pause, orphan or removal write. There is still one record and one consumer, and the "dropped on purpose" rule for instants that fall due while paused or orphaned stays. Together with F-2 option 1, "missed" here means "passed and never triggered".
+2. **Accept it.** Say in REQ-242's notes (and REQ-215's and REQ-206's) that instants already missed when a job is paused or orphaned are dropped without a record. Integrations REQ-403 alerts them only through its "has not started" branch, and only if an alerts node evaluated the rule after its tolerance passed and before the pause. No behaviour change.
+3. **Trigger before pausing.** Before REQ-214 or REQ-205 takes an overdue active job out of Active, run the trigger (misfire policy and REQ-242 record). A pause would then start a run, which is not what an operator who pauses expects. Not recommended.
 
 **Ready to apply (option 1)**
 ```json
 { "id": "REQ-242",
   "ears": {
-    "when": "an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227)",
-    "shall": "record in the job store which due instants were missed (the first, the last and how many) and how they were handled (by the misfire policy, or dropped by the schedule change), in the same write that moves nextRunAt, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
-  "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-227"],
-  "notes": "<existing notes> Run 4 F-1 (recommended option): a schedule change applied at a node start (REQ-204), by the scheduler (REQ-241) or by an operator (REQ-212) drops missed instants without a trigger; they are recorded too, so integrations REQ-403 alerts them. Paused and orphaned jobs are excluded: their instants are dropped on purpose (REQ-215, REQ-206)." }
+    "when": "an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227), or an active recurring job whose nextRunAt has already passed one or more missed due instants is paused (REQ-214), orphaned (REQ-205) or removed (REQ-207, REQ-213)",
+    "shall": "record in the job store which due instants were missed (the first, the last and how many) and how they were handled (the occurrences the misfire policy created for them and whether each started, is waiting or was skipped by the overlap policy, or that the misfire policy, the schedule change, the pause, the orphaning or the removal dropped them), in the same store write that moves nextRunAt or changes the job's state, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
+  "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-222", "REQ-227", "REQ-214", "REQ-205", "REQ-207", "REQ-213"],
+  "notes": "<existing notes, with 'Paused and orphaned jobs are excluded: their instants are dropped on purpose (REQ-215, REQ-206).' replaced by: 'Instants that fall due while a job is paused or orphaned are dropped on purpose and not recorded (REQ-215, REQ-206); instants already missed when an active job is paused, orphaned or removed are recorded in that write (refiner-model run 5 F-1).'>" }
 ```
 
 ---
 
-## F-2 · ambiguity · low — A record that says "caught up" does not mean a run happened
-<!-- finding: ambiguity | ProbeAct_CatchUpNeverSkipped | REQ-217,REQ-222,REQ-242 -->
+## F-2 · ambiguity · medium — Is an instant that has passed but was not yet triggered "missed" at a schedule change?
+<!-- finding: ambiguity | ProbeAct_PassedInstantRunsOrIsRecorded | REQ-227,REQ-234,REQ-242 -->
 
 **Requirements involved**
-- REQ-242: *… record … which due instants were missed … and how the misfire policy handled them, in the same compare-and-set that advances nextRunAt …*
-- REQ-217: *When a recurring job is triggered after one or more due instants were missed, if the misfire policy is RunOnce, the system shall create a single occurrence for all missed instants and, if the most recent due instant is on time, for that instant too.*
-- REQ-222: *When an occurrence is created while an earlier occurrence of the same recurring job is waiting or has an unfinished job, if the overlap policy is Skip, the system shall start nothing and record the occurrence as skipped.*
+- REQ-234: *The system shall treat a due instant as missed only when the trigger runs more than MisfireThreshold after it, 60 seconds by default (MisfireThreshold).*
+- REQ-242: *When an active recurring job's nextRunAt is moved past one or more **missed** due instants, by a trigger (REQ-216) or by a schedule change (REQ-227), …*
+- REQ-227: *When a recurring job's schedule changes, the system shall compute nextRunAt from now, never from the last execution, and create no catch-up occurrence for the old schedule.*
+- INV-207: *When a recurring job is triggered no more than MisfireThreshold after its due instant, the system shall treat the instant as on time and create its occurrence whatever the misfire policy.* Notes: *"so Skip never drops a run that is only a poll interval late."*
 
-**What happens** (TLC counter-example, action probe `ProbeAct_CatchUpNeverSkipped`, `Recurring_P_CatchUpSkipped.cfg`, 5 states). `tenant-sync` runs hourly, misfire RunOnce, overlap Skip:
+**What happens** (TLC counter-example, action probe `ProbeAct_PassedInstantRunsOrIsRecorded`, `Recurring_P_PassedInstantDropped.cfg`, 4 states). `tenant-sync` is a runtime job, hourly at :00, misfire RunOnce:
+1. An operator adds `tenant-sync` (REQ-208). It is active.
+2. 10:00:00 passes. The scheduler polls every few seconds and has not triggered it yet.
+3. At 10:00:05 the operator changes its schedule to :30 (REQ-212). REQ-227 computes nextRunAt from now. **The 10:00 instant is gone: no occurrence was created for it (REQ-227: no catch-up), and it was not "missed" under REQ-234, because no trigger ran more than MisfireThreshold after it. So, under that reading, REQ-242 writes no record.** The run has silently not happened. The record count stays 0.
+
+The same happens when REQ-204 applies a changed schedule at a node start, or REQ-241 applies one, a few seconds after a due instant. If the scheduler had polled first, INV-207 would have run the instant as on time. If the change had come more than 60 s later, REQ-242 would have recorded it.
+
+**Why** REQ-234 defines "missed" by when *the trigger* runs. Run 4 added a path with no trigger (the schedule change), so for that path the word is undefined. Read literally, an instant less than MisfireThreshold old is not missed, so it is neither run nor recorded. Read as "passed and will never run", it is recorded as dropped by the schedule change. The model explores both (A-25), and `Prop_MissedMoveRecordsOnce` checks only the case where an older instant was certainly missed. The window is short (MisfireThreshold plus the poll interval), but in it a run disappears without trace, which INV-207 and REQ-242 were each written to prevent.
+
+**Options**
+1. *(recommended)* **Define "missed" for moves without a trigger.** Amend REQ-234: an instant is also missed when nextRunAt is moved past it without a trigger (a schedule change, or with F-1 option 1 a pause, orphaning or removal), however recently it fell due. Every passed instant that will not run is then recorded, and REQ-227's "no catch-up" is unchanged.
+2. **Keep REQ-234, and say so.** Add to REQ-242's notes that an instant less than MisfireThreshold old when a schedule change moves nextRunAt is neither run nor recorded. No behaviour change, but the drop is invisible.
+3. **Run it as on time.** Extend INV-207 so that a schedule change first creates the occurrence of an instant still within MisfireThreshold under the old schedule. That makes REQ-227 create something for the old schedule, and it adds an ordering rule to REQ-204, REQ-241 and REQ-212. Not recommended.
+
+**Ready to apply (option 1)**
+```json
+{ "id": "REQ-234",
+  "ears": { "shall": "treat a due instant as missed when the trigger runs more than MisfireThreshold after it, 60 seconds by default (MisfireThreshold), or when nextRunAt is moved past it without a trigger (a schedule change, REQ-227), however recently it fell due" },
+  "notes": "<existing notes> refiner-model run 5 F-2: REQ-242 also records instants dropped without a trigger; without this clause an instant less than MisfireThreshold old at a schedule change was neither run nor recorded." }
+```
+(If F-1 option 1 is taken too, add "or a pause, orphaning or removal (REQ-242)" after "a schedule change, REQ-227".)
+
+---
+
+## F-3 · ambiguity · low — A record saying the catch-up occurrence "is waiting" is never updated
+<!-- finding: ambiguity | ProbeAct_RecordedWaiterNeverSkipped | REQ-223,REQ-237,REQ-242 -->
+
+**Requirements involved**
+- REQ-242: *… how they were handled (the occurrences the misfire policy created for them and whether each started, **is waiting** or was skipped by the overlap policy …), in the same store write that moves nextRunAt …*
+- REQ-223: under overlap Queue, an occurrence created while an earlier one is in the way waits.
+- REQ-237: *When a recurring job is paused, orphaned or removed while it has waiting occurrences, the system shall record each waiting occurrence as skipped with reason Paused, Orphaned or Removed.*
+- REQ-231: an occurrence's outcome is recorded as the job's *last* outcome, which the next occurrence overwrites.
+
+**What happens** (TLC counter-example, action probe `ProbeAct_RecordedWaiterNeverSkipped`, `Recurring_P_RecordedWaiterSkipped.cfg`, 6 states). `tenant-sync` is code-defined, hourly, misfire RunOnce, overlap Queue(1):
 1. A node starts and the job is created (REQ-203).
-2. An operator triggers it now; its job is enqueued (REQ-226, REQ-221).
-3. The 10:00 instant passes. The scheduler is late by more than MisfireThreshold, so the instant is missed (REQ-234).
-4. The trigger runs. RunOnce creates one occurrence for the missed instant (REQ-217), and the same write records the miss (REQ-242: one record, handled by RunOnce). **The occurrence is created while the operator's job is still unfinished, so Skip records it as skipped (REQ-222).** The record says the miss was caught up by one run, but no run happened. REQ-231's last outcome (skipped) is overwritten by the next occurrence.
+2. An operator triggers it now, and its job is enqueued (REQ-226, REQ-221).
+3. The 10:00 instant passes. The scheduler is more than MisfireThreshold late, so the instant is missed (REQ-234).
+4. The trigger runs. RunOnce creates one occurrence for the miss (REQ-217), and it waits behind the operator's job (REQ-223). The same write records the miss: *one occurrence, waiting* (REQ-242).
+5. The operator pauses `tenant-sync` (REQ-214). The waiting occurrence is skipped with reason Paused (REQ-237). **The record still says the missed instant's occurrence is waiting. Nothing will run for it.** The skip is visible only as the job's last outcome (REQ-231) until the next occurrence overwrites it.
 
-The alert itself is not affected: integrations REQ-403 alerts on the record either way. What differs is what the record, and an alert or dashboard built on it, says happened.
+The record can also go stale the other way: the waiting occurrence later starts (REQ-224), and the record still says waiting.
 
-**Why** "How the misfire policy handled them" can be read as "what the misfire policy decided" (one catch-up occurrence) or "what became of the missed instants" (nothing ran). The two differ whenever the overlap policy skips the catch-up occurrence (Skip, or Queue when full under REQ-235). Both decisions are made in the same write (A-2), so the record could carry either.
+**Why** REQ-242 writes the record once, in the write that moves nextRunAt. "Is waiting" is the only one of the three outcomes that can still change after that write. Run-4 F-2 chose to record the outcome so that a reader of the record never has to correlate it with an overwritten last outcome. For a waiting occurrence, the reader still has to.
 
 **Options**
-1. *(recommended)* **Record the outcome too.** The record also names the occurrence the trigger created and whether it started, waited or was skipped (and why). The trigger knows all of this when it writes, so it costs no extra state. Then a reader of the record never has to correlate it with a last outcome that gets overwritten.
-2. **Record the misfire decision only, and say so.** Add to REQ-242's notes that the record describes the misfire policy's decision, and that whether the occurrence ran is in its own outcome (REQ-231). This is the cheapest option, but a consumer that wants to say "and nothing ran" cannot find out once the last outcome is overwritten.
+1. *(recommended)* **Say what "waiting" means.** Add to REQ-242's notes that the record describes each occurrence as it was in that write, and that it names the occurrence so a reader can look up whether a waiting one later started or was skipped. Annotation only. This assumes that occurrences are kept as long as the record. If they are not, take option 2.
+2. **Update the record.** When a waiting occurrence named in a REQ-242 record starts (REQ-224) or is skipped (REQ-237), record that in the record in the same write. The record is then always current, but it gets a second writer, and two more requirements change.
 
 **Ready to apply (option 1)**
 ```json
 { "id": "REQ-242",
-  "ears": {
-    "when": "a recurring job is triggered after one or more due instants were missed",
-    "shall": "record in the job store which due instants were missed (the first, the last and how many), how the misfire policy handled them and what became of the occurrence it created (started, waiting or skipped, with the reason), in the same compare-and-set that advances nextRunAt, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" } }
-```
-(If F-1 option 1 is also taken, merge the two: F-1's `when`, plus this finding's "what became of the occurrence it created". The schedule-change case creates none.)
-
----
-
-## F-3 · ambiguity · low — REQ-240's notes: "never more than one Unroutable job" holds only for Skip and Queue
-<!-- finding: ambiguity | Probe_OneUnroutablePerJob | REQ-225,REQ-240 -->
-
-**Requirements involved**
-- REQ-240: *When an occurrence of a recurring job starts while an earlier occurrence of the same recurring job has an unroutable job, the system shall cancel that unroutable job with reason Superseded in the same write that starts the new occurrence.* Notes: *"… so a recurring job never holds more than one Unroutable job and only one runs when a handler comes back."*
-- REQ-225: under Allow and CancelPrevious, an occurrence created while an earlier job is unfinished starts too.
-
-**What happens** (TLC counter-example, `Probe_OneUnroutablePerJob`, `Recurring_P_OneUnroutable.cfg`, 6 states). `tenant-sync` has overlap Allow:
-1. An operator adds `tenant-sync` at runtime (REQ-208).
-2. The operator triggers it now; the job is enqueued (REQ-226, REQ-221).
-3. The operator triggers it again. The first job is still enqueued, so Allow starts the second one too (REQ-225). Nothing is Unroutable yet, so REQ-240 does nothing.
-4. No running worker lists the handler. The first job is marked Unroutable (jobs REQ-124).
-5. The second job is marked Unroutable too. **The recurring job holds two Unroutable jobs. When the handler comes back, jobs REQ-125 returns both, and both run.**
-
-The same happens with scheduled occurrences. It also happens under CancelPrevious: an earlier job whose cancellation REQ-225 requested while it was Processing loses its lease, goes back to Enqueued, and becomes Unroutable beside the newer job. That case was checked on a scratch copy, `Recurring_P_OneUnroutable.cfg` with CancelPrevious only and 3 slots, and was reached in 8 states. Under Skip and Queue the claim holds: `Note240_OneUnroutableSkipQueue` passes in `Recurring_F_RerouteOverlap.cfg` (653,248 distinct states) and `Recurring_F_RerouteQueue.cfg` (7,439,116).
-
-**Why** REQ-240 cancels an Unroutable job only when a *later* occurrence starts. Under Allow, two jobs can be started before either becomes Unroutable. The note's reasoning was written for Skip and Queue (run-2 F-1). Run 3 extended the sentence to every policy but kept the note's wording. Behaviour is fine, because Allow permits the overlap. Only the note promises more than the requirements give.
-
-**Options**
-1. *(recommended)* **Scope the note.** Change it to "under Skip and Queue a recurring job never holds more than one Unroutable job …; under Allow and CancelPrevious, jobs started side by side can all become Unroutable and all run when the handler comes back, which those policies permit." Annotation only.
-2. **Make it true for every policy.** Add a requirement that when a recurring job's occurrence job becomes Unroutable, its earlier Unroutable jobs are cancelled as Superseded. That is new behaviour in the jobs/recurring seam for no correctness gain under Allow. Not recommended.
-
-**Ready to apply (option 1)**
-```json
-{ "id": "REQ-240",
-  "notes": "<existing notes, with 'so a recurring job never holds more than one Unroutable job and only one runs when a handler comes back' replaced by: 'so under Skip and Queue a recurring job never holds more than one Unroutable job and only one runs when a handler comes back (under Allow and CancelPrevious, jobs started side by side can all become Unroutable and all run when it comes back, which those policies permit; refiner-model run 4 F-3)'>" }
+  "notes": "<existing notes> refiner-model run 5 F-3: the record describes each occurrence as it was in the write that moved nextRunAt; a waiting one may later start (REQ-224) or be skipped (REQ-237), which the record does not follow. It names the occurrence so that its later state can be looked up." }
 ```
 
 ---
 
 ## Modeling assumptions
-These are decisions taken where the sentences were silent. Each one shapes the results above; if one is wrong, say so and rerun. A-1 to A-20 are from runs 1 to 3; changes are marked.
+These are decisions taken where the sentences were silent. Each one shapes the results above; if one is wrong, say so and rerun. A-1 to A-24 are from runs 1 to 4; changes are marked.
 | # | Assumption | Affects |
 |---|---|---|
 | A-1 | No clock. Each job keeps a count of due instants passed since nextRunAt was set (0, 1, "2 or more"), and time passing is a nondeterministic step. "nextRunAt computed from now" resets the count to 0. | REQ-215, REQ-216, REQ-227, REQ-204, REQ-206, REQ-241, INV-210, REQ-242 |
-| A-2 | REQ-216's compare-and-set is one atomic step, so INV-203 and SCN-200 hold by construction. *(run 4)* So does "in the same compare-and-set" in REQ-242: the record is written in the trigger step. | INV-203, SCN-200, REQ-242 |
+| A-2 | REQ-216's compare-and-set is one atomic step, so INV-203 and SCN-200 hold by construction. So does "in the same store write" in REQ-242: the record is written in the step that moves nextRunAt. | INV-203, SCN-200, REQ-242 |
 | A-3 | The newest due instant is late or on time by nondeterministic choice. With two or more instants due, the older ones are always missed, which assumes the schedule interval exceeds MisfireThreshold. | REQ-217–REQ-219, REQ-234, INV-207, REQ-242 |
-| A-4 | RunAll(max) is modeled with max = 1, which makes it indistinguishable from RunOnce. | REQ-219 |
+| A-4 | RunAll(max) is modeled with max = 1, which makes it indistinguishable from RunOnce. So REQ-242's "whether each" is checked for one occurrence. | REQ-219, REQ-242 |
 | A-5 | A trigger creates at most one occurrence. | REQ-216–REQ-219 |
 | A-6 | Every modeled node has the worker registered. A node declares exactly what its release declares, and "running" means up. What nodes publish in their heartbeat (declared names and each name's definition hash) is known to the scheduler at once; heartbeat expiry is not modeled. The scheduler (triggers, orphan sweep, REQ-241) and jobs REQ-125's handler registration need some running worker (hosting REQ-40). | REQ-203–REQ-207, REQ-216, REQ-241 |
 | A-7 | REQ-224 is a separate system step after the earlier job finishes. | REQ-224 |
-| A-8 | At node start, REQ-203 and REQ-204 are applied together for every declared name. The store is keyed by name, so INV-200 and SCN-207 hold by construction. | REQ-203, REQ-204, INV-200, SCN-207 |
+| A-8 | At node start, REQ-203 and REQ-204 (and now REQ-242's schedule-change record) are applied together for every declared name. The store is keyed by name, so INV-200 and SCN-207 hold by construction. | REQ-203, REQ-204, INV-200, SCN-207, REQ-242 |
 | A-9 | Overlap, misfire and orphan policies are fixed per job for a whole run. | REQ-205, REQ-207, REQ-212, REQ-221–REQ-225 |
 | A-10 | jobs.Job is reduced to Enqueued / Processing / Failed / Succeeded / DeadLettered / Cancelled / Unroutable plus a "handler still executing" flag (lease lost, jobs REQ-132; abandoned on timeout, jobs REQ-138/REQ-186). jobs REQ-125 (Unroutable → Enqueued) can happen whenever a worker runs. | INV-204, REQ-221–REQ-225, REQ-239, REQ-240 |
 | A-11 | Occurrences whose job is final in the jobs module (not Unroutable) free their slot (modeling artefact). | all |
 | A-12 | INV-204 is checked as written (`Inv_NoOverlapProcessing`, the Processing state). `Inv_NoOverlapRunning` (any executing handler) is kept only to show the window REQ-238 accepts. | INV-204, REQ-238 |
 | A-13 | definitionHash is the hash of the code definition last applied. A runtime edit under AllowRuntimeOverride changes the stored definition but not the hash, so REQ-241 never fires because of a runtime edit. | REQ-204, REQ-212, REQ-241 |
 | A-14 | Configuration-defined jobs are not modeled (INV-209 and REQ-232 are `may`), so REQ-236 is checked for code-defined names only. | INV-209, REQ-232, REQ-236 |
-| A-15 | The same-trigger warnings from `validate` (REQ-222/REQ-223/REQ-225/REQ-235 with REQ-221) are each one action, with complementary and exhaustive guards. *(run 4)* REQ-242 is an `invariant` with a `when` clause; it is modeled as one more consequence of the trigger event (REQ-216–REQ-220), not as a state predicate. | REQ-242 |
+| A-15 | The same-trigger warnings from `validate` (REQ-222/REQ-223/REQ-225/REQ-235 with REQ-221; REQ-205/REQ-207) are each one action, with complementary and exhaustive guards. REQ-242 is an `invariant` with a `when` clause; it is modeled as one more consequence of the trigger and schedule-change events, not as a state predicate. | REQ-242 |
 | A-16 | REQ-236's and REQ-210's "fail the host's start" is abstracted as the node staying down. The hosting module owns the node's states. | REQ-236 |
 | A-17 | One switch remains: `RerouteOn` explores jobs REQ-125 only in `MainR`, `F_RerouteOverlap`, `F_RerouteQueue` and SCN-215, so the run-1 fixes and the Unroutable rules are judged separately. | INV-204, REQ-240 |
-| A-18 | REQ-240 is applied to every start: REQ-221, REQ-224 and REQ-225 (Allow and CancelPrevious). "Earlier" means created before, in creation order. *(run 4)* Confirmed by the owner (run-3 F-1). | REQ-240, REQ-225 |
+| A-18 | REQ-240 is applied to every start: REQ-221, REQ-224 and REQ-225 (Allow and CancelPrevious). "Earlier" means created before, in creation order. Confirmed by the owner (run-3 F-1). | REQ-240, REQ-225 |
 | A-19 | REQ-240's start and cancel are one atomic step, so jobs REQ-125 cannot return the job to Enqueued between them. | REQ-240, INV-204 |
 | A-20 | REQ-241 is a reconciliation step, not a scheduled trigger, so INV-210 does not stop it during maintenance. Whether the schedule changed is a nondeterministic choice, as in REQ-204. | REQ-241, INV-210 |
-| A-21 | *(new)* REQ-242's record is abstracted to a count of records per name (0, 1, "2 or more"). Its content (first, last, how many, how handled) is not modeled beyond the trigger's `miss` field. The count is never reset: the model has no retention, and the sentence keeps the record for RetentionDeadLettered whatever happens to the definition, so a record outlives a removed or orphaned job. | REQ-242 |
-| A-22 | *(new)* `missRec` is written only by `Trigger` and read by no guard or update, so states that differ only in it have the same futures. The five 3-slot Queue cfgs, which check nothing about REQ-242, use `VIEW ViewNoRec` to stay at run-3 size. Every other cfg explores `missRec` in full. | checks in the Queue cfgs |
-| A-23 | *(new)* "Missed" in REQ-242 is REQ-234's: an instant more than MisfireThreshold late. A trigger with only the newest instant late (count 1) records a miss; with only an on-time newest instant it records nothing. | REQ-242, REQ-234 |
-| A-24 | *(new)* Schemas are not modeled. The initial store holds no recurring job, which is what REQ-236 now says a store without a Bellhop schema holds. That every schema version stores name and origin (REQ-236 notes, TECH-127) is taken as given. | REQ-236 |
+| A-21 | *(changed)* REQ-242's record is abstracted to, per name, a count of records (0, 1, "2 or more"), how the latest one says the instants were handled (`Started` / `Waiting` / `Skipped` naming the occurrence created in that write, `Misfire`, or `Schedule`), and that occurrence. "First, last and how many" are not modeled. The count is never reset: the model has no retention, and a record outlives a removed or orphaned job. | REQ-242 |
+| A-22 | *(changed)* `missRec` is written only by `Trigger` and the schedule-change steps, and read by no guard or update, so states that differ only in it have the same futures. The five 3-slot Queue cfgs, which check nothing about REQ-242, use `VIEW ViewNoRec`. Every other cfg explores `missRec` in full. | checks in the Queue cfgs |
+| A-23 | "Missed" for a trigger is REQ-234's: an instant more than MisfireThreshold late. A trigger with only the newest instant late records a miss; with only an on-time newest instant it records nothing. | REQ-242, REQ-234 |
+| A-24 | Schemas are not modeled. The initial store holds no recurring job, which is what REQ-236 says a store without a Bellhop schema holds. | REQ-236 |
+| A-25 | *(new)* At a schedule change, an active job with two or more instants passed has missed the older ones (A-3) and is always recorded. With only the newest instant passed, whether it counts as missed is a nondeterministic choice, because REQ-234 defines "missed" only for a trigger (F-2). Only an *active* job's schedule change writes a record, as the sentence says. | REQ-242, REQ-204, REQ-212, REQ-241 |
 
 ## Coverage
 | Modeled | Skipped (reason) |
@@ -203,9 +210,9 @@ These are decisions taken where the sentences were silent. Each one shapes the r
 | REQ-201–REQ-208, REQ-211–REQ-227, REQ-233–REQ-237, REQ-239–REQ-242, INV-200, INV-201, INV-203, INV-204, INV-206, INV-207, INV-210, INV-211, SCN-200–SCN-215 | REQ-200, REQ-228, REQ-229, REQ-230, INV-202, INV-208 (need a real clock: time zones, DST, validity window) · REQ-209, REQ-210 (schedule/time-zone validity not representable) · INV-205 (no exceptions or lock waits in the model) · REQ-231 (bookkeeping, nothing depends on it) · REQ-232, INV-209 (strength `may`) · REQ-238 (`info`; shown by `Inv_NoOverlapRunning`) |
 
 Some modeled items are not judged:
-- INV-200, INV-203, SCN-200 and SCN-207 hold by construction (A-2, A-8). So do REQ-242's "exactly one record per trigger" and "same compare-and-set" (A-2). The model checks that nothing else writes a record and that every missed trigger writes one, under every misfire policy.
-- REQ-242's retention ("as long as dead-lettered jobs are kept") needs a clock.
-- REQ-219 is modeled only with max = 1 (A-4).
+- INV-200, INV-203, SCN-200 and SCN-207 hold by construction (A-2, A-8). So do REQ-242's "one record per move" and "same store write" (A-2). The model checks that nothing else writes a record, that every move past missed instants writes one, and that the record agrees with what that write did.
+- REQ-242's retention ("as long as dead-lettered jobs are kept") needs a clock. Its "first, last and how many" are not modeled (A-21).
+- REQ-219 and REQ-242's "whether each" are modeled only with max = 1 (A-4).
 - REQ-236 is checked for code-defined names only (A-14).
 - REQ-241's settling is checked as "eventually", not "within a time".
 - The cancel reason Superseded (REQ-240) is not modeled.
@@ -214,37 +221,42 @@ Some modeled items are not judged:
 From `specs/model/recurring`: `sh gen_cfgs.sh` regenerates the non-scenario cfgs, and `sh run_all.sh` reruns every check below. Each check is one `run_tlc.py Recurring.tla --config <cfg> --stop-at-first --workers 4` call; scenario cfgs add `--no-deadlock`. `run_all.sh <name>` runs one check. The `run*.json`/`run*.md` outputs are gitignored.
 
 - TLC 2.19 throws "unexpected exception" when `-continue` has to rebuild many traces, so every check uses `--stop-at-first`. The run that produced this report grepped every output for that message and found none.
-- `run_all.sh` wraps each run in `timeout` because `run_tlc.py --timeout` does not stop TLC on Windows. This run used `TLC_TIMEOUT=290` for the five 3-slot Queue cfgs and `TLC_TIMEOUT=160` for the rest, the same limits as run 3. None hit the limit. Five other modules were being model-checked on the same machine at the same time, so the times are not comparable with run 3.
+- `run_all.sh` wraps each run in `timeout` because `run_tlc.py --timeout` does not stop TLC on Windows. This run used `TLC_TIMEOUT=300` for the five 3-slot Queue cfgs and `TLC_TIMEOUT=200` for the rest. None hit the limit. Four other modules were being model-checked on the same machine at the same time, so the times are not comparable with run 4.
 - Don't start a second TLC run in this folder while one is running: TLC's `-cleanup` removes the shared `states/` folder and the other run fails with "when reading the disk".
+- The vacuity checks quoted above (each kind of record reachable; a `Schedule` record written by REQ-204 and by REQ-241) were run from a scratch module that extended `Recurring` and was then deleted. They are not part of `run_all.sh`.
 
 | Check | Config | Result |
 |---|---|---|
-| Main: INV-201, INV-210 (both), REQ-233, SCN-200/202, REQ-237, REQ-239 skip rule, INV-204, REQ-242 (both properties) (1 job, 2 slots, Skip/Queue × RunOnce/Skip) | `Recurring.cfg` | passed, 482,136 distinct, 5 s |
-| Main with jobs REQ-125 | `Recurring_MainR.cfg` | passed, 482,136 distinct, 5 s |
-| **REQ-242** under RunOnce, Skip and RunAll, plus the main checks | `Recurring_Misfire.cfg` | passed, 722,628 distinct, 7 s |
-| Definitions: REQ-211/SCN-205, INV-206/SCN-212, SCN-208, INV-211/SCN-214, REQ-236, REQ-237 (2 jobs, 2 nodes, both orphan policies) | `Recurring_Defs.cfg` | passed, 44,552 distinct, 2 s |
-| Overlap, all four policies, 2 slots: REQ-233, INV-204, REQ-239 skip rule | `Recurring_OverlapAll.cfg` | passed, 653,248 distinct, 5 s |
-| Overlap Queue(1), 3 slots: REQ-233, REQ-237, REQ-239 skip rule | `Recurring_OverlapQueue.cfg` | passed, 7,439,116 distinct, 93 s |
-| Overlap Queue(2), 3 slots: REQ-233, REQ-239 skip rule | `Recurring_OverlapQueue2.cfg` | passed, 7,191,148 distinct, 97 s |
-| Run-1 F-1: INV-204, Queue(1), 3 slots | `Recurring_F_WaitingRace.cfg` | passed, 7,439,116 distinct, 92 s |
-| Run-1 F-2: probe + INV-204, Queue(2), 3 slots | `Recurring_P_QueueTwoWaiters.cfg` | passed, 7,191,148 distinct, 94 s |
-| Run-1 F-5: probe, one node, 3 releases | `Recurring_P_StaleDefinition.cfg` | passed, 48,900 distinct, 1 s |
-| Run-1 F-6: probe | `Recurring_P_RuntimeTakenOver.cfg` | passed, 48,900 distinct, 1 s |
-| Run-1 F-7: REQ-239 skip rule | `Recurring_P_UnroutableBlocks.cfg` | passed, 653,248 distinct, 5 s |
-| Run-2 F-1: INV-204, skip rule and the REQ-240 note (Skip/Queue) with jobs REQ-125 and REQ-240, all four policies | `Recurring_F_RerouteOverlap.cfg` | passed, 653,248 distinct, 5 s |
-| Run-2 F-1: INV-204, REQ-233, REQ-237, skip rule and the REQ-240 note with jobs REQ-125 and REQ-240, Queue(1), 3 slots | `Recurring_F_RerouteQueue.cfg` | passed, 7,439,116 distinct, 121 s |
-| Run-2 F-2: REQ-241 settling (liveness + action property), two nodes, v1/v2 | `Recurring_Liv_Settles.cfg` | passed, 36,078 distinct, 3 s |
-| Run-2 F-2: same, two nodes, three releases, AllowRuntimeOverride | `Recurring_Liv_Settles3.cfg` | passed, 180,078 distinct, 15 s |
-| Run-2 F-2 window (probe; REQ-241 closes it one step later) | `Recurring_P_StaleDefinition2.cfg` | probe violated, 6 states, as expected |
-| Run-3 F-1: a REQ-225 start can meet an Unroutable job (probe) | `Recurring_P_Req225Unroutable.cfg` | probe violated, 5 states; now covered by REQ-240 on purpose |
-| Run-3 F-2: a trigger-now Unroutable job superseded by a scheduled start (action probe) | `Recurring_P_TriggerNowSuperseded.cfg` | action probe violated, 6 states; accepted (`run_tlc.py` labels an action-property violation "error"; the TLC message is "Action property … is violated") |
-| **F-1**: overdue instants leave the schedule without a trigger (action probe) | `Recurring_P_OverdueDropped.cfg` | action probe violated, 6 states |
-| **F-2**: a recorded RunOnce catch-up skipped by the overlap policy (action probe) | `Recurring_P_CatchUpSkipped.cfg` | action probe violated, 5 states |
-| **F-3**: two Unroutable jobs of one recurring job (probe, all four policies) | `Recurring_P_OneUnroutable.cfg` | probe violated, 6 states (Allow) |
+| Main: INV-201, INV-210 (both), REQ-233, SCN-200/202, REQ-237, REQ-239 skip rule, INV-204, REQ-242 (three properties) (1 job, 2 slots, Skip/Queue × RunOnce/Skip) | `Recurring.cfg` | passed, 1,246,728 distinct, 15 s |
+| Main with jobs REQ-125 | `Recurring_MainR.cfg` | passed, 1,246,728 distinct, 16 s |
+| **REQ-242** under RunOnce, Skip and RunAll, plus the main checks | `Recurring_Misfire.cfg` | passed, 2,153,292 distinct, 23 s |
+| Definitions: REQ-211/SCN-205, INV-206/SCN-212, SCN-208, INV-211/SCN-214, REQ-236, REQ-237, REQ-242 at node start (2 jobs, 2 nodes, both orphan policies) | `Recurring_Defs.cfg` | passed, 400,968 distinct, 29 s |
+| Overlap, all four policies, 2 slots: REQ-233, INV-204, REQ-239 skip rule | `Recurring_OverlapAll.cfg` | passed, 1,736,064 distinct, 17 s |
+| Overlap Queue(1), 3 slots: REQ-233, REQ-237, REQ-239 skip rule | `Recurring_OverlapQueue.cfg` | passed, 7,439,116 distinct, 141 s |
+| Overlap Queue(2), 3 slots: REQ-233, REQ-239 skip rule | `Recurring_OverlapQueue2.cfg` | passed, 7,191,148 distinct, 124 s |
+| Run-1 F-1: INV-204, Queue(1), 3 slots | `Recurring_F_WaitingRace.cfg` | passed, 7,439,116 distinct, 120 s |
+| Run-1 F-2: probe + INV-204, Queue(2), 3 slots | `Recurring_P_QueueTwoWaiters.cfg` | passed, 7,191,148 distinct, 101 s |
+| Run-1 F-5: probe, one node, 3 releases | `Recurring_P_StaleDefinition.cfg` | passed, 76,500 distinct, 2 s |
+| Run-1 F-6: probe | `Recurring_P_RuntimeTakenOver.cfg` | passed, 76,500 distinct, 2 s |
+| Run-1 F-7: REQ-239 skip rule | `Recurring_P_UnroutableBlocks.cfg` | passed, 1,736,064 distinct, 15 s |
+| Run-2 F-1: INV-204, skip rule and the REQ-240 note (Skip/Queue) with jobs REQ-125 and REQ-240, all four policies | `Recurring_F_RerouteOverlap.cfg` | passed, 1,736,064 distinct, 16 s |
+| Run-2 F-1: INV-204, REQ-233, REQ-237, skip rule and the REQ-240 note with jobs REQ-125 and REQ-240, Queue(1), 3 slots | `Recurring_F_RerouteQueue.cfg` | passed, 7,439,116 distinct, 148 s |
+| Run-2 F-2: REQ-241 settling (liveness + action property) and REQ-242, two nodes, v1/v2 | `Recurring_Liv_Settles.cfg` | passed, 57,834 distinct, 6 s |
+| Run-2 F-2: same, two nodes, three releases, AllowRuntimeOverride | `Recurring_Liv_Settles3.cfg` | passed, 288,234 distinct, 34 s |
+| Run-2 F-2 window (probe; REQ-241 closes it one step later) | `Recurring_P_StaleDefinition2.cfg` | probe violated, 4 states, as expected |
+| Run-3 F-1: a REQ-225 start can meet an Unroutable job (probe) | `Recurring_P_Req225Unroutable.cfg` | probe violated, 5 states; covered by REQ-240 on purpose |
+| Run-3 F-2: a trigger-now Unroutable job superseded by a scheduled start (action probe) | `Recurring_P_TriggerNowSuperseded.cfg` | action probe violated, 6 states; accepted (`run_tlc.py` labels an action-property violation "error") |
+| **Run-4 F-1** regression: overdue instants dropped by a schedule change are recorded (REQ-242's three properties) | `Recurring_F_OverdueRecorded.cfg` | passed, 76,500 distinct, 2 s |
+| Run-4 F-2: a RunOnce catch-up skipped by the overlap policy (action probe; the record now says `Skipped`) | `Recurring_P_CatchUpSkipped.cfg` | action probe violated, 5 states, as expected |
+| Run-4 F-3: two Unroutable jobs of one recurring job (probe, all four policies) | `Recurring_P_OneUnroutable.cfg` | probe violated, 6 states (Allow); the notes now say so |
+| **F-1**: an active job with missed instants paused, no record (action probe) | `Recurring_P_OverduePaused.cfg` | action probe violated, 5 states |
+| **F-1**: the same through the orphan sweep (action probe) | `Recurring_P_OverdueOrphaned.cfg` | action probe violated, 7 states |
+| **F-2**: a schedule change drops a passed, not-yet-triggered instant with no occurrence and no record (action probe) | `Recurring_P_PassedInstantDropped.cfg` | action probe violated, 4 states |
+| **F-3**: a record saying "waiting", then REQ-237 skips that occurrence (action probe) | `Recurring_P_RecordedWaiterSkipped.cfg` | action probe violated, 6 states |
 | REQ-238 window (info) | `Recurring_F_RunningHandlers.cfg` | `Inv_NoOverlapRunning` violated, 7 states, as REQ-238 accepts |
-| SCN-201, 203, 204, 206, 209 (legs `SCN209`, `SCN209b`), 210, 211, 213, 215 | `Recurring_SCNnnn.cfg` | every trap violated as expected (2–6 states): all reachable |
+| SCN-201, 203, 204, 206, 209 (legs `SCN209`, `SCN209b`), 210, 211, 213, 215 | `Recurring_SCNnnn.cfg` | every trap violated as expected (2–4 states): all reachable |
 
-Deadlock checking is on in every non-scenario run, and none was found. Probes (`Probe_…`, `ProbeAct_…`) and `Note240_…` are modeling aids, not requirements. Each probe asserts that a situation is unreachable; `Note240_OneUnroutableSkipQueue` checks a claim made in REQ-240's notes. The run-3 vacuity check for `Liv_DefinitionSettles` (REQ-241 removed) was not repeated. The only model change since then is `missRec`, which no guard reads.
+Deadlock checking is on in every non-scenario run, and none was found. Probes (`Probe_…`, `ProbeAct_…`) and `Note240_…` are modeling aids, not requirements. Each probe asserts that a situation is unreachable; `Note240_OneUnroutableSkipQueue` checks a claim made in REQ-240's notes.
 
 ## Next
-Apply the chosen options to `specs/recurring.json` with the `refiner-requirements` skill (it validates and diffs), then run `refiner-model` again. F-1 changes REQ-242's sentence; F-2 changes it too if option 1 is taken (merge the two snippets). F-3 is notes only. If F-1 option 1 is taken, integrations REQ-403 needs no change, because it already reads REQ-242's record.
+Apply the chosen options to `specs/recurring.json` with the `refiner-requirements` skill (it validates and diffs), then run `refiner-model` again. F-1 and F-2 both concern which instants REQ-242 records; their recommended options fit together (REQ-234 defines "missed" for moves without a trigger, and REQ-242 gains the pause, orphan and removal paths). F-3 is notes only. If F-1 option 1 is taken, integrations REQ-403 needs no change, because it already reads REQ-242's record. It will then alert instants dropped by a pause too.
