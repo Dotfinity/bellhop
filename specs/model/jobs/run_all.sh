@@ -14,6 +14,10 @@ for c in Jobs_Holds Jobs_HoldsQ Jobs_CHK Jobs_CHK2 Jobs_CHK3 Jobs_CHK4 Jobs_CHK5
 for c in Jobs_LIV101a Jobs_LIV101b Jobs_LIV29; do run Jobs $c; done
 # Jobs_GAP6 (run 3 F-2) holds by construction since run 4 and its two-slot space exceeds 170 s.
 for c in Jobs_GAP1 Jobs_GAP2 Jobs_GAP5 Jobs_GAP7 Jobs_GAP8 Jobs_P2 Jobs_P3 Jobs_P4 Jobs_P5 Jobs_SCN100 Jobs_SCN101 Jobs_SCN102 Jobs_SCN111 Jobs_SCN112 Jobs_SCN115 Jobs_SCN120 Jobs_SCN122 Jobs_SCN124 Jobs_SCN124s Jobs_SCN125; do run Jobs $c --no-deadlock; done
+# Run 8: probes over the unchanged Jobs.tla for a cancellation requested after the node's check (REQ-190 and
+# hosting REQ-29 notes). Reach8_ action properties are expected violated (TLC reports them as errors); Chk8_Exits holds.
+for c in Jobs_AfterChk_O Jobs_AfterChk_R Jobs_AfterChk_EC Jobs_AfterChk_ED Jobs_AfterChk_X Jobs_AfterChk_X1; do run Jobs_AfterChk $c --no-deadlock; done
+for c in Jobs_AfterChk_T Jobs_AfterChk_ST; do run Jobs_AfterChkG $c --no-deadlock; done   # Spec8: history variable g8
 for c in Jobs_Unique Jobs_Unique_U1 Jobs_Unique_U2 Jobs_Unique_U3 Jobs_Unique_U4 Jobs_Unique_U5 Jobs_Unique_SCN105; do run Jobs_Unique $c --no-deadlock; done
 for c in Jobs_Throttle Jobs_Throttle_Holds Jobs_Throttle_HoldsK Jobs_Throttle_T0 Jobs_Throttle_T2 Jobs_Throttle_T3 Jobs_Throttle_L0 Jobs_Throttle_L1 Jobs_Throttle_L2 Jobs_Throttle_L3; do run Jobs_Throttle $c; done
 for c in Jobs_Flow_Holds Jobs_Flow_HoldsC Jobs_Flow_HoldsU Jobs_Flow_F1 Jobs_Flow_F2 Jobs_Flow_F3 Jobs_Flow_F4 Jobs_Flow_GAP3 Jobs_Flow_GAP3b Jobs_Flow_GAP4 Jobs_Flow_GAP5 Jobs_Flow_GAP6 Jobs_Flow_F5 Jobs_Flow_P1 Jobs_Flow_P1b Jobs_Flow_SCN108 Jobs_Flow_SCN114 Jobs_Flow_SCN118 Jobs_Flow_SCN119 Jobs_Flow_SCN121; do run Jobs_Flow $c --no-deadlock; done
