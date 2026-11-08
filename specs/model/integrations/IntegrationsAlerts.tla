@@ -1,5 +1,5 @@
 ------------------------- MODULE IntegrationsAlerts -------------------------
-\* Generated from integrations.json (specHash 05969b22d40d) — FEAT-400 Notifications: who evaluates.
+\* Generated from integrations.json (specHash 60631c2ae000) — FEAT-400 Notifications: who evaluates.
 \* Edit the requirements, not this file. Every action/property carries an @req comment.
 \* Run 2: the alerts registration and the notification lease (INV-411, REQ-438), the node-lost and
 \* missed-occurrence triggers (REQ-404, REQ-403), SCN-404, SCN-405, and run 1's assumption A-11 (two nodes
@@ -14,6 +14,9 @@
 \* and a later write that checks the lease and its condition at the time it lands and fails (changing
 \* nothing) if either no longer holds. A node that paused keeps its pending write and may land it after it
 \* took the lease back.
+\* Run 6 (handoff: INV-412 and INV-413 modified, run-5 F-23 option 1 applied): handled marks belong to the
+\* rule's name and event settings. This module has one rule with fixed settings, so its marks (handledS)
+\* are that version's marks and no action changes; rule versions are in IntegrationsAlertEvents.tla.
 \*   RuleKnownAtStart : TRUE: the store already records the rule; FALSE: it is new and INV-413 applies.
 \*   DeliveryWrite : what INV-412's write (delivery + handled mark) checks.
 \*     "conditional" : @req INV-412 INV-411  the lease, and that the event is still not marked handled.

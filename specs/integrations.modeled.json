@@ -1,7 +1,7 @@
 {
   "module": "integrations",
-  "specHash": "05969b22d40d843e2560b7255c1db110572df3b057c3dc47d388c0cf764b5b78",
-  "generatedAt": "2026-11-08T12:00:00Z",
+  "specHash": "60631c2ae0002044b1f3da5c2568767deaeff1602ab4fe25d5c7deaa6579063d",
+  "generatedAt": "2026-11-08T18:00:00Z",
   "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsAlertEvents.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
   "items": {
     "REQ-400": {
@@ -22,7 +22,7 @@
     "REQ-403": {
       "hash": "bbb0a1a5c5d593fde58d3a31fe4fb1b2da2ccef22d87094fba42a70b0fd95d04",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla HandleMissed: missed instants found through recurring REQ-242 records, written by a trigger or (run 5) by a schedule change (REQ-227); Liv_MissedAlerted holds (462 states), fails without REQ-242 on the schedule-change instant (_noReq242, 8 steps)"
+      "note": "IntegrationsAlertEvents.tla HandleMissed: missed instants found through recurring REQ-242 records, written by a trigger, a schedule change (REQ-227) or (run 6) a pause, orphaning or removal (PauseMissed); Liv_MissedAlerted holds (1,282 states), a pause-recorded instant is alerted (_pauseReach, 4 states), and without REQ-242 the pause-dropped instant is lost (_noReq242, 8 states)."
     },
     "REQ-404": {
       "hash": "88df2c741a7379689aca56f470de10a4e8a52d4ad47ff5cb94fc9d78b37d54b8",
@@ -220,14 +220,14 @@
       "note": "model/integrations/IntegrationsAlerts.tla Scn405_NoLeaseNoDelivery: holds in every alerts cfg (949 states in the main cfg)"
     },
     "INV-412": {
-      "hash": "ccfee90d0fe5dba3e72351f4885262669991d84ca50be0485666aef0c31ffcb2",
+      "hash": "98981fd32deed31ca37eef0bbff670bdcc40eab9b62a764b093e0088e69e72ae",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla (run 5): read, then a later write that checks the lease and that the event is still unhandled, and fails otherwise; one delivery per event and every event alerted across a crash, a restart and a lease pause (949 states); run 4's lease-only write still alerts twice (_staleWrite, 12 steps, counterfactual). IntegrationsAlertEvents.tla: one delivery per recorded change, every dead-letter and every REQ-242 miss record alerted, including an instant dropped by a schedule change (462 states). What 'handled for that rule' is attached to once a rule is known by its settings: run-5 F-23"
+      "note": "IntegrationsAlertEvents.tla (run 6): marks per name and event settings, as written. One delivery per recorded change and every dead-letter and REQ-242 miss record alerted, including one dropped by a pause (1,282 states). A version's owed event is alerted after a rollback (_editBack 14,474, _settingsBack 13,187; per-name counterfactuals fail, 10 states). An event alerted by one version is alerted again by another after a threshold/tolerance rollback or a rolling-deploy flap (_settingsBack 7 states, _settingsFlap 8): F-24; option 1 (delivered per name, start per version) holds (_settingsBackSplit 7,167, _settingsFlapSplit 12,753). IntegrationsAlerts.tla (one version, unchanged logic): read then conditional lease-checked write, one delivery and every event alerted across crash, restart and lease pause (949)."
     },
     "INV-413": {
-      "hash": "803ebcd7ca21afdcfbbb0cc4ab12063824a8c0a3c8eb3b993a92704a75216a46",
+      "hash": "3e8a00c4b5e50f1a08882b1203733d92090e65c8706741d2b69ae23318bc5c9c",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla (run 5): records keyed by name and event settings and kept; an edited trigger starts at the store's present (_editTrigger, 3,215 states; name-only counterfactual fails, 5 steps); a rule added later alerts no older event and every later one (_newRule, 1,061); edit then rollback skips an owed dead-letter if marks are per name (_editBack, 9 steps) and not if per name and settings (_editBackPerSettings, 14,474): F-23. IntegrationsAlerts.tla: the conditional, lease-checked write across a handover holds (_newRule, 2,408); unchecked and lease-only counterfactuals lose an event (14 steps each)"
+      "note": "IntegrationsAlertEvents.tla (run 6): records and start marks per name and event settings; an edited trigger starts at the store's present (_editTrigger 3,215; name-only counterfactual fails, 5 states); a rule added later alerts no older event and every later one (_newRule 1,061); run-5 F-23 resolved for trigger and threshold/tolerance edits; F-24 is the duplicate across versions. IntegrationsAlerts.tla: the conditional, lease-checked write across a handover holds (_newRule 2,408); unchecked and lease-only counterfactuals lose an event (12 and 14 states)."
     },
     "SCN-406": {
       "hash": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11",
