@@ -41,7 +41,7 @@ def run(cfg_path, label, text, no_deadlock):
     tmp = HERE / f"_{cfg_path.stem}__{label}.cfg"
     tmp.write_text(text + "\n")
     out = HERE / "runs" / f"{cfg_path.stem}__{label}"
-    cmd = [sys.executable, str(RUN_TLC), "Redis.tla", "--config", tmp.name, "--workers", "4",
+    cmd = [sys.executable, str(RUN_TLC), "Redis.tla", "--config", tmp.name, "--workers", os.environ.get("TLC_WORKERS", "4"),
            "--stop-at-first", "--timeout", "150", "--out", f"{out}.json", "--md", f"{out}.md"]
     if no_deadlock: cmd.append("--no-deadlock")
     try:

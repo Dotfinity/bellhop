@@ -1,13 +1,14 @@
 ----------------------------- MODULE Redis -----------------------------
 \* Generated from specs/redis.json - edit the requirements, not this file.
-\* Run 5 (2026-11-08): regenerated from handoff.json (changes: REQ-507, REQ-528, REQ-530: any marker
-\* read, including the claim, heartbeat and completion scripts, triggers them) and the unhashed glossary
-\* change to resetSinceClaim (last-reset compared with the last-reset value read at the claim; REQ-521,
-\* REQ-522 re-checked). Impacted ids re-checked: LIV-501, REQ-523, REQ-526, SCN-500, SCN-503..SCN-510.
-\* The run-4 switches ReadsDetect (REQ-507/528/530) and OptClaimLastReset (resetSinceClaim) are now the
-\* requirements and were removed. Switches that are not requirements: TrackHidden (history variables)
-\* and SplitCAS (A-19 relaxed: REQ-507's read and its compare-and-set are two steps); with both FALSE
-\* the extra variables (xVars) stay constant, except claimLR (now a requirement).
+\* Run 6 (2026-11-08): regenerated from handoff.json (changes: REQ-507 and REQ-528 write the marker in the
+\* same atomic step as the read that found it; REQ-507 has no compare-and-set and always logs
+\* StoreWasReset). A-19 is now the requirement, so DetectReset and InitMarker stay one step. The run-5
+\* option switch OptRetryCAS is removed. Impacted ids re-checked: LIV-501, REQ-523, REQ-526, REQ-530,
+\* SCN-500, SCN-503..SCN-510.
+\* Switches that are not requirements: TrackHidden (history variables), SplitCAS (COUNTERFACTUAL: the
+\* run-5 wording, a read followed by a separate compare-and-set) and Req523Literal (COUNTERFACTUAL: REQ-523
+\* read literally; its trigger "this node's compare-and-set in REQ-507 succeeds" never happens). With all
+\* FALSE the extra variables (xVars) stay constant, except claimLR (a requirement since run 5).
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (hosting.Node, hosting.Health, jobs.Job, jobs.Maintenance,
 \* recurring.RecurringJob) are abstracted to the few fields the redis requirements touch;
@@ -27,11 +28,10 @@ CONSTANTS Nodes,         \* hosting.Node instances (bound 2)
           MaxLosses,     \* at most this many data-loss events (environment bound)
           PolicyChange,  \* the server's maxmemory-policy may change to evicting while nodes run (failover, CONFIG SET)
           LateJoin,      \* a node may read the marker for the first time after a data loss (A-17)
-          SplitCAS,      \* model switch (not a requirement): REQ-507's read and its compare-and-set are two
-                         \*   steps, so another node's write can land between them (FALSE = A-19: atomic)
-          OptRetryCAS,   \* OPTION CHECK (not a requirement): with SplitCAS, a failed compare-and-set is a read:
-                         \*   REQ-507 applies to the marker it returns, and if that marker's last-reset value is
-                         \*   the one found (only a REQ-527 advance moved it) the node replaces it anyway
+          SplitCAS,      \* COUNTERFACTUAL (run-5 wording, not a requirement): REQ-507's read and a separate
+                         \*   compare-and-set are two steps (FALSE = run 6: one atomic step)
+          Req523Literal, \* COUNTERFACTUAL: REQ-523's trigger "this node's compare-and-set in REQ-507 succeeds"
+                         \*   read literally; REQ-507 makes no compare-and-set since run 6, so it never fires
           TrackHidden,   \* model switch: keep the history variables of Inv_HiddenOnlyIfPaused (xVars)
           MaxAdvances,   \* REQ-527 advances in one run (environment bound)
           MaxTok,        \* lease tokens issued in one run (fresh GUIDs, bounded)
@@ -53,7 +53,7 @@ ASSUME /\ WorkerNodes \subseteq Nodes /\ QueueA \subseteq Jobs
        /\ MaxLosses \in Nat /\ MaxAdvances \in Nat /\ MaxTok \in Nat
        /\ ShardByQueue \in BOOLEAN /\ FreshStore \in BOOLEAN /\ AllowStop \in BOOLEAN
        /\ UniqueKeys \in BOOLEAN /\ Recurring \in BOOLEAN /\ PolicyChange \in BOOLEAN
-       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ OptRetryCAS \in BOOLEAN /\ TrackHidden \in BOOLEAN
+       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ Req523Literal \in BOOLEAN /\ TrackHidden \in BOOLEAN
        /\ CheckHealth \in BOOLEAN /\ MemToggle \in BOOLEAN /\ MaxOutages \in Nat /\ MaxDrops \in Nat
 
 VARIABLES
@@ -299,18 +299,20 @@ Observe(n) ==
                  remembers, waitDone, hbPending, leaseLost, storeVars, envVars, histVars>>
 
 \* @req REQ-507 REQ-523  Marker missing, or older than the last value this node saw (flagged or not),
-\*   on a worker that has seen a marker since it started -> compare-and-set the server's current
-\*   time as value and last-reset value, flagged; the winner logs StoreWasReset (REQ-507) and the
-\*   ERROR + unacknowledged record (REQ-523), remembers it, and starts re-seeding. The CAS is atomic
-\*   here, so a loser reads the winner's flagged value later (A-19).
+\*   on a worker that has seen a marker since it started -> in the same atomic step as the read that
+\*   found it (run 6), replace it with the server's current time as value and last-reset value, flagged;
+\*   log StoreWasReset (REQ-507) and the ERROR + unacknowledged record (REQ-523), remember it, and start
+\*   re-seeding. Another node's later read finds the new flagged value and joins through REQ-530.
 \*   @req REQ-509 (run 4): a detection starts re-seeding, so the LeaseDuration wait (re)starts here,
 \*   from Ready and from Reconciling alike ("since it last started re-seeding").
-\*   @req REQ-523 (run 4): its trigger is "this node's compare-and-set in REQ-507 succeeds": this action only.
+\*   @req REQ-523: its trigger still reads "this node's compare-and-set in REQ-507 succeeds"; modeled as
+\*   this action (the replacement), except under the counterfactual Req523Literal (never).
 \*   @req REQ-507 (run 5): "when any read this node makes of the generation marker, including those of its
 \*   claim, heartbeat and completion scripts, finds it ...": the reads of Claim, Heartbeat and Complete
 \*   apply this action first (ReadOK below); other reads (REQ-527, REQ-510, plain looks) still happen at
-\*   any time (A-2). With SplitCAS the read (DetectRead) and the compare-and-set against what it found
-\*   are two steps; a lost compare-and-set re-seeds without reporting (DetectLose).
+\*   any time (A-2).
+\*   COUNTERFACTUAL SplitCAS (run-5 wording): the read (DetectRead) and a compare-and-set against what it
+\*   found are two steps; a lost compare-and-set re-seeds without reporting (DetectLose).
 DetectCond(n) ==
   /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
   /\ lastSeen[n] # 0
@@ -323,12 +325,10 @@ DetectRead(n) ==
   /\ foundLR' = [foundLR EXCEPT ![n] = lastReset]
   /\ MarkRead(n)
   /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, nodeVars, storeVars, envVars, histVars>>
-\* OptRetryCAS: the retry against the value now found is itself one compare-and-set.
-RetryCAS(n) == OptRetryCAS /\ marker # found[n] /\ marker # 0 /\ lastReset = foundLR[n]
 DetectReset(n) ==
   /\ IF SplitCAS
        THEN /\ casPending[n] /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"} /\ clock + 1 <= MaxGen
-            /\ marker = found[n] \/ RetryCAS(n)
+            /\ marker = found[n]
        ELSE DetectCond(n)
   /\ casPending' = [casPending EXCEPT ![n] = FALSE]
   /\ LET v == clock + 1 IN
@@ -337,8 +337,8 @@ DetectReset(n) ==
        /\ resetVal' = [resetVal EXCEPT ![n] = v]
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
   /\ StartWait(n)
-  /\ resetRec' = "unacked"
-  /\ remembers' = [remembers EXCEPT ![n] = TRUE]
+  /\ resetRec' = IF Req523Literal THEN resetRec ELSE "unacked"
+  /\ remembers' = [remembers EXCEPT ![n] = IF Req523Literal THEN remembers[n] ELSE TRUE]
   /\ learned' = [learned EXCEPT ![n] = (run[n] # NULL) \/ learned[n]]
   /\ detections' = detections + 1
   /\ falseReset' = (falseReset \/ ~pendingLoss)
@@ -350,7 +350,7 @@ DetectReset(n) ==
 
 \* @req REQ-528  Marker missing on a worker that has not seen one since it started -> write the
 \*   first marker at the lowest value, with the server's current time as its last-reset value
-\*   (run 4), flagged, only if none exists yet; INFO; start re-seeding without logging StoreWasReset
+\*   (run 4), flagged, in the same atomic step as the read that found it missing (run 6); INFO; start re-seeding without logging StoreWasReset
 \*   or recording the reset as unacknowledged (resetRec and detections are untouched).
 \*   A-17: without LateJoin a node's first marker read happens before any data loss.
 \*   Run 5: also triggered by the reads of Claim, Heartbeat and Complete (ReadOK).
@@ -390,20 +390,11 @@ Learn(n) ==
   /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, reseeded, done, remembers, leaseLost,
                  storeVars, envVars, histVars>>
 
-\* @req REQ-507 (SplitCAS only): the compare-and-set against what the node found fails because the
-\*   marker changed since its read. "in either case start re-seeding": the node reconciles the value it
-\*   now finds (A-19), without StoreWasReset ("if its own write succeeded").
-\* OptRetryCAS: the failed compare-and-set returns a marker that meets REQ-507's condition again, so the
-\*   node makes its compare-and-set against that one.
-Reread(n) == OptRetryCAS /\ (marker = 0 \/ marker < lastSeen[n])
-DetectReread(n) ==
-  /\ SplitCAS /\ casPending[n] /\ marker # found[n] /\ ~RetryCAS(n) /\ Reread(n)
-  /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
-  /\ found' = [found EXCEPT ![n] = marker]
-  /\ foundLR' = [foundLR EXCEPT ![n] = lastReset]
-  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, runAtLoss, casPending, nodeVars, storeVars, envVars, histVars>>
+\* COUNTERFACTUAL SplitCAS (run-5 wording of REQ-507): the compare-and-set against what the node found
+\*   fails because the marker changed since its read. "in either case start re-seeding": the node
+\*   reconciles the value it now finds, without StoreWasReset ("if its own write succeeded").
 DetectLose(n) ==
-  /\ SplitCAS /\ casPending[n] /\ marker # found[n] /\ ~RetryCAS(n) /\ ~Reread(n)
+  /\ SplitCAS /\ casPending[n] /\ marker # found[n]
   /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
   /\ casPending' = [casPending EXCEPT ![n] = FALSE]
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
@@ -416,9 +407,10 @@ DetectLose(n) ==
 
 \* @req REQ-507 REQ-528 REQ-530 (run 5): a worker's claim, heartbeat and completion scripts read the
 \*   marker and return it (TECH-130); if a condition of these sentences holds at that read, the node
-\*   applies it before using the script's result. Modeled as: the read happens only once none holds
-\*   (DetectReset, InitMarker and Learn are fair), and not between a SplitCAS read and its
-\*   compare-and-set (A-28).
+\*   applies it before using the script's result. Run 6 (TECH-130): the script makes the REQ-507 or
+\*   REQ-528 write itself. Modeled as: the read happens only once none holds (DetectReset, InitMarker and
+\*   Learn are fair, and the script's own write is that step), and, in the counterfactual, not between a
+\*   SplitCAS read and its compare-and-set (A-28).
 ReadOK(n) == ~DetectCond(n) /\ ~InitCond(n) /\ ~LearnCond(n) /\ ~casPending[n]
 
 \* @req REQ-507 REQ-528 REQ-530 (shall: "start re-seeding the code-defined recurring jobs, the queue
@@ -579,7 +571,7 @@ ActC_OlderRollbackOnly == (losses' > losses) => snap.marker < marker
 \* Action constraints that bound the two-loss cfgs to one shape of second loss each (scope, not
 \* requirements): during a reconciliation (Redis_Flush2*.cfg), or after the first reconciliation has
 \* ended everywhere (Redis_Unique2.cfg, Redis_Recurring2.cfg).
-\* SplitCAS scope: the window between a node's read and its compare-and-set is shorter than one
+\* SplitCAS (counterfactual) scope: the window between a node's read and its compare-and-set is shorter than one
 \* LeaseDuration (no REQ-509 wait ends inside it). Without it, a node that reads and then stalls for
 \* a whole lease is the paused node NFR-31 already describes.
 ActC_ShortCAS == (\E n \in Nodes : casPending[n]) => \A m \in Nodes : waitDone'[m] => waitDone[m]
@@ -767,7 +759,7 @@ MemChange  == /\ MemToggle /\ memHigh' = ~memHigh
 ---------------------------------------------------------------------------
 SystemStep(n) ==
   \/ Connect(n) \/ StartupNoEval(n) \/ StartupEviction(n) \/ NodeRuns(n)
-  \/ Observe(n) \/ DetectRead(n) \/ DetectReset(n) \/ DetectLose(n) \/ DetectReread(n) \/ InitMarker(n) \/ Learn(n) \/ Reseed(n) \/ FinishReconcile(n)
+  \/ Observe(n) \/ DetectRead(n) \/ DetectReset(n) \/ DetectLose(n) \/ InitMarker(n) \/ Learn(n) \/ Reseed(n) \/ FinishReconcile(n)
   \/ Advance(n) \/ PeriodicReconcile(n) \/ RewriteRecord(n) \/ ForgetReset(n)
   \/ HealthCheck(n) \/ Heartbeat(n)
 
@@ -784,7 +776,7 @@ Next ==
 Fairness ==
   /\ \A n \in Nodes : /\ WF_vars(Connect(n)) /\ WF_vars(StartupNoEval(n)) /\ WF_vars(StartupEviction(n))
                       /\ WF_vars(NodeRuns(n)) /\ WF_vars(Observe(n)) /\ WF_vars(DetectReset(n))
-                      /\ WF_vars(DetectRead(n)) /\ WF_vars(DetectLose(n)) /\ WF_vars(DetectReread(n))
+                      /\ WF_vars(DetectRead(n)) /\ WF_vars(DetectLose(n))
                       /\ WF_vars(InitMarker(n)) /\ WF_vars(Learn(n)) /\ WF_vars(Reseed(n))
                       /\ WF_vars(FinishReconcile(n)) /\ WF_vars(PeriodicReconcile(n))
                       /\ WF_vars(RewriteRecord(n)) /\ WF_vars(ForgetReset(n))

@@ -1,7 +1,7 @@
 {
   "module": "redis",
-  "specHash": "d47dbfbc7797aeb44bfd847921dd9786bfa985f0bbdeb1f83b9630271a37dd52",
-  "generatedAt": "2026-11-08T01:10:31Z",
+  "specHash": "fb9a582eac88b10894a48db443960a05d217c328fd46a73780562b87006febf3",
+  "generatedAt": "2026-11-08T02:05:29Z",
   "model": "model/redis/Redis.tla",
   "items": {
     "REQ-500": {
@@ -35,9 +35,9 @@
       "note": "StartupEviction(n); Connect guard (wording change only)."
     },
     "REQ-507": {
-      "hash": "58d0d267a95d071e5bb281336521c44fc43ef154a7e5cc7ac82eb4f5d15ccf54",
+      "hash": "7f22c0f680883fc760b4b0cc74b267f62abc3297ccdc2ae7c17156b2bbef0245",
       "reviewed": false,
-      "note": "DetectReset(n) (DetectCond) and, run 5, on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): server-clock value as value and last-reset value, flagged; restarts the REQ-509 wait. Run-4 F-1 resolved: Redis_Hide.cfg holds. New F-1: with the read and the compare-and-set as two steps (SplitCAS, A-19 relaxed) the compare-and-set can lose to REQ-528 or REQ-527 and nobody reports (Redis_HideRace.cfg)."
+      "note": "DetectReset(n) (DetectCond), also on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): run 6, the replacement is one atomic step with the read that found the marker missing or older (A-19 is now the requirement); server-clock value as value and last-reset value, flagged; StoreWasReset always; restarts the REQ-509 wait. Run-5 F-1 resolved: Redis_Hide.cfg and Redis_Hide2.cfg hold; the run-5 wording (SplitCAS) is the counterfactual Redis_HideRace.cfg, violated in 14 steps."
     },
     "REQ-508": {
       "hash": "b8e5cd7efad11922fb20840fbf7eaf6a1b5a50c6d450d97cce23a687c3250daf",
@@ -102,7 +102,7 @@
     "REQ-523": {
       "hash": "7131a7e37c13a489b8b07ca8833d6f39c4c3409439481c419bad8e68ad7346ba",
       "reviewed": false,
-      "note": "DetectReset(n) only (trigger names REQ-507's successful compare-and-set). Impacted, re-checked: Inv_UnackedUntilOperator holds."
+      "note": "DetectReset(n): modeled as this node's REQ-507 replacement of the marker (A-31). Impacted, re-checked: Inv_UnackedUntilOperator holds on Redis.cfg, Redis_Flush2.cfg and Redis_LateJoin.cfg. F-1 (ambiguity): its trigger still names a compare-and-set REQ-507 no longer makes; read literally it never fires (Redis_Req523Literal.cfg, 9 steps)."
     },
     "REQ-524": {
       "hash": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
@@ -125,9 +125,9 @@
       "note": "Advance(n): unflagged marker only, server-clock value, last-reset unchanged. F-3."
     },
     "REQ-528": {
-      "hash": "b384b6700a10bfc11ada457a23c9fb9376a9246b1e5213306b92256e4a9f1758",
+      "hash": "38b21a33dacebe00746692a4112eac362f6c998e6c857d784e0185ce620f3bf2",
       "reviewed": false,
-      "note": "InitMarker(n) (InitCond, also on every claim, heartbeat and completion read, run 5): lowest value, flagged, last-reset = server clock, Reconciling, no report. Run-4 F-1 resolved; new F-1 (its write can win REQ-507's compare-and-set)."
+      "note": "InitMarker(n) (InitCond, also on every claim, heartbeat and completion read): lowest value, flagged, last-reset = server clock, in the same atomic step as the read that found the marker missing (run 6); Reconciling, no report. Run-5 F-1 resolved."
     },
     "REQ-529": {
       "hash": "9ec746459993be5849d8ce8fe98f27c3f349b5bb5617cd82b14c4342484f8bd0",
@@ -137,7 +137,7 @@
     "REQ-530": {
       "hash": "6bcbf2a9fed07be07473f952aba2ffb5f4c10ca819c16f6fbd8aa8d2d4eb89ca",
       "reviewed": false,
-      "note": "Learn(n) (LearnCond, also on every claim, heartbeat and completion read, run 5): flagged value not finished and not older than lastSeen."
+      "note": "Learn(n) (LearnCond, also on every claim, heartbeat and completion read): flagged value not finished and not older than lastSeen. Impacted, re-checked: with REQ-507's write atomic, the other nodes join here (Inv_OneEventPerReset holds)."
     },
     "REQ-531": {
       "hash": "2f4c5fd11a000018eaf099d1503ea2f8e4d89e2869463f091029394d9269b9c9",

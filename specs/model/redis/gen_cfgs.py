@@ -1,11 +1,11 @@
-"""Writes the Redis*.cfg files of run 5. Each cfg = BASE constants + overrides + checks.
+"""Writes the Redis*.cfg files of run 6. Each cfg = BASE constants + overrides + checks.
 Run from specs/model/redis:  python gen_cfgs.py   (removes Redis*.cfg files it no longer writes)"""
 import pathlib
 
 BASE = dict(Nodes="{n1, n2}", WorkerNodes="{n1, n2}", Jobs="{j1, j2}", QueueA="{j1}", KeyMax="1",
             UniqueKeys="FALSE", Recurring="FALSE", ShardByQueue="FALSE", FreshStore="FALSE",
             LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE",
-            SplitCAS="FALSE", OptRetryCAS="FALSE", TrackHidden="FALSE",
+            SplitCAS="FALSE", Req523Literal="FALSE", TrackHidden="FALSE",
             MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
             CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", MaxDrops="0", NULL="NULL")
 SAFETY = ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost",
@@ -36,20 +36,12 @@ CFGS = {
              "Inv_ConcurrencyKeyMax"], []),
   "Redis_Hide2": ("As Hide with two jobs (a claim by a node that saw the old marker beside a running job).",
             dict(LateJoin="TRUE", TrackHidden="TRUE"), ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost"], []),
-  "Redis_HideRace": ("MODEL CHECK (A-19 relaxed): as Hide, REQ-507's read and compare-and-set are two steps, and the window"
-                     " between them is shorter than one LeaseDuration (ACTION_CONSTRAINT).",
-            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", SplitCAS="TRUE"),
-            ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost", "Inv_NoFalseReset", "Inv_NoLostOutcome",
-             "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax"], []),
-  "Redis_HideRaceRetry": ("OPTION CHECK (new F-1 option 2): HideRace where a failed compare-and-set is a read for REQ-507 and is"
-                          " retried when only an advance moved the marker.",
-            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", SplitCAS="TRUE", OptRetryCAS="TRUE"),
-            ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost", "Inv_NoFalseReset", "Inv_OneEventPerReset",
-             "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax"], []),
-  "Redis_RaceRetry": ("OPTION CHECK (new F-1): main run with SplitCAS and the retry.",
-            dict(SplitCAS="TRUE", OptRetryCAS="TRUE"), SAFETY, []),
-  "Redis_Race": ("MODEL CHECK (A-19 relaxed): main run with REQ-507's read and compare-and-set as two steps.",
-            dict(SplitCAS="TRUE"), SAFETY, []),
+  "Redis_HideRace": ("COUNTERFACTUAL (run-5 wording of REQ-507): as Hide, the read and a separate compare-and-set are two"
+                     " steps, the window shorter than one LeaseDuration (ACTION_CONSTRAINT). Expected: Inv_HiddenOnlyIfPaused VIOLATED.",
+            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", SplitCAS="TRUE"), ["Inv_HiddenOnlyIfPaused"], []),
+  "Redis_Req523Literal": ("COUNTERFACTUAL: REQ-523 read literally (its trigger names a compare-and-set REQ-507 no longer makes)."
+                          " Expected: Inv_UnackedUntilOperator VIOLATED.",
+            dict(Jobs="{j1}", MaxAdvances="0", Req523Literal="TRUE"), ["Inv_UnackedUntilOperator"], []),
   "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit (REQ-522, REQ-534).",
             dict(UniqueKeys="TRUE", KeyMax="2"), ["Inv_UniqueKey"], []),
   "Redis_Unique2": ("Unique keys across two flushes, the second after the first reconciliation ended (ACTION_CONSTRAINT); no concurrency limit.",
@@ -117,7 +109,7 @@ CFGS = {
             dict(Recurring="TRUE", KeyMax="2", MaxLosses="2", MaxAdvances="0", MaxTok="2"),
             ["Scn510_Prefix_NotReached"], []),
 }
-ACTC = {"Redis_RestoreOlder": "ActC_OlderRollbackOnly", "Redis_HideRace": "ActC_ShortCAS", "Redis_HideRaceRetry": "ActC_ShortCAS",
+ACTC = {"Redis_RestoreOlder": "ActC_OlderRollbackOnly", "Redis_HideRace": "ActC_ShortCAS",
         "Redis_Flush2": "ActC_SecondLossDuringReconcile", "Redis_Flush2Late": "ActC_SecondLossDuringReconcile",
         "Redis_Unique2During": "ActC_SecondLossDuringReconcile", "Redis_Recurring2During": "ActC_SecondLossDuringReconcile",
         "Redis_SCN509": "ActC_SecondLossDuringReconcile", "Redis_SCN509Reach": "ActC_SecondLossDuringReconcile",
