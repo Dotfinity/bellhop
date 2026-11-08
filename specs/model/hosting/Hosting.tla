@@ -26,16 +26,12 @@ CONSTANTS Nodes,            \* Node instances (entity.bound = 2; 1 in the single
           MaxInFlight,      \* worker concurrency in the model (real value irrelevant)
           HealthyAfterPasses, \* @req REQ-50 (3 in the policy; 2 in the model)
           HealthEnv,        \* TRUE: stalls, thresholds and node-count changes may happen
-          TimedOutCounts,   \* @req REQ-29  TRUE: a handler whose timeout token was signalled (jobs REQ-137) is an
-                            \* in-flight job until it settles (the sentence); FALSE: the drain does not wait for
-                            \* it (REQ-29's notes). Both readings are explored (findings F-1)
           NULL
 
 ASSUME HealthyAfterPasses \in Nat \ {0}                     \* @req REQ-50
 ASSUME \A e \in ExpectedVals : e >= 1 /\ e \in Versions
 ASSUME RegVals \subseteq {"none", "client", "worker"}
 ASSUME OkVals \subseteq {"pass", "failNoStore", "failConnect", "failStore"}
-ASSUME TimedOutCounts \in BOOLEAN
 
 NodeStatus == {"none", "Starting", "Running", "Draining", "Stopped", "StartupFailed"}
 Final      == {"Stopped", "StartupFailed"}
@@ -59,8 +55,9 @@ NodeRec == [st: NodeStatus,
             timedOut: 0..MaxInFlight,   \* claimed jobs whose timeout token was signalled (jobs REQ-137) and whose
                                         \* handler has not settled under jobs REQ-138/REQ-186 (grace period)
             timeoutPassed: BOOLEAN,     \* REQ-28 ShutdownTimeout has passed
-            cancelDone: BOOLEAN,        \* REQ-29 remaining tokens cancelled, REQ-140 releases attempted
+            cancelDone: BOOLEAN,        \* REQ-29 remaining tokens cancelled, REQ-140/REQ-190 writes attempted
             released: 0..MaxInFlight,   \* jobs released back to the store at shutdown (jobs REQ-140)
+            cancelled: 0..MaxInFlight,  \* jobs marked cancelled at shutdown (jobs REQ-190, shutdown branch)
             stopInGrace: BOOLEAN,       \* history: stopped before ShutdownTimeout with a timed-out handler unsettled
             leftToExpiry: 0..MaxInFlight, \* jobs still held at stop: recovered by lease expiry (jobs REQ-132/133)
             claimedEver: BOOLEAN,
@@ -85,7 +82,7 @@ vars == <<cfg, nd, schema, reachable, lock, fewAlive>>
 Fresh == [st |-> "none", validated |-> FALSE, prechecked |-> FALSE, connected |-> FALSE,
           storeChecked |-> FALSE, checkedEmpty |-> FALSE, notifActive |-> FALSE, otherBad |-> FALSE,
           hostStopped |-> FALSE, workerActive |-> FALSE, inFlight |-> 0, timedOut |-> 0,
-          timeoutPassed |-> FALSE, cancelDone |-> FALSE, released |-> 0, stopInGrace |-> FALSE,
+          timeoutPassed |-> FALSE, cancelDone |-> FALSE, released |-> 0, cancelled |-> 0, stopInGrace |-> FALSE,
           leftToExpiry |-> 0, claimedEver |-> FALSE, claimedAfterStop |-> FALSE,
           reconciled |-> FALSE, reconcileBad |-> FALSE, migrateBad |-> FALSE, ranUnmigrated |-> FALSE,
           memWarnings |-> 0, summaryLogged |-> FALSE, io |-> FALSE,
@@ -355,23 +352,31 @@ TimeoutPasses(n) ==
   /\ nd' = [nd EXCEPT ![n].timeoutPassed = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
-\* @req REQ-29  "the remaining jobs' tokens were cancelled and the lease releases that jobs REQ-140 calls for
-\* were attempted" (jobs REQ-139, REQ-140, A-7). REQ-140 releases only jobs whose timeout token was not
-\* signalled; a timed-out job keeps its lease. The release is a store write: it lands only if the store is
-\* reachable; a failed release is left to lease expiry (jobs REQ-132), outside this model.
+\* @req REQ-29  "the remaining jobs' tokens were cancelled and the lease releases and cancellations that jobs
+\* REQ-140 and REQ-190 call for at shutdown were attempted" (jobs REQ-139, REQ-140, REQ-190, A-7, A-26).
+\* One store write is attempted per job still held. REQ-140 releases a job whose timeout token was not
+\* signalled and whose cancellation was not requested. REQ-190's shutdown branch marks cancelled a job whose
+\* cancellation was requested, timed out or not: that branch has no timeout guard. A timed-out job whose
+\* cancellation was not requested keeps its lease (REQ-140) until jobs REQ-138/REQ-186 settles it.
+\* Cancellation requests (jobs REQ-135) are not tracked here, so which held jobs have one is chosen freely
+\* (A-26). A write lands only if the store is reachable; a failed one is left to lease expiry (jobs REQ-132,
+\* REQ-133, REQ-190), outside this model.
 CancelAndRelease(n) ==
   /\ nd[n].st = "Draining"
   /\ nd[n].timeoutPassed /\ ~nd[n].cancelDone
   /\ nd[n].inFlight + nd[n].timedOut > 0
-  /\ nd' = [nd EXCEPT ![n].released = IF Reach(n) THEN @ + nd[n].inFlight ELSE @,
-                      ![n].leftToExpiry = IF Reach(n) THEN @ ELSE @ + nd[n].inFlight,
-                      ![n].inFlight = 0, ![n].cancelDone = TRUE]
+  /\ \E c \in 0..nd[n].inFlight, ct \in 0..nd[n].timedOut :
+       nd' = [nd EXCEPT ![n].released = IF Reach(n) THEN @ + (nd[n].inFlight - c) ELSE @,
+                        ![n].cancelled = IF Reach(n) THEN @ + c + ct ELSE @,
+                        ![n].leftToExpiry = IF Reach(n) THEN @ ELSE @ + nd[n].inFlight + ct,
+                        ![n].inFlight = 0, ![n].timedOut = @ - ct, ![n].cancelDone = TRUE]
   /\ UNCHANGED <<cfg, schema, reachable, lock, fewAlive>>
 
 \* @req REQ-29  While draining, "when every in-flight job has finished, or ShutdownTimeout has passed, the
-\* remaining jobs' tokens were cancelled and the [REQ-140] lease releases were attempted" -> Stopped.
-\* TimedOutCounts decides whether a timed-out handler that has not settled is an in-flight job.
-AllFinished(n) == nd[n].inFlight = 0 /\ (TimedOutCounts => nd[n].timedOut = 0)
+\* remaining jobs' tokens were cancelled and the [REQ-140, REQ-190] releases and cancellations were attempted"
+\* -> Stopped. A timed-out handler that has not settled under jobs REQ-138/REQ-186 is an in-flight job
+\* (REQ-29's notes, run 4 F-1).
+AllFinished(n) == nd[n].inFlight = 0 /\ nd[n].timedOut = 0
 StopNode(n) ==
   /\ nd[n].st = "Draining"
   /\ AllFinished(n) \/ (nd[n].timeoutPassed /\ nd[n].cancelDone)
@@ -570,6 +575,10 @@ Chk_MemoryWarningBeforeRunning ==
 
 \* A-9 from REQ-28/REQ-29: a draining node eventually stops.
 Chk_DrainEnds == \A n \in Nodes : (nd[n].st = "Draining") ~> (nd[n].st = "Stopped")
+
+\* A-26 from REQ-29 with jobs REQ-190 (trap, expected violated): a node stops after marking a job whose
+\* cancellation was requested cancelled at shutdown.
+Chk_NoShutdownCancellation == ~(\E n \in Nodes : nd[n].st = "Stopped" /\ nd[n].cancelled > 0)
 
 \* ------------------------------------------------------------------ positive scenarios (trap invariants)
 

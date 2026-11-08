@@ -1,7 +1,7 @@
 {
   "module": "hosting",
-  "specHash": "c057134bffdae0bdf5a154a82f99c79b9aaac9790fc95089e52b7163d82c0e20",
-  "generatedAt": "2026-11-07T12:00:00Z",
+  "specHash": "7f4e4a93844cc1ac516e5620fd90d04074fe29e04012535eff1a772cbd3bf463",
+  "generatedAt": "2026-11-08T02:00:00Z",
   "model": "model/hosting/Hosting.tla",
   "items": {
     "REQ-9": {
@@ -85,9 +85,9 @@
       "note": "TimeoutPasses, no clock (A-1)"
     },
     "REQ-29": {
-      "hash": "e69478e31f81993982bb3e94578aa21c8ea9b06173603243cdb42f2738f79cb5",
+      "hash": "24e4de85f2840f44e5bf6c4349733ff7cc58fbb0ff3581af07cdd3619a027dc8",
       "reviewed": false,
-      "note": "CancelAndRelease (REQ-140 releases only jobs not timed out; attempted, lands only if reachable) + StopNode; timed-out jobs via JobTimesOut/TimedOutSettles. Chk_DrainEnds holds (Hosting_Live 50,016; Hosting_Drain 270; Hosting_DrainNotes 294). The sentence waits for an unsettled timed-out handler, the notes do not: F-1 (Chk_NoStopInGraceBeforeTimeout violated only under the notes' reading, 137)"
+      "note": "CancelAndRelease attempts a jobs REQ-140 release or a REQ-190 cancellation per held job (which have a cancellation request is free, A-26; timed-out jobs with one are cancelled too); lands only if reachable. StopNode: an unsettled timed-out handler is in flight (TimedOutCounts retired with run-4 F-1). Chk_DrainEnds holds (Hosting_Live 51,168; Hosting_Drain 318); Chk_NoStopInGraceBeforeTimeout holds (Hosting 141,520; Hosting_Drain 318); trap Chk_NoShutdownCancellation reached (192)"
     },
     "REQ-30": {
       "hash": "265579fad1610aa70cf10cc10f0dc05d610525fc5b898951dbfeca500c81a380",
@@ -217,7 +217,7 @@
     "SCN-4": {
       "hash": "30c6ab1ba1a6301b05ef347fcbe09fb5293df3b0b55067ffd28cd76f77f7b06f",
       "reviewed": false,
-      "note": "trap reached in 151 states (pass)"
+      "note": "trap reached in 145 states (pass)"
     },
     "SCN-5": {
       "hash": "6cc1f10f209dbdcd39aa51ed2a640ec06b99e234cf0f66231eef77a534916929",

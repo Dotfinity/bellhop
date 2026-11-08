@@ -38,9 +38,7 @@ CHECKS = [
 ] + [
     ("drain_Chk_NoStopInGraceBeforeTimeout", "Hosting_Drain.cfg", "inv", "Chk_NoStopInGraceBeforeTimeout", "holds"),
     ("drain_Chk_DrainEnds", "Hosting_Drain.cfg", "prop", "Chk_DrainEnds", "holds"),
-    ("drainNotes_Chk_NoStopInGraceBeforeTimeout", "Hosting_DrainNotes.cfg", "inv", "Chk_NoStopInGraceBeforeTimeout",
-     "violated"),
-    ("drainNotes_Chk_DrainEnds", "Hosting_DrainNotes.cfg", "prop", "Chk_DrainEnds", "holds"),
+    ("drain_trap_Chk_NoShutdownCancellation", "Hosting_Drain.cfg", "trap", "Chk_NoShutdownCancellation", "violated"),
 ] + [
     ("health_Chk_StallStaysUnhealthy", "Hosting_Health.cfg", "inv", "Chk_StallStaysUnhealthy", "holds"),
     ("health_Prop_NoUnhealthyToHealthy", "Hosting_Health.cfg", "prop", "Prop_NoUnhealthyToHealthy", "holds"),
