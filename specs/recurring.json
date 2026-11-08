@@ -188,8 +188,10 @@
     {
       "id": "REQ-216", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "system", "from": ["Active"], "to": ["Active"],
-      "ears": { "while": "a recurring job is active and maintenance is off", "when": "its nextRunAt has passed according to the database clock", "shall": "in one compare-and-set on nextRunAt, advance nextRunAt to the next occurrence after now and create the occurrence or occurrences its misfire policy calls for" },
+      "ears": { "while": "a recurring job is active and maintenance is off", "when": "its nextRunAt has passed according to the database clock", "shall": "in one compare-and-set on its state and nextRunAt (INV-212), advance nextRunAt to the next occurrence after now and create the occurrence or occurrences its misfire policy calls for" },
       "mentions": ["RecurringJob.nextRunAt", "RecurringJob.misfirePolicy", "jobs.Maintenance.Off"],
+      "dependsOn": ["INV-212"],
+      "notes": "refiner-model 2026-11-08 recurring run 6 F-1: the compare-and-set also covers the job's state, because a pause does not move nextRunAt. On nextRunAt only, a trigger that read the job as active could still land after a pause and create an occurrence for a paused job (INV-201).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-7", "quote": "Triggering MUST be an atomic compare-and-set on the stored NextRunAt so that N nodes produce exactly one occurrence." }]
     },
@@ -438,11 +440,11 @@
     {
       "id": "REQ-242", "kind": "invariant", "status": "approved", "strength": "must",
       "entity": "RecurringJob",
-      "ears": { "when": "an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227), or an active recurring job is paused (REQ-214), orphaned (REQ-205) or removed (REQ-207, REQ-213) while it has missed due instants", "shall": "record in the job store which due instants were missed (the first, the last and how many) and how they were handled (the occurrences the misfire policy created for them and whether each started, is waiting or was skipped by the overlap policy, or that the misfire policy, the schedule change, the pause, the orphaning or the removal dropped them), in the same store write that moves nextRunAt or pauses, orphans or removes the job, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
+      "ears": { "when": "an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227), or an active recurring job is paused (REQ-214), orphaned (REQ-205) or removed (REQ-207, REQ-213) while it has missed due instants", "shall": "record in the job store which due instants were missed (the first, the last and how many) and how they were handled (the occurrences the misfire policy created for them and whether each started, is waiting or was skipped by the overlap policy, or that the misfire policy, the schedule change, the pause, the orphaning or the removal dropped them), in the same store write that moves nextRunAt or pauses, orphans or removes the job, which is a compare-and-set that judges the missed instants by the database clock at that write (INV-212), and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
       "mentions": ["RecurringJob.missedInstants", "RecurringJob.nextRunAt", "RecurringJob.misfirePolicy", "RecurringJob.Active", "RecurringJob.Paused", "RecurringJob.Orphaned", "RecurringJob.schedule", "RecurringJob.overlapPolicy"],
-      "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-222", "REQ-227", "REQ-234", "REQ-214", "REQ-205", "REQ-207", "REQ-213"],
+      "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-222", "REQ-227", "REQ-234", "REQ-214", "REQ-205", "REQ-207", "REQ-213", "INV-212"],
       "rationale": "integrations INV-412 makes the notification lease holder find missed occurrences in the job store. The last outcome (REQ-231) is overwritten by the next one, and RunOnce leaves no trace of a miss at all.",
-      "notes": "refiner-model 2026-11-06 integrations run 3 F-17 (recommended option). One record per trigger, not per instant, so a long outage on a frequent schedule writes one record. REQ-220's log line and in-memory event are unchanged. Run 4 F-1 (recommended option): a schedule change applied at a node start (REQ-204), by the scheduler (REQ-241) or by an operator (REQ-212) moves nextRunAt past overdue instants without a trigger (REQ-227); those instants are recorded as dropped by the schedule change, so integrations REQ-403 alerts them. Before, whether a missed run left any trace depended on whether the deploy also changed the schedule. Instants that fall due while a job is paused or orphaned are dropped on purpose and not recorded (REQ-215, REQ-206). Run 4 F-2 (recommended option): the record says what became of each catch-up occurrence, because the overlap policy can skip it in the same write, and a record saying only \"caught up by RunOnce\" then reported a run that never happened. Run 5 F-1 (recommended option): instants already missed when an active job is paused, orphaned or removed are recorded in that write. A pause, orphaning or removal does not move nextRunAt, and the later resume or restore happens while the job is not active, so before this those misses left no trace, depending on whether the trigger or the operator came first. Run 5 F-2: 'missed' covers an instant that passed moments before any of these writes and was not triggered yet (REQ-234), so every instant that passed while the job was active either runs or is recorded. Run 5 F-3 (recommended option): the record describes each occurrence as it was in the write that made it; a waiting occurrence may later start (REQ-224) or be skipped (REQ-237), which the record does not follow. The occurrence's own state says what became of it."
+      "notes": "refiner-model 2026-11-06 integrations run 3 F-17 (recommended option). One record per trigger, not per instant, so a long outage on a frequent schedule writes one record. REQ-220's log line and in-memory event are unchanged. Run 4 F-1 (recommended option): a schedule change applied at a node start (REQ-204), by the scheduler (REQ-241) or by an operator (REQ-212) moves nextRunAt past overdue instants without a trigger (REQ-227); those instants are recorded as dropped by the schedule change, so integrations REQ-403 alerts them. Before, whether a missed run left any trace depended on whether the deploy also changed the schedule. Instants that fall due while a job is paused or orphaned are dropped on purpose and not recorded (REQ-215, REQ-206). Run 4 F-2 (recommended option): the record says what became of each catch-up occurrence, because the overlap policy can skip it in the same write, and a record saying only \"caught up by RunOnce\" then reported a run that never happened. Run 5 F-1 (recommended option): instants already missed when an active job is paused, orphaned or removed are recorded in that write. A pause, orphaning or removal does not move nextRunAt, and the later resume or restore happens while the job is not active, so before this those misses left no trace, depending on whether the trigger or the operator came first. Run 5 F-2: 'missed' covers an instant that passed moments before any of these writes and was not triggered yet (REQ-234), so every instant that passed while the job was active either runs or is recorded. Run 5 F-3 (recommended option): the record describes each occurrence as it was in the write that made it; a waiting occurrence may later start (REQ-224) or be skipped (REQ-237), which the record does not follow. The occurrence's own state says what became of it. Run 6 F-1 (recommended option, widened to every write): run 5 made the pause, orphan and removal writes decide the record from what they read, but nothing made them conditional on it, so a trigger that landed in between ran the instant on time and the pause still recorded it as dropped, and integrations REQ-403 alerted a miss that did not happen. Every write that changes the job's state or nextRunAt is now one compare-and-set on both (INV-212)."
     },
     {
       "id": "INV-206", "kind": "invariant", "status": "approved",
@@ -497,6 +499,15 @@
       "ears": { "if": "an operator adds a recurring job through IRecurringJobManager or the dashboard with a name that is already stored", "shall": "reject the call with an error that names the existing job and its origin, and store nothing" },
       "mentions": ["RecurringJob.name", "RecurringJob.origin"],
       "notes": "refiner-model 2026-11-06 F-6, decided by the owner on 2026-11-06: names are unique across origins and a collision is an error on both sides (REQ-236 for starting nodes)."
+    },
+    {
+      "id": "INV-212", "kind": "invariant", "status": "approved", "strength": "must",
+      "entity": "RecurringJob",
+      "ears": { "shall": "make every store write that changes a recurring job's state or nextRunAt, or removes the job (a trigger, a schedule change, a pause, a resume, an orphaning, a restore or a removal), a compare-and-set on the state and nextRunAt it read, which judges due and missed instants by the database clock at that write and changes nothing if either value changed since the read, after which the writer reads the job again and decides anew" },
+      "mentions": ["RecurringJob.nextRunAt", "RecurringJob.Active", "RecurringJob.Paused", "RecurringJob.Orphaned", "RecurringJob.missedInstants"],
+      "dependsOn": ["REQ-216", "REQ-227", "REQ-214", "REQ-215", "REQ-205", "REQ-206", "REQ-207", "REQ-213", "REQ-242"],
+      "rationale": "Every one of these writes decides what it does from the job's state and nextRunAt: whether an instant runs, whether it was missed and what REQ-242 records. A write that lands after another one changed either value acts on a job that no longer exists in that form.",
+      "notes": "refiner-model 2026-11-08 run 6 F-1 (recommended option, applied to every write instead of the pause alone). The model split the pause into its read and its write: unconditional, a trigger that landed in between ran the 02:00 instant on time and the pause still recorded it as dropped, and integrations REQ-403 alerted a miss that did not happen; a schedule change in between got the instant recorded twice. Recurring writes all follow this one rule rather than each getting a phrase of its own, because the same race also exists in the other direction. A trigger that read the job as active could land after a pause, which does not move nextRunAt, and create an occurrence for a paused job (INV-201); an orphan sweep or a schedule change that read an active job could land after a pause and record its missed instants a second time. The other direction, the orphan, removal, schedule-change and resume writes, and the reread after a lost compare-and-set have not been model-checked yet (SCN-216, SCN-217). A trigger that loses does nothing on its reread, because another node advanced nextRunAt (SCN-200). REQ-226's trigger-now changes neither value, so it is not covered. How a store judges at the write is TECH-45."
     }
   ],
 
@@ -643,12 +654,35 @@
       ],
       "then": "The 10:00 job is Cancelled with reason Superseded, the 10:06 occurrence is Started with an Enqueued job, and sync-crm has no Unroutable job, so a worker that later registers SyncCrm can run only the 10:06 job.",
       "notes": "refiner-model 2026-11-06 run 2 F-1 regression."
+    },
+    {
+      "id": "SCN-216", "status": "approved",
+      "title": "A pause that loses to a trigger records no miss",
+      "given": "nightly-export runs daily at 02:00 and is active. At 02:00:02 an operator pauses it from the dashboard; the pause has read the job as active with the 02:00 instant passed and not triggered yet.",
+      "steps": [
+        { "req": "REQ-216", "note": "the scheduler triggers nightly-export 2 s late, which is on time (INV-207), and moves nextRunAt" },
+        { "req": "REQ-221", "note": "the 02:00 occurrence starts" },
+        { "req": "REQ-214", "note": "the pause's compare-and-set finds nextRunAt moved and changes nothing; the pause reads the job again and marks it paused (INV-212)" }
+      ],
+      "then": "nightly-export is Paused, its 02:00 occurrence is Started, and no REQ-242 record says the 02:00 instant was missed.",
+      "notes": "refiner-model 2026-11-08 run 6 F-1 regression."
+    },
+    {
+      "id": "SCN-217", "status": "approved",
+      "title": "A trigger that loses to a pause creates no occurrence",
+      "given": "nightly-export runs daily at 02:00 and is active, and the 02:00 instant has passed. The scheduler on node A has read the job as active and due.",
+      "steps": [
+        { "req": "REQ-214", "note": "an operator pauses nightly-export, which leaves nextRunAt unchanged; REQ-242 records the 02:00 instant as dropped by the pause" },
+        { "req": "REQ-216", "note": "A's compare-and-set on the state and nextRunAt it read (INV-212)" }
+      ],
+      "impossibleAt": 2,
+      "notes": "refiner-model 2026-11-08 run 6 F-1: the reverse order of the same race, which the run did not check."
     }
   ],
 
   "features": [
     { "id": "FEAT-200", "name": "Definitions and reconciliation", "members": ["REQ-202", "REQ-203", "REQ-204", "INV-200", "REQ-205", "REQ-206", "REQ-207", "REQ-208", "REQ-209", "REQ-210", "REQ-211", "REQ-212", "REQ-213", "REQ-232", "INV-206", "INV-209", "SCN-204", "SCN-205", "SCN-207", "SCN-208", "SCN-209", "SCN-212", "REQ-236", "INV-211", "SCN-214", "REQ-241"] },
-    { "id": "FEAT-201", "name": "Triggering and misfire", "members": ["REQ-201", "REQ-214", "REQ-215", "INV-201", "INV-202", "REQ-216", "INV-203", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-226", "REQ-227", "REQ-230", "REQ-231", "REQ-234", "INV-207", "INV-210", "SCN-200", "SCN-202", "SCN-203", "SCN-206", "SCN-211", "REQ-242"] },
+    { "id": "FEAT-201", "name": "Triggering and misfire", "members": ["REQ-201", "REQ-214", "REQ-215", "INV-201", "INV-202", "REQ-216", "INV-203", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-226", "REQ-227", "REQ-230", "REQ-231", "REQ-234", "INV-207", "INV-210", "SCN-200", "SCN-202", "SCN-203", "SCN-206", "SCN-211", "REQ-242", "INV-212", "SCN-216", "SCN-217"] },
     { "id": "FEAT-202", "name": "Overlap", "members": ["REQ-221", "REQ-222", "REQ-223", "REQ-224", "REQ-225", "INV-204", "INV-205", "REQ-233", "REQ-235", "SCN-201", "SCN-210", "REQ-237", "REQ-238", "REQ-239", "SCN-213", "REQ-240", "SCN-215"] },
     { "id": "FEAT-203", "name": "Time zones and DST", "members": ["REQ-200", "REQ-228", "REQ-229", "INV-208"] }
   ],

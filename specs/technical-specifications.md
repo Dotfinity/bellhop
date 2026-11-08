@@ -414,11 +414,12 @@ Format: refiner-tech/1
 ## TECH-45 — Recurring trigger storage
 
 - **Area:** datastore
-- **Statement:** Every store shall trigger recurring jobs with an atomic compare-and-set on the stored NextRunAt and keep NextRunAt indexed.
-- **Applies to:** REQ-216, INV-203, NFR-14
+- **Statement:** Every store shall make each write that changes a recurring job's state or NextRunAt, or removes the job, one atomic compare-and-set on the stored state and NextRunAt, and keep NextRunAt indexed.
+- **Applies to:** REQ-216, INV-203, INV-212, NFR-14
 - **Strength:** must
 - **Status:** approved
 - **Source:** requirements.md §4.4 REC-7
+- **Notes:** Recurring run 6 F-1 extended this from triggering to every such write (INV-212). To judge missed instants at the write rather than at the read, a write can compute them from the database time of its read and also require that the database clock has not yet reached the first due instant after that time; if it has, the write changes nothing and the caller reads again.
 
 ## TECH-46 — Embedded migrations
 
