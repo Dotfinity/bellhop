@@ -1,7 +1,7 @@
 {
   "module": "redis",
-  "specHash": "71445b81e1d2faf606f7a46616926dfa060ff616a82c5c3d73234fe14c73a604",
-  "generatedAt": "2026-11-07T18:50:38Z",
+  "specHash": "d47dbfbc7797aeb44bfd847921dd9786bfa985f0bbdeb1f83b9630271a37dd52",
+  "generatedAt": "2026-11-08T01:10:31Z",
   "model": "model/redis/Redis.tla",
   "items": {
     "REQ-500": {
@@ -35,9 +35,9 @@
       "note": "StartupEviction(n); Connect guard (wording change only)."
     },
     "REQ-507": {
-      "hash": "f00602ecd948045116000afb3fb197273d718a7ce81f2388114bc1efe7a5f42e",
+      "hash": "58d0d267a95d071e5bb281336521c44fc43ef154a7e5cc7ac82eb4f5d15ccf54",
       "reviewed": false,
-      "note": "DetectReset(n) (DetectCond): server-clock value as value and last-reset value, flagged; also on a flagged older marker; restarts the REQ-509 wait. F-1: 'found' has no defined moment (A-2); ReadsDetect checks option 1."
+      "note": "DetectReset(n) (DetectCond) and, run 5, on every claim, heartbeat, completion and REQ-509 clear read (ReadOK): server-clock value as value and last-reset value, flagged; restarts the REQ-509 wait. Run-4 F-1 resolved: Redis_Hide.cfg holds. New F-1: with the read and the compare-and-set as two steps (SplitCAS, A-19 relaxed) the compare-and-set can lose to REQ-528 or REQ-527 and nobody reports (Redis_HideRace.cfg)."
     },
     "REQ-508": {
       "hash": "b8e5cd7efad11922fb20840fbf7eaf6a1b5a50c6d450d97cce23a687c3250daf",
@@ -62,7 +62,7 @@
     "LIV-501": {
       "hash": "a0a930ab72cde3efc9cb0f7317939fc9abcc0ce7f78bc53efcf3d105fd22da01",
       "reviewed": false,
-      "note": "Liv_MarkerWritten; passes."
+      "note": "Liv_MarkerWritten; impacted, re-checked: holds on Redis_Liveness.cfg."
     },
     "INV-500": {
       "hash": "fd98a1fb4699c119cbcc060fdfb0c2284cde5451e6899e8f3081d3cd1a949bc8",
@@ -92,17 +92,17 @@
     "REQ-521": {
       "hash": "2510296a2619e19c1e43fe44ce438e394f2cf7fe7e76317e738805dc219d2e20",
       "reviewed": false,
-      "note": "Complete(n) branches with the glossary resetSinceClaim; Inv_NoLostOutcome and Inv_NoLostOutcomeLeaseLost pass on Redis_LateJoin.cfg (run-3 F-3 resolved). F-2: resetSinceClaim holds with no reset for claims under REQ-528's first marker."
+      "note": "Complete(n) branches with the run-5 glossary resetSinceClaim (last-reset vs last-reset read at the claim, claimLR). Re-checked by hand for the unhashed glossary change: Inv_ResetSinceClaimSound and Inv_NoFalseReset hold on Redis_Fresh.cfg; Inv_NoLostOutcome(LeaseLost) hold on Redis_LateJoin, Flush2Late, Hide. Run-4 F-2 resolved."
     },
     "REQ-522": {
       "hash": "50bf045b20c8219131967ce2b58b901b287af09be90e1670103f4ff21809d61b",
       "reviewed": false,
-      "note": "Heartbeat(n) re-creation branch: marker missing or flagged, record missing, resetSinceClaim, not leaseLost (A-18). Run-3 F-2 resolved: Redis_Unique2/Recurring2(During) pass; SCN-510 holds."
+      "note": "Heartbeat(n) re-creation branch with the run-5 resetSinceClaim; marker missing or flagged, record missing, not leaseLost (A-18). The heartbeat read applies REQ-507/528/530 first (ReadOK). Re-checked: Redis_Unique2(During), Recurring2(During), SCN-510 hold."
     },
     "REQ-523": {
       "hash": "7131a7e37c13a489b8b07ca8833d6f39c4c3409439481c419bad8e68ad7346ba",
       "reviewed": false,
-      "note": "DetectReset(n) only (trigger names REQ-507): resetRec unacked, remembers. Inv_UnackedUntilOperator passes; run-3 F-5 resolved."
+      "note": "DetectReset(n) only (trigger names REQ-507's successful compare-and-set). Impacted, re-checked: Inv_UnackedUntilOperator holds."
     },
     "REQ-524": {
       "hash": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
@@ -117,7 +117,7 @@
     "REQ-526": {
       "hash": "4362701203fdc12a12e8df139d066dc4da3e5460ec7a91e53b09a000c8222a06",
       "reviewed": false,
-      "note": "Claim guard and recurring occurrence (Enqueue under Recurring) guard; Scn_NoClaimWhileFlagged passes."
+      "note": "Claim guard (marker present, unflagged) and recurring occurrence guard; the claim read applies REQ-507 first (run 5). Impacted, re-checked: Scn_NoClaimWhileFlagged holds."
     },
     "REQ-527": {
       "hash": "7eda44f17c1a1733dc8bcf6f7b2397e37f4fcf03f1aad0bc004650623960fab2",
@@ -125,9 +125,9 @@
       "note": "Advance(n): unflagged marker only, server-clock value, last-reset unchanged. F-3."
     },
     "REQ-528": {
-      "hash": "a0589719e87b5c2e5430bb7a44366170e6aeb6a378512654b2419493a359ad57",
+      "hash": "b384b6700a10bfc11ada457a23c9fb9376a9246b1e5213306b92256e4a9f1758",
       "reviewed": false,
-      "note": "InitMarker(n): lowest value, flagged, last-reset = server clock, Reconciling, no report. Run-3 F-3 option 2: lost outcome fixed; F-1 (flush hidden without a paused node), F-2 (resetSinceClaim side effect)."
+      "note": "InitMarker(n) (InitCond, also on every claim, heartbeat and completion read, run 5): lowest value, flagged, last-reset = server clock, Reconciling, no report. Run-4 F-1 resolved; new F-1 (its write can win REQ-507's compare-and-set)."
     },
     "REQ-529": {
       "hash": "9ec746459993be5849d8ce8fe98f27c3f349b5bb5617cd82b14c4342484f8bd0",
@@ -135,9 +135,9 @@
       "note": "Disconnect (all nodes) and DropConnection(n) (one node) + Connect(n); wait restarts via REQ-530."
     },
     "REQ-530": {
-      "hash": "f8a1d499b038300544cc676a5749c3bde694fd47da75f2bbac76e13078fa980f",
+      "hash": "6bcbf2a9fed07be07473f952aba2ffb5f4c10ca819c16f6fbd8aa8d2d4eb89ca",
       "reviewed": false,
-      "note": "Learn(n): flagged value not finished and not older than lastSeen (run-3 F-4 resolved, Liv_LossReported passes on Redis_LivLateJoin.cfg)."
+      "note": "Learn(n) (LearnCond, also on every claim, heartbeat and completion read, run 5): flagged value not finished and not older than lastSeen."
     },
     "REQ-531": {
       "hash": "2f4c5fd11a000018eaf099d1503ea2f8e4d89e2869463f091029394d9269b9c9",

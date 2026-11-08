@@ -1,11 +1,13 @@
 ----------------------------- MODULE Redis -----------------------------
 \* Generated from specs/redis.json - edit the requirements, not this file.
-\* Run 4 (2026-11-07): regenerated from handoff.json (changes: REQ-509, REQ-522, REQ-523, REQ-528,
-\* REQ-530, SCN-509, SCN-510). Impacted ids re-checked: LIV-501, REQ-526, REQ-532, REQ-534, SCN-500,
-\* SCN-503, SCN-504, SCN-507, SCN-508. The run-3 switches RestartWaitOnDetect (REQ-509), OptLeaseCheck
-\* (REQ-522) and Prio507 (REQ-530) are now the requirements and were removed; A-23 is gone (REQ-528
-\* gives the first marker a last-reset value). New switches (not requirements): ReadsDetect,
-\* OptClaimLastReset, TrackHidden; with all three FALSE the extra variables (xVars) stay constant.
+\* Run 5 (2026-11-08): regenerated from handoff.json (changes: REQ-507, REQ-528, REQ-530: any marker
+\* read, including the claim, heartbeat and completion scripts, triggers them) and the unhashed glossary
+\* change to resetSinceClaim (last-reset compared with the last-reset value read at the claim; REQ-521,
+\* REQ-522 re-checked). Impacted ids re-checked: LIV-501, REQ-523, REQ-526, SCN-500, SCN-503..SCN-510.
+\* The run-4 switches ReadsDetect (REQ-507/528/530) and OptClaimLastReset (resetSinceClaim) are now the
+\* requirements and were removed. Switches that are not requirements: TrackHidden (history variables)
+\* and SplitCAS (A-19 relaxed: REQ-507's read and its compare-and-set are two steps); with both FALSE
+\* the extra variables (xVars) stay constant, except claimLR (now a requirement).
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (hosting.Node, hosting.Health, jobs.Job, jobs.Maintenance,
 \* recurring.RecurringJob) are abstracted to the few fields the redis requirements touch;
@@ -25,11 +27,11 @@ CONSTANTS Nodes,         \* hosting.Node instances (bound 2)
           MaxLosses,     \* at most this many data-loss events (environment bound)
           PolicyChange,  \* the server's maxmemory-policy may change to evicting while nodes run (failover, CONFIG SET)
           LateJoin,      \* a node may read the marker for the first time after a data loss (A-17)
-          ReadsDetect,   \* READING SWITCH (not a requirement): the marker reads a worker's claim, heartbeat and
-                         \*   completion already make count as "finding" it for REQ-507 (FALSE = A-2: REQ-507 is
-                         \*   its own step, taken at some time, independent of those reads)
-          OptClaimLastReset, \* OPTION CHECK (not a requirement): resetSinceClaim compares the marker's last-reset
-                             \*   value with the last-reset value read at the claim instead of the marker value
+          SplitCAS,      \* model switch (not a requirement): REQ-507's read and its compare-and-set are two
+                         \*   steps, so another node's write can land between them (FALSE = A-19: atomic)
+          OptRetryCAS,   \* OPTION CHECK (not a requirement): with SplitCAS, a failed compare-and-set is a read:
+                         \*   REQ-507 applies to the marker it returns, and if that marker's last-reset value is
+                         \*   the one found (only a REQ-527 advance moved it) the node replaces it anyway
           TrackHidden,   \* model switch: keep the history variables of Inv_HiddenOnlyIfPaused (xVars)
           MaxAdvances,   \* REQ-527 advances in one run (environment bound)
           MaxTok,        \* lease tokens issued in one run (fresh GUIDs, bounded)
@@ -51,7 +53,7 @@ ASSUME /\ WorkerNodes \subseteq Nodes /\ QueueA \subseteq Jobs
        /\ MaxLosses \in Nat /\ MaxAdvances \in Nat /\ MaxTok \in Nat
        /\ ShardByQueue \in BOOLEAN /\ FreshStore \in BOOLEAN /\ AllowStop \in BOOLEAN
        /\ UniqueKeys \in BOOLEAN /\ Recurring \in BOOLEAN /\ PolicyChange \in BOOLEAN
-       /\ LateJoin \in BOOLEAN /\ ReadsDetect \in BOOLEAN /\ OptClaimLastReset \in BOOLEAN /\ TrackHidden \in BOOLEAN
+       /\ LateJoin \in BOOLEAN /\ SplitCAS \in BOOLEAN /\ OptRetryCAS \in BOOLEAN /\ TrackHidden \in BOOLEAN
        /\ CheckHealth \in BOOLEAN /\ MemToggle \in BOOLEAN /\ MaxOutages \in Nat /\ MaxDrops \in Nat
 
 VARIABLES
@@ -97,11 +99,14 @@ VARIABLES
   \* history (observation only - no action is guarded by these)
   created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections, losses,
   everAcked, inits,
-  \* run 4 extras (xVars): constant unless OptClaimLastReset / TrackHidden is on
-  claimLR,      \* last-reset value read when this node's job was claimed (OptClaimLastReset)
+  \* run 4/5 extras (xVars): constant unless TrackHidden / SplitCAS is on, except claimLR
+  claimLR,      \* last-reset value read when this node's job was claimed (glossary resetSinceClaim, run 5)
   sawAtLoss,    \* history: this node had seen a marker when the last FLUSHALL happened (TrackHidden)
   readInWindow, \* history: this node read the marker (claim, heartbeat, completion) since that flush (TrackHidden)
-  runAtLoss     \* history: this node's current run was already running at that flush (TrackHidden)
+  runAtLoss,    \* history: this node's current run was already running at that flush (TrackHidden)
+  casPending,   \* SplitCAS: this node read a marker that meets REQ-507's condition and has not yet made
+  found,        \*   its compare-and-set against the value it read (found)
+  foundLR       \*   and the last-reset value it read with it
 
 nodeVars  == <<node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded, resetVal,
                done, remembers, waitDone, hbPending, leaseLost>>
@@ -109,7 +114,7 @@ storeVars == <<marker, flagged, lastReset, codeRec, registry, resetRec, maint, j
 envVars   == <<evalOK, evicting, reachable, memHigh, outages, drops, tokens, advances, clock>>
 histVars  == <<created, maintIntent, pendingLoss, falseReset, lostOutcome, lostOutcomeLL, detections,
                losses, everAcked, inits>>
-xVars     == <<claimLR, sawAtLoss, readInWindow, runAtLoss>>
+xVars     == <<claimLR, sawAtLoss, readInWindow, runAtLoss, casPending, found, foundLR>>
 vars      == <<nodeVars, storeVars, envVars, histVars, xVars>>
 
 NodeStatus  == {"Starting", "Running", "Stopped", "StartupFailed"}
@@ -155,6 +160,7 @@ TypeInv ==
   /\ detections \in Nat /\ losses \in 0..MaxLosses /\ everAcked \in BOOLEAN /\ inits \in Nat
   /\ claimLR \in [Nodes -> Gens]
   /\ sawAtLoss \in [Nodes -> BOOLEAN] /\ readInWindow \in [Nodes -> BOOLEAN] /\ runAtLoss \in [Nodes -> BOOLEAN]
+  /\ casPending \in [Nodes -> BOOLEAN] /\ found \in [Nodes -> Gens] /\ foundLR \in [Nodes -> Gens]
 
 DataNow == [marker |-> marker, flagged |-> flagged, lastReset |-> lastReset, codeRec |-> codeRec,
             registry |-> registry, resetRec |-> resetRec, maint |-> maint, jobRec |-> jobRec]
@@ -200,6 +206,7 @@ Init ==
   /\ claimLR = [n \in Nodes |-> 0]
   /\ sawAtLoss = [n \in Nodes |-> FALSE] /\ readInWindow = [n \in Nodes |-> FALSE]
   /\ runAtLoss = [n \in Nodes |-> FALSE]
+  /\ casPending = [n \in Nodes |-> FALSE] /\ found = [n \in Nodes |-> 0] /\ foundLR = [n \in Nodes |-> 0]
 
 Up(n) == node[n] \in {"Starting", "Running"}
 Max2(a, b) == IF a > b THEN a ELSE b
@@ -257,13 +264,24 @@ NodeStops(n) ==
   /\ waitDone' = [waitDone EXCEPT ![n] = FALSE]
   /\ leaseLost' = [leaseLost EXCEPT ![n] = FALSE]
   /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
-  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, rs, health, chk, claimGen, claimTok, learned, lastSeen,
+  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, casPending, found, foundLR, rs, health, chk, claimGen, claimTok, learned, lastSeen,
                  reseeded, resetVal, done, storeVars, envVars, histVars>>
 
 ---------------------------------------------------------------------------
 \* Generation marker and reset handling (worker nodes only: REQ-507, REQ-527, REQ-528, REQ-530)
 
 Checking(n) == n \in WorkerNodes /\ node[n] = "Running" /\ reachable
+
+\* A flush is hidden for good: no node can detect it any more (the marker is present, unflagged and
+\* not older than any value a node saw) although no node detected it.
+Hidden ==
+  /\ pendingLoss /\ marker # 0 /\ ~flagged /\ \A n \in Nodes : ~casPending[n]
+  /\ \A n \in WorkerNodes : ~(marker < lastSeen[n])
+
+\* TrackHidden: n read the marker after the last flush and before it became hidden.
+MarkRead(n) == IF TrackHidden /\ pendingLoss /\ ~Hidden
+                 THEN readInWindow' = [readInWindow EXCEPT ![n] = TRUE]
+                 ELSE UNCHANGED readInWindow
 
 \* A node's store becomes reconciling: the REQ-509 wait starts, and every run live now must renew
 \* or re-create its record within it, or it has gone a whole LeaseDuration without a heartbeat (A-18).
@@ -288,13 +306,31 @@ Observe(n) ==
 \*   @req REQ-509 (run 4): a detection starts re-seeding, so the LeaseDuration wait (re)starts here,
 \*   from Ready and from Reconciling alike ("since it last started re-seeding").
 \*   @req REQ-523 (run 4): its trigger is "this node's compare-and-set in REQ-507 succeeds": this action only.
+\*   @req REQ-507 (run 5): "when any read this node makes of the generation marker, including those of its
+\*   claim, heartbeat and completion scripts, finds it ...": the reads of Claim, Heartbeat and Complete
+\*   apply this action first (ReadOK below); other reads (REQ-527, REQ-510, plain looks) still happen at
+\*   any time (A-2). With SplitCAS the read (DetectRead) and the compare-and-set against what it found
+\*   are two steps; a lost compare-and-set re-seeds without reporting (DetectLose).
 DetectCond(n) ==
   /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
   /\ lastSeen[n] # 0
   /\ marker = 0 \/ marker < lastSeen[n]
   /\ clock + 1 <= MaxGen
+DetectRead(n) ==
+  /\ SplitCAS /\ DetectCond(n) /\ ~casPending[n]
+  /\ casPending' = [casPending EXCEPT ![n] = TRUE]
+  /\ found' = [found EXCEPT ![n] = marker]
+  /\ foundLR' = [foundLR EXCEPT ![n] = lastReset]
+  /\ MarkRead(n)
+  /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, nodeVars, storeVars, envVars, histVars>>
+\* OptRetryCAS: the retry against the value now found is itself one compare-and-set.
+RetryCAS(n) == OptRetryCAS /\ marker # found[n] /\ marker # 0 /\ lastReset = foundLR[n]
 DetectReset(n) ==
-  /\ DetectCond(n)
+  /\ IF SplitCAS
+       THEN /\ casPending[n] /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"} /\ clock + 1 <= MaxGen
+            /\ marker = found[n] \/ RetryCAS(n)
+       ELSE DetectCond(n)
+  /\ casPending' = [casPending EXCEPT ![n] = FALSE]
   /\ LET v == clock + 1 IN
        /\ marker' = v /\ flagged' = TRUE /\ lastReset' = v /\ clock' = v
        /\ lastSeen' = [lastSeen EXCEPT ![n] = v]
@@ -307,7 +343,8 @@ DetectReset(n) ==
   /\ detections' = detections + 1
   /\ falseReset' = (falseReset \/ ~pendingLoss)
   /\ pendingLoss' = FALSE
-  /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, reseeded, done, leaseLost, codeRec,
+  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, runAtLoss, found, foundLR, node, health, chk, run, claimGen,
+                 claimTok, reseeded, done, leaseLost, codeRec,
                  registry, maint, jobRec, snap, evalOK, evicting, reachable, memHigh, outages, drops,
                  tokens, advances, created, maintIntent, lostOutcome, lostOutcomeLL, losses, everAcked, inits>>
 
@@ -316,10 +353,13 @@ DetectReset(n) ==
 \*   (run 4), flagged, only if none exists yet; INFO; start re-seeding without logging StoreWasReset
 \*   or recording the reset as unacknowledged (resetRec and detections are untouched).
 \*   A-17: without LateJoin a node's first marker read happens before any data loss.
-InitMarker(n) ==
+\*   Run 5: also triggered by the reads of Claim, Heartbeat and Complete (ReadOK).
+InitCond(n) ==
   /\ Checking(n) /\ rs[n] = "Ready"
   /\ marker = 0 /\ lastSeen[n] = 0
   /\ clock + 1 <= MaxGen
+InitMarker(n) ==
+  /\ InitCond(n)
   /\ marker' = 1 /\ flagged' = TRUE /\ lastReset' = clock + 1 /\ clock' = clock + 1
   /\ lastSeen' = [lastSeen EXCEPT ![n] = 1]
   /\ resetVal' = [resetVal EXCEPT ![n] = 1]
@@ -335,10 +375,13 @@ InitMarker(n) ==
 \* @req REQ-530  Marker flagged with a value whose reconciliation this node has not finished, if that
 \*   value is not older than the last value this node saw (run 4) -> re-seed without logging
 \*   StoreWasReset, and remember the value. Re-seeding starts, so the REQ-509 wait starts.
-Learn(n) ==
+\*   Run 5: also triggered by the reads of Claim, Heartbeat and Complete (ReadOK).
+LearnCond(n) ==
   /\ Checking(n) /\ rs[n] = "Ready"
   /\ marker # 0 /\ flagged /\ marker # done[n]
   /\ ~(marker < lastSeen[n])
+Learn(n) ==
+  /\ LearnCond(n)
   /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
   /\ resetVal' = [resetVal EXCEPT ![n] = marker]
   /\ lastSeen' = [lastSeen EXCEPT ![n] = marker]
@@ -346,6 +389,37 @@ Learn(n) ==
   /\ StartWait(n)
   /\ UNCHANGED <<xVars, node, health, chk, run, claimGen, claimTok, reseeded, done, remembers, leaseLost,
                  storeVars, envVars, histVars>>
+
+\* @req REQ-507 (SplitCAS only): the compare-and-set against what the node found fails because the
+\*   marker changed since its read. "in either case start re-seeding": the node reconciles the value it
+\*   now finds (A-19), without StoreWasReset ("if its own write succeeded").
+\* OptRetryCAS: the failed compare-and-set returns a marker that meets REQ-507's condition again, so the
+\*   node makes its compare-and-set against that one.
+Reread(n) == OptRetryCAS /\ (marker = 0 \/ marker < lastSeen[n])
+DetectReread(n) ==
+  /\ SplitCAS /\ casPending[n] /\ marker # found[n] /\ ~RetryCAS(n) /\ Reread(n)
+  /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
+  /\ found' = [found EXCEPT ![n] = marker]
+  /\ foundLR' = [foundLR EXCEPT ![n] = lastReset]
+  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, runAtLoss, casPending, nodeVars, storeVars, envVars, histVars>>
+DetectLose(n) ==
+  /\ SplitCAS /\ casPending[n] /\ marker # found[n] /\ ~RetryCAS(n) /\ ~Reread(n)
+  /\ Checking(n) /\ rs[n] \in {"Ready", "Reconciling"}
+  /\ casPending' = [casPending EXCEPT ![n] = FALSE]
+  /\ rs' = [rs EXCEPT ![n] = "Reconciling"]
+  /\ resetVal' = [resetVal EXCEPT ![n] = marker]
+  /\ lastSeen' = [lastSeen EXCEPT ![n] = Max2(lastSeen[n], marker)]
+  /\ learned' = [learned EXCEPT ![n] = (run[n] # NULL) \/ learned[n]]
+  /\ StartWait(n)
+  /\ UNCHANGED <<claimLR, sawAtLoss, readInWindow, runAtLoss, found, foundLR, node, health, chk, run, claimGen,
+                 claimTok, reseeded, done, remembers, leaseLost, storeVars, envVars, histVars>>
+
+\* @req REQ-507 REQ-528 REQ-530 (run 5): a worker's claim, heartbeat and completion scripts read the
+\*   marker and return it (TECH-130); if a condition of these sentences holds at that read, the node
+\*   applies it before using the script's result. Modeled as: the read happens only once none holds
+\*   (DetectReset, InitMarker and Learn are fair), and not between a SplitCAS read and its
+\*   compare-and-set (A-28).
+ReadOK(n) == ~DetectCond(n) /\ ~InitCond(n) /\ ~LearnCond(n) /\ ~casPending[n]
 
 \* @req REQ-507 REQ-528 REQ-530 (shall: "start re-seeding the code-defined recurring jobs, the queue
 \*   registry and this node's registration"). A-3: one step; recurring REQ-203 recreates the definitions.
@@ -373,8 +447,10 @@ LeaseElapses(n) ==
 \*   node last started re-seeding (StartWait in DetectReset, InitMarker, Learn) -> clear the flag if it is still set on the value this
 \*   reconciliation is for; store ready. The node has finished the value if it cleared the flag or
 \*   found the marker no longer flagged with it (REQ-530 notes).
+\*   Run 5: the clear reads the marker, so REQ-507 applies to it first ("any read this node makes").
 FinishReconcile(n) ==
   /\ Checking(n) /\ rs[n] = "Reconciling"
+  /\ ReadOK(n)
   /\ reseeded[n] = resetVal[n]
   /\ waitDone[n]
   /\ flagged' = IF flagged /\ marker = resetVal[n] THEN FALSE ELSE flagged
@@ -453,7 +529,7 @@ Flush ==
             /\ readInWindow' = [n \in Nodes |-> FALSE]
             /\ runAtLoss' = [n \in Nodes |-> run[n] # NULL]
        ELSE UNCHANGED <<sawAtLoss, readInWindow, runAtLoss>>
-  /\ UNCHANGED <<claimLR, nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
+  /\ UNCHANGED <<claimLR, casPending, found, foundLR, nodeVars, snap, envVars, created, maintIntent, falseReset, lostOutcome, lostOutcomeLL,
                  detections, everAcked, inits>>
 
 \* The policy changes to evicting while nodes run (failover to a differently configured replica,
@@ -503,6 +579,10 @@ ActC_OlderRollbackOnly == (losses' > losses) => snap.marker < marker
 \* Action constraints that bound the two-loss cfgs to one shape of second loss each (scope, not
 \* requirements): during a reconciliation (Redis_Flush2*.cfg), or after the first reconciliation has
 \* ended everywhere (Redis_Unique2.cfg, Redis_Recurring2.cfg).
+\* SplitCAS scope: the window between a node's read and its compare-and-set is shorter than one
+\* LeaseDuration (no REQ-509 wait ends inside it). Without it, a node that reads and then stalls for
+\* a whole lease is the paused node NFR-31 already describes.
+ActC_ShortCAS == (\E n \in Nodes : casPending[n]) => \A m \in Nodes : waitDone'[m] => waitDone[m]
 ActC_SecondLossDuringReconcile == (losses' > losses /\ losses >= 1) => \E n \in Nodes : rs[n] = "Reconciling"
 ActC_SecondLossAfterReconcile ==
   (losses' > losses /\ losses >= 1) => (marker # 0 /\ ~flagged /\ \A n \in Nodes : rs[n] # "Reconciling")
@@ -532,19 +612,6 @@ Enqueue(j) ==
 \* starts a fresh lease.
 Holders == {j \in Jobs : jobRec[j].st = "processing"}
 
-\* ReadsDetect (reading switch): a worker's claim, heartbeat and completion read the marker; if
-\* REQ-507's condition holds at that read, the node runs REQ-507 first (DetectReset is fair).
-ReadOK(n) == ReadsDetect => ~DetectCond(n)
-\* A flush is hidden for good: no node can detect it any more (the marker is present, unflagged and
-\* not older than any value a node saw) although no node detected it.
-Hidden ==
-  /\ pendingLoss /\ marker # 0 /\ ~flagged
-  /\ \A n \in WorkerNodes : ~(marker < lastSeen[n])
-
-\* TrackHidden: n read the marker after the last flush and before it became hidden.
-MarkRead(n) == IF TrackHidden /\ pendingLoss /\ ~Hidden
-                 THEN readInWindow' = [readInWindow EXCEPT ![n] = TRUE]
-                 ELSE UNCHANGED readInWindow
 Claim(n, j) ==
   /\ node[n] = "Running" /\ n \in WorkerNodes /\ rs[n] # "Connecting" /\ reachable
   /\ run[n] = NULL /\ ~maint
@@ -561,18 +628,19 @@ Claim(n, j) ==
   /\ learned' = [learned EXCEPT ![n] = FALSE]
   /\ leaseLost' = [leaseLost EXCEPT ![n] = FALSE]
   /\ lastSeen' = [lastSeen EXCEPT ![n] = Max2(lastSeen[n], marker)]
-  /\ claimLR' = [claimLR EXCEPT ![n] = IF OptClaimLastReset THEN lastReset ELSE 0]
+  /\ claimLR' = [claimLR EXCEPT ![n] = lastReset]
   /\ MarkRead(n)
   /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
-  /\ UNCHANGED <<sawAtLoss, node, rs, health, chk, reseeded, resetVal, done, remembers, waitDone, hbPending,
+  /\ UNCHANGED <<sawAtLoss, casPending, found, foundLR, node, rs, health, chk, reseeded, resetVal, done, remembers, waitDone, hbPending,
                  marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap, evalOK, evicting,
                  reachable, memHigh, outages, drops, advances, clock, histVars>>
 
-\* glossary resetSinceClaim: marker missing, flagged, or older than at claim, or its last-reset value
-\* later than at claim, or this node detected or learned of a reset since the claim.
+\* glossary resetSinceClaim (run 5): marker missing, flagged, or older than at claim, or its last-reset
+\* value later than the last-reset value read at the claim, or this node detected or learned of a
+\* reset since the claim. Used by @req REQ-521 REQ-522.
 ResetSinceClaim(n) ==
   \/ marker = 0 \/ flagged \/ marker < claimGen[n] \/ learned[n]
-  \/ IF OptClaimLastReset THEN lastReset > claimLR[n] ELSE lastReset > claimGen[n]
+  \/ lastReset > claimLR[n]
 
 OwnRecord(n) ==
   LET r == jobRec[run[n]] IN r.st = "processing" /\ r.owner = n /\ r.tok = claimTok[n]
@@ -604,7 +672,7 @@ Heartbeat(n) ==
           /\ UNCHANGED jobRec
   /\ hbPending' = Renewed(n)
   /\ MarkRead(n)
-  /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
+  /\ UNCHANGED <<claimLR, sawAtLoss, runAtLoss, casPending, found, foundLR, node, rs, health, chk, run, claimGen, claimTok, learned, lastSeen, reseeded,
                  resetVal, done, remembers, waitDone, leaseLost, marker, flagged, lastReset, codeRec, registry,
                  resetRec, maint, snap, envVars, histVars>>
 
@@ -630,7 +698,7 @@ Complete(n) ==
   /\ leaseLost' = [leaseLost EXCEPT ![n] = FALSE]
   /\ MarkRead(n)
   /\ runAtLoss' = [runAtLoss EXCEPT ![n] = FALSE]
-  /\ UNCHANGED <<claimLR, sawAtLoss, node, rs, health, chk, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
+  /\ UNCHANGED <<claimLR, sawAtLoss, casPending, found, foundLR, node, rs, health, chk, claimGen, claimTok, learned, lastSeen, reseeded, resetVal, done,
                  remembers, waitDone, marker, flagged, lastReset, codeRec, registry, resetRec, maint, snap,
                  envVars, created, maintIntent, pendingLoss, falseReset, detections, losses, everAcked, inits>>
 
@@ -699,7 +767,7 @@ MemChange  == /\ MemToggle /\ memHigh' = ~memHigh
 ---------------------------------------------------------------------------
 SystemStep(n) ==
   \/ Connect(n) \/ StartupNoEval(n) \/ StartupEviction(n) \/ NodeRuns(n)
-  \/ Observe(n) \/ DetectReset(n) \/ InitMarker(n) \/ Learn(n) \/ Reseed(n) \/ FinishReconcile(n)
+  \/ Observe(n) \/ DetectRead(n) \/ DetectReset(n) \/ DetectLose(n) \/ DetectReread(n) \/ InitMarker(n) \/ Learn(n) \/ Reseed(n) \/ FinishReconcile(n)
   \/ Advance(n) \/ PeriodicReconcile(n) \/ RewriteRecord(n) \/ ForgetReset(n)
   \/ HealthCheck(n) \/ Heartbeat(n)
 
@@ -716,6 +784,7 @@ Next ==
 Fairness ==
   /\ \A n \in Nodes : /\ WF_vars(Connect(n)) /\ WF_vars(StartupNoEval(n)) /\ WF_vars(StartupEviction(n))
                       /\ WF_vars(NodeRuns(n)) /\ WF_vars(Observe(n)) /\ WF_vars(DetectReset(n))
+                      /\ WF_vars(DetectRead(n)) /\ WF_vars(DetectLose(n)) /\ WF_vars(DetectReread(n))
                       /\ WF_vars(InitMarker(n)) /\ WF_vars(Learn(n)) /\ WF_vars(Reseed(n))
                       /\ WF_vars(FinishReconcile(n)) /\ WF_vars(PeriodicReconcile(n))
                       /\ WF_vars(RewriteRecord(n)) /\ WF_vars(ForgetReset(n))

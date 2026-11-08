@@ -1,11 +1,11 @@
-"""Writes the Redis*.cfg files of run 4. Each cfg = BASE constants + overrides + checks.
+"""Writes the Redis*.cfg files of run 5. Each cfg = BASE constants + overrides + checks.
 Run from specs/model/redis:  python gen_cfgs.py   (removes Redis*.cfg files it no longer writes)"""
 import pathlib
 
 BASE = dict(Nodes="{n1, n2}", WorkerNodes="{n1, n2}", Jobs="{j1, j2}", QueueA="{j1}", KeyMax="1",
             UniqueKeys="FALSE", Recurring="FALSE", ShardByQueue="FALSE", FreshStore="FALSE",
             LossKinds='{"flush"}', MaxLosses="1", PolicyChange="FALSE", LateJoin="FALSE",
-            ReadsDetect="FALSE", OptClaimLastReset="FALSE", TrackHidden="FALSE",
+            SplitCAS="FALSE", OptRetryCAS="FALSE", TrackHidden="FALSE",
             MaxAdvances="1", MaxTok="3", AllowStop="FALSE",
             CheckHealth="FALSE", MemToggle="FALSE", MaxOutages="0", MaxDrops="0", NULL="NULL")
 SAFETY = ["Inv_NoFalseReset", "Inv_OneEventPerReset", "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost",
@@ -30,14 +30,26 @@ CFGS = {
                                  "Inv_NoLostOutcomeLeaseLost", "Scn_NoClaimWhileFlagged"], []),
   "Redis_LateJoin": ("One flush; a node may read the marker for the first time after it (REQ-528); one advance.",
             dict(LateJoin="TRUE"), SAFETY, []),
-  "Redis_LateJoinOpt": ("OPTION CHECK (new F-2): LateJoin with resetSinceClaim comparing last-reset values.",
-            dict(LateJoin="TRUE", OptClaimLastReset="TRUE"), ["Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost"], []),
-  "Redis_Hide": ("Run-3 F-3 option 2: when is a late-join flush hidden by the advance? A-2 (literal).",
-            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE"), ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost"], []),
-  "Redis_HideReads": ("READING CHECK (new F-1): as Hide, with claim, heartbeat and completion reads counting for REQ-507.",
-            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", ReadsDetect="TRUE"),
+  "Redis_Hide": ("Run-4 F-1 re-check: when is a late-join flush hidden by the advance? Reads detect (REQ-507/528/530, run 5).",
+            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE"),
             ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost", "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost",
              "Inv_ConcurrencyKeyMax"], []),
+  "Redis_Hide2": ("As Hide with two jobs (a claim by a node that saw the old marker beside a running job).",
+            dict(LateJoin="TRUE", TrackHidden="TRUE"), ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost"], []),
+  "Redis_HideRace": ("MODEL CHECK (A-19 relaxed): as Hide, REQ-507's read and compare-and-set are two steps, and the window"
+                     " between them is shorter than one LeaseDuration (ACTION_CONSTRAINT).",
+            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", SplitCAS="TRUE"),
+            ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost", "Inv_NoFalseReset", "Inv_NoLostOutcome",
+             "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax"], []),
+  "Redis_HideRaceRetry": ("OPTION CHECK (new F-1 option 2): HideRace where a failed compare-and-set is a read for REQ-507 and is"
+                          " retried when only an advance moved the marker.",
+            dict(Jobs="{j1}", LateJoin="TRUE", TrackHidden="TRUE", SplitCAS="TRUE", OptRetryCAS="TRUE"),
+            ["Inv_HiddenOnlyIfPaused", "Inv_HiddenRunsLeaseLost", "Inv_NoFalseReset", "Inv_OneEventPerReset",
+             "Inv_NoLostOutcome", "Inv_NoLostOutcomeLeaseLost", "Inv_ConcurrencyKeyMax"], []),
+  "Redis_RaceRetry": ("OPTION CHECK (new F-1): main run with SplitCAS and the retry.",
+            dict(SplitCAS="TRUE", OptRetryCAS="TRUE"), SAFETY, []),
+  "Redis_Race": ("MODEL CHECK (A-19 relaxed): main run with REQ-507's read and compare-and-set as two steps.",
+            dict(SplitCAS="TRUE"), SAFETY, []),
   "Redis_Unique": ("Unique keys (jobs INV-100) across one flush; no concurrency limit (REQ-522, REQ-534).",
             dict(UniqueKeys="TRUE", KeyMax="2"), ["Inv_UniqueKey"], []),
   "Redis_Unique2": ("Unique keys across two flushes, the second after the first reconciliation ended (ACTION_CONSTRAINT); no concurrency limit.",
@@ -61,9 +73,6 @@ CFGS = {
   "Redis_Fresh": ("First start of two workers against an empty server; no data loss (REQ-528, SCN-503).",
             dict(Jobs="{j1}", FreshStore="TRUE", LossKinds="{}", MaxLosses="0"),
             ["Inv_NoFalseReset", "Inv_ConcurrencyKeyMax", "Inv_ResetSinceClaimSound"], []),
-  "Redis_FreshOpt": ("OPTION CHECK (new F-2): Fresh with resetSinceClaim comparing last-reset values.",
-            dict(Jobs="{j1}", FreshStore="TRUE", LossKinds="{}", MaxLosses="0", OptClaimLastReset="TRUE"),
-            ["Inv_ResetSinceClaimSound", "Inv_NoFalseReset"], []),
   "Redis_Health": ("Health: one node, one flush, one outage, memory threshold on (redis F-5, F-6).",
             dict(Nodes="{n1}", WorkerNodes="{n1}", Jobs="{j1}", CheckHealth="TRUE", MemToggle="TRUE", MaxOutages="1"),
             ["Inv_UnreachableIsUnhealthy", "Inv_UnhealthyOnlyWithCause"], []),
@@ -108,7 +117,7 @@ CFGS = {
             dict(Recurring="TRUE", KeyMax="2", MaxLosses="2", MaxAdvances="0", MaxTok="2"),
             ["Scn510_Prefix_NotReached"], []),
 }
-ACTC = {"Redis_RestoreOlder": "ActC_OlderRollbackOnly",
+ACTC = {"Redis_RestoreOlder": "ActC_OlderRollbackOnly", "Redis_HideRace": "ActC_ShortCAS", "Redis_HideRaceRetry": "ActC_ShortCAS",
         "Redis_Flush2": "ActC_SecondLossDuringReconcile", "Redis_Flush2Late": "ActC_SecondLossDuringReconcile",
         "Redis_Unique2During": "ActC_SecondLossDuringReconcile", "Redis_Recurring2During": "ActC_SecondLossDuringReconcile",
         "Redis_SCN509": "ActC_SecondLossDuringReconcile", "Redis_SCN509Reach": "ActC_SecondLossDuringReconcile",
