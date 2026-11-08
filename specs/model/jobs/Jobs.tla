@@ -187,11 +187,12 @@ ShutOCE(r, e) == e = "oce" /\ r.sSig            \* "an OCE thrown after the job'
 R136(r, e) == e = "oce" /\ CR(r)                                          \* REQ-136
 R138(r, e) == e = "oce" /\ ~CR(r) /\ r.tSig /\ ~r.graceOver               \* REQ-138 / REQ-186 ("throws OCE within it")
 R140(r, e) == ShutOCE(r, e) /\ ~CR(r) /\ ~r.tSig                          \* REQ-140 (run 3: "or it throws OCE and its timeout token was not signalled")
-\* REQ-190 (run 3: "other than OCE or PermanentJobFailureException while the attempt number is below maxAttempts
-\* and the retry policy allows another attempt"; run 5: "its token was cancelled for shutdown (REQ-139) while ... or it
-\* throws OperationCanceledException").  The second branch has the same trigger as REQ-136 (see Chk_SingleRule).
-R190(r, e) == CR(r) /\ \/ e = "retryable" /\ job[r.job].attempt < MaxAttempts
-                       \/ ShutOCE(r, e)
+\* REQ-190's exception branch (run 3: "other than OCE or PermanentJobFailureException while the attempt number is
+\* below maxAttempts and the retry policy allows another attempt").  Run 6: the shutdown branch no longer has an
+\* OperationCanceledException clause ("its token was cancelled for shutdown (REQ-139) while its handler is still
+\* running"), so an OCE thrown by a cancel-requested job is REQ-136's alone (run-5 F-2).  The shutdown branch is
+\* ReleaseOnShutdown.
+R190(r, e) == CR(r) /\ e = "retryable" /\ job[r.job].attempt < MaxAttempts
 \* A-5: an OCE covered by REQ-136 or REQ-138 is not also an ordinary failure (REQ-136 notes).
 Gen(r, e)  == ~ShutOCE(r, e) /\ ~(e = "oce" /\ (R136(r, e) \/ R138(r, e)))
 R129(r, e) == Gen(r, e) /\ ~CR(r) /\ job[r.job].attempt < MaxAttempts /\ e # "permanent"   \* REQ-129
@@ -291,22 +292,22 @@ SignalShutdown(r) ==
   /\ UNCHANGED <<job, node, queue, maint>>
 
 \* @req REQ-140 REQ-190 REQ-191  token cancelled for shutdown while the handler is still running: release the
-\*        lease and take back the attempt (REQ-140, recorded by REQ-191) or, when cancellation was requested,
-\*        abandon the handler and mark the job Cancelled (REQ-190).  The "throws OperationCanceledException"
-\*        branches of REQ-140 and REQ-190 are in HandlerThrows.  REQ-140 applies only while the timeout token was
-\*        not signalled; REQ-190's shutdown branch (run 5: "its token was cancelled for shutdown (REQ-139) while
-\*        its handler is still running") has no timeout guard.  Whether REQ-191 records REQ-190's shutdown
-\*        abandonment is open (F-1): tagged ShutdownCancel, not Abandoned.
+\*        lease and take back the attempt (REQ-140) or, when cancellation was requested, abandon the handler and
+\*        mark the job Cancelled (REQ-190's shutdown branch, run 6 wording, no timeout guard).  Either way the
+\*        handler is still running, so REQ-191 records it (run 6: "abandons a handler that is still running, for
+\*        whatever reason"): tag Abandoned.  ShutdownCancel names the cause, as Timeout and Released do.  REQ-140's
+\*        "throws OperationCanceledException" branch is in HandlerThrows (R140); REQ-190 has none since run 6.
+\*        The decision reads cancelReq when the lease write is made (A-19).
 ReleaseOnShutdown(r) ==
   /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r)
   /\ node[r.node].st = "Draining"
   /\ job[r.job].cancelReq \/ ~r.tSig
   /\ IF job[r.job].cancelReq
        THEN SetJob(r.job, [job[r.job] EXCEPT !.status = "Cancelled", !.owner = NULL,
-                            !.hist = @ \cup {"ShutdownCancel"} \cup Stale(r.job)])
+                            !.hist = @ \cup {"ShutdownCancel", "Abandoned"} \cup Stale(r.job)])
        ELSE SetJob(r.job, [job[r.job] EXCEPT !.status = "Enqueued", !.owner = NULL, !.attempt = @ - 1,
                      !.leaseExpired = FALSE, !.longWait = FALSE, !.hist = @ \cup {"Released", "Abandoned"}])
-  /\ SetRun(r, [r EXCEPT !.mode = "released"])
+  /\ SetRun(r, [r EXCEPT !.mode = IF job[r.job].cancelReq THEN "abandoned" ELSE "released"])
   /\ UNCHANGED <<node, queue, maint>>
 
 \* hosting REQ-29 (run 5 wording): stop when every in-flight job has finished, or once ShutdownTimeout has
@@ -472,7 +473,8 @@ Chk_PermanentVsCancel   == \A r \in runs : ~(Current(r) /\ R131(r, "permanent") 
 Chk_TimeoutVsShutdown   == \A r \in runs : ~(Current(r) /\ (r.cSig \/ r.tSig \/ r.sSig) /\ R138(r, "oce") /\ R140(r, "oce"))   \* REQ-138/186 vs REQ-140
 
 \* Same-event check for every throw: at most one of REQ-129, REQ-131, REQ-136, REQ-138/186, REQ-140 and
-\* REQ-190 applies.  Violation = two requirements decide one exception differently.
+\* REQ-190 applies.  Violation = two requirements decide one exception.  Run 5: violated by REQ-136 and REQ-190's
+\* shutdown OCE clause (F-2); run 6: that clause is gone, expected to hold again.
 Chk_SingleRule ==
   \A r \in runs, e \in {"retryable", "permanent", "oce"} :
     (Current(r) /\ (e = "oce" => (r.cSig \/ r.tSig \/ r.sSig))) => Cardinality(Applicable(r, e)) <= 1
@@ -579,10 +581,26 @@ Chk_SingleOutcome ==
 
 \* Probe (run 5): a cancel-requested job at its last attempt ends Cancelled at a graceful stop through
 \* REQ-190's shutdown branch, with its handler abandoned while still running (expected VIOLATED = reachable).
-\* This is the fixed path of run-4 F-1, and the example for run-5 F-1.
+\* This is the fixed path of run-4 F-1, and the example for run-5 F-1.  Run 6: the abandoned run is recorded
+\* (REQ-191) and has mode "abandoned".
 Reach_ShutdownCancelled ==
   ~\E j \in Jobs : job[j].status = "Cancelled" /\ "ShutdownCancel" \in job[j].hist /\ job[j].attempt = MaxAttempts
-                   /\ \E r \in runs : r.job = j /\ r.mode = "released"
+                   /\ "Abandoned" \in job[j].hist /\ \E r \in runs : r.job = j /\ r.mode = "abandoned"
+
+\* @req REQ-191  (run 6) every step in which the system stops holding a handler that is still running (abandoned
+\*        after a timeout, released or cancelled at shutdown) records it in the job's history.  Lease loss is the
+\*        other trigger (heartbeat refused), covered by LeaseLostRecordable.  Action property.
+AbandonedNow(r) == r.mode = "running" /\ \E r2 \in runs' : /\ r2.node = r.node /\ r2.job = r.job
+                                                         /\ r2.token = r.token /\ r2.mode # "running"
+Prop_AbandonRecorded == [][\A r \in runs : AbandonedNow(r) => "Abandoned" \in job'[r.job].hist]_vars
+
+\* Probe (run 6, F-1): an operator cancels a job after its draining node cancelled the run's token for shutdown
+\*        (REQ-139) and before the node's shutdown write (REQ-140 / REQ-190, hosting REQ-29).  REQ-140's "while ...
+\*        its cancellation was not requested" no longer holds, and REQ-190's shutdown event ("its token was
+\*        cancelled for shutdown") came before the request.  Expected VIOLATED (reachable).  The model then applies
+\*        REQ-190 at the write (A-19).
+ProbeAct_CancelAfterShutdownSignal ==
+  [][\A j \in Jobs : ~(CancelProcessing(j) /\ \E r \in runs : r.job = j /\ r.mode = "running" /\ Current(r) /\ r.sSig)]_vars
 
 \* Check (run 4, hosting REQ-29): a draining node eventually stops.
 Liv_DrainEnds == \A n \in Nodes : node[n].st = "Draining" ~> node[n].st = "Stopped"
