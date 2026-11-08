@@ -1,5 +1,5 @@
 ---------------------------- MODULE RecurringRace ----------------------------
-\* Generated from specs/recurring.json (specHash 0737c73dad59) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash e16e2fce5d85) — edit the requirements, not this file.
 \* @req INV-212  every store write that changes a recurring job's state, nextRunAt or definition, or removes it (a
 \*              trigger, a schedule change, a definition update by REQ-204, REQ-212 or REQ-241, a pause, a resume, an
 \*              orphaning, a restore or a removal) is a compare-and-set on the state, nextRunAt and definition it read,
@@ -21,6 +21,8 @@
 \* abstraction (A-13: "the schedule changed" is a nondeterministic choice) and leaves sch, nsch and csch constant.
 \* The heartbeats (which running nodes declare a job, with which code) are not in the compare-and-set (INV-212 notes,
 \* run-7 F-2 option 2): the orphan sweep, a restore, REQ-241 and REQ-203's scheduler create decide from what they read.
+\* Run 10: a restore whose node's code has the stored definitionHash keeps the stored definition (REQ-206), and with
+\* schedule content its schedule too (RestoreSch).
 EXTENDS Recurring
 CONSTANTS Split, CasOn, AtWrite, SchedOn
 Kinds    == {"Trigger", "Update", "Reapply", "Pause", "Resume", "Orphan", "Restore", "Remove", "Create"}
@@ -57,6 +59,10 @@ InitR == Init /\ InitS /\ rd = [r \in Names |-> NoRd]
 
 \* The schedule of a code definition; a runtime job is added with schedule s1 (an update can change it).
 SchOf(d) == CASE d = "d1" -> csch["v1"] [] d = "d2" -> csch["v2"] [] d = "d3" -> csch["v3"] [] OTHER -> "s1"
+\* @req REQ-206  run 10: the schedule a restore that takes code definition d stores: the code's schedule if d's hash
+\*              differs from the stored definitionHash, otherwise the stored one (the definition is kept, a runtime edit
+\*              included). nextRunAt is computed from now from it.
+RestoreSch(r, d) == IF rj[r].hash = d THEN sch[r] ELSE SchOf(d)
 
 -----------------------------------------------------------------------------
 \* Atomic steps with schedule content (SchedOn): every step of Recurring, with what it does to the stored schedule and
@@ -81,7 +87,7 @@ NextSch ==
        \/ Trigger(r) /\ FromSch(r, sch[r])                       \* @req REQ-216: the next occurrence of the stored schedule
        \/ TriggerNow(r) /\ SameSch
        \/ Orphan(r) /\ (IF rj'[r].st = "none" THEN ClearSch(r) ELSE SameSch)
-       \/ Restore(r) /\ SetSch(r, SchOf(rj'[r].def), TRUE)        \* @req REQ-206
+       \/ Restore(r) /\ SetSch(r, RestoreSch(r, rj'[r].hash), TRUE) \* @req REQ-206 (run 10)
        \/ OperatorAdd(r) /\ SetSch(r, "s1", TRUE)                 \* @req REQ-208
        \/ OperatorUpdate(r) /\ \E s \in Scheds : SchChange(r, s)  \* @req REQ-212, REQ-227
        \/ OperatorRemove(r) /\ ClearSch(r)
@@ -184,7 +190,7 @@ Write(r) ==
                [] k = "Resume"  -> ResumeWrite(r) /\ SchW(FromSch(r, rd[r].rs))
                [] k = "Orphan"  -> /\ OrphanWrite(r, ReadSt(r), Missed(r))
                                    /\ SchW(IF op[r] = "Delete" THEN ClearSch(r) ELSE SameSch)
-               [] k = "Restore" -> RestoreWrite(r, ReadBf(r), rd[r].d) /\ SchW(SetSch(r, SchOf(rd[r].d), TRUE))
+               [] k = "Restore" -> RestoreWrite(r, ReadBf(r), rd[r].d) /\ SchW(SetSch(r, RestoreSch(r, rd[r].d), TRUE))
                [] k = "Remove"  -> RemoveWrite(r, Missed(r)) /\ SchW(ClearSch(r))
                [] k = "Create"  -> CreateWrite(r, rd[r].d) /\ SchW(SetSch(r, SchOf(rd[r].d), TRUE))
 
@@ -305,6 +311,12 @@ Prop_RecordSaysOutcomeR ==
 \*              schedule. A definition write that stores a schedule other than the one nextRunAt came from, without
 \*              computing nextRunAt from now, leaves a nextRunAt that belongs to neither (SchedOn only).
 Inv_NextRunAtFromStoredSchedule == SchedOn => \A r \in Names : rj[r].st # "none" => nsch[r] = sch[r]
+
+\* Run 10 (probe, action, not a requirement): a restore stores the schedule of the code definition it takes. Expected
+\* VIOLATED as written: a restore with unchanged code keeps a runtime edit, whose schedule can differ from the code's. A
+\* violation shows that Inv_NextRunAtFromStoredSchedule is checked on such a restore, not only on ones that take code.
+ProbeAct_RestoreTakesCodeSchedule ==
+  [][\A r \in Names : rj[r].st = "Orphaned" /\ rj'[r].st \in {"Active", "Paused"} => sch'[r] = SchOf(rj'[r].hash)]_varsR
 
 \* @req INV-212  a writer that loses eventually acts or finds nothing to do, unless the job's state, nextRunAt or
 \*              definition keeps changing under it for ever (obstruction-free: no stuck writer). Checked with SpecRL.

@@ -1,5 +1,5 @@
 ---------------------------- MODULE Recurring ----------------------------
-\* Generated from specs/recurring.json (specHash 0737c73dad59) — edit the requirements, not this file.
+\* Generated from specs/recurring.json (specHash e16e2fce5d85) — edit the requirements, not this file.
 \* Run 7 (INV-212): every write that changes a job's state or nextRunAt, or removes it, is written here as a guard
 \* (what its read checks) and a ...Write operator (what it lands). This module keeps each as one atomic step (A-2);
 \* RecurringRace.tla splits them into a read and a write and checks INV-212's compare-and-set.
@@ -7,6 +7,8 @@
 \* for a trigger, maintenance (both only visible in RecurringRace.tla).
 \* Run 9: REQ-206's restore is the scheduler's too (actor system), so Restore is weakly fair in Spec. SpecCF_RestoreHost
 \* is run 8's reading (REQ-206 not fair), kept as a counterfactual.
+\* Run 10: REQ-206 updates the definition only if the hash of the node's code differs from the stored definitionHash
+\* (as REQ-204). Run 9's unconditional restore is the counterfactual SpecCF_RestoreAlways.
 \* Every action/property carries an @req comment naming the requirement it encodes.
 \* Entities of other modules (jobs.Job, jobs.Maintenance, hosting.Node) are abstracted to the
 \* minimum the recurring requirements talk about; each abstraction is an assumption (A-n) in
@@ -280,10 +282,14 @@ OrphanGuard(r) == SchedulerRuns /\ rj[r].st \in {"Active", "Paused"} /\ rj[r].or
 Orphan(r) == OrphanGuard(r) /\ OrphanWrite(r, rj[r].st, HasMissed(r))
 
 \* @req REQ-206  the scheduler finds an orphaned job that a running worker node declares: back to its earlier state,
-\*              definition and definitionHash from that node's code, nextRunAt from now. (run 9: actor system, fair. A
-\*              declaring running node is a running worker, so the scheduler runs; A-6.)
+\*              definition and definitionHash from that node's code if its hash differs from the stored definitionHash
+\*              (run 10; otherwise the stored definition, a runtime edit included, is kept), nextRunAt from now. (run 9:
+\*              actor system, fair. A declaring running node is a running worker, so the scheduler runs; A-6.)
+\*              The hash is compared at the write; with the definition in the compare-and-set a write that lands sees the
+\*              hash its read saw (A-26).
 RestoreWrite(r, st, d) ==
-  /\ rj' = [rj EXCEPT ![r].st = st, ![r].before = "none", ![r].behind = 0, ![r].hash = d, ![r].def = d]
+  /\ rj' = [rj EXCEPT ![r].st = st, ![r].before = "none", ![r].behind = 0, ![r].hash = d,
+                      ![r].def = IF rj[r].hash = d THEN rj[r].def ELSE d]
   /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
 Restore(r) ==
   /\ rj[r].st = "Orphaned"
@@ -702,27 +708,34 @@ Probe_StaleDefinitionAfterRestore ==
   ~(\E r \in Names : rj[r].st \in {"Active", "Paused"} /\ rj[r].origin = "code" /\ RunningNodes # {}
       /\ \A n \in RunningNodes : r \in Decl(node[n].ver) /\ rj[r].hash # CodeDef(node[n].ver))
 
-\* Run 9 (probe, action): a restore by a node whose code definition has the stored definitionHash (the code did not change)
-\* keeps an operator's runtime edit (AllowRuntimeOverride), as REQ-204 and REQ-241 do. Expected VIOLATED as written:
-\* REQ-206 updates the stored definition to the node's code whatever the hash.
-ProbeAct_RestoreKeepsRuntimeEdit ==
+\* @req REQ-206, REQ-204  run 9 F-1 regression (was ProbeAct_RestoreKeepsRuntimeEdit): a restore by a node whose code
+\*              definition has the stored definitionHash (the code did not change) keeps an operator's runtime edit
+\*              (AllowRuntimeOverride), as REQ-204 and REQ-241 do.
+Prop_RestoreKeepsRuntimeEdit ==
   [][\A r \in Names : rj[r].st = "Orphaned" /\ rj[r].def = "edited" /\ rj'[r].st \in {"Active", "Paused"}
         /\ rj'[r].hash = rj[r].hash => rj'[r].def = "edited"]_vars
 
-\* Not the requirements as written: the run-9 finding's option 1, REQ-206 updates the definition only if the hash of
-\* that node's code definition differs from the stored definitionHash (as REQ-204). The only step from Orphaned to
-\* Active or Paused is Restore, so NextOpt206 is Next with Restore replaced by RestoreOpt206.
-RestoreOpt206(r) ==
+\* @req REQ-204, REQ-206, REQ-241  run 10: the three agree that code is reapplied only when its hash differs. For a stored
+\*              code-defined job that stays stored, a step that keeps definitionHash changes the definition only by an
+\*              operator's edit (REQ-212), and a step that changes definitionHash stores that code definition.
+Prop_CodeReappliedOnlyWhenHashDiffers ==
+  [][\A r \in Names : rj[r].st # "none" /\ rj'[r].st # "none" /\ rj[r].origin = "code" =>
+        /\ (rj'[r].hash = rj[r].hash => rj'[r].def \in {rj[r].def, "edited"})
+        /\ (rj'[r].hash # rj[r].hash => rj'[r].def = rj'[r].hash)]_vars
+
+\* Not the requirements as written: run 9's REQ-206, which updated the definition to the node's code whatever the hash
+\* (run-9 F-1's trace). The only step from Orphaned to Active or Paused is Restore, so NextCF_RestoreAlways is Next with
+\* Restore replaced by RestoreCF_Always. Counterfactual only.
+RestoreCF_Always(r) ==
   /\ rj[r].st = "Orphaned"
   /\ \E n \in RunningNodes :
        /\ r \in Decl(node[n].ver)
        /\ LET d == CodeDef(node[n].ver) IN
-            /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0, ![r].hash = d,
-                                ![r].def = IF rj[r].hash = d THEN rj[r].def ELSE d]
+            /\ rj' = [rj EXCEPT ![r].st = rj[r].before, ![r].before = "none", ![r].behind = 0, ![r].hash = d, ![r].def = d]
             /\ UNCHANGED <<node, occ, job, order, maint, ov, mf, op, missRec>>
-NextOpt206 == \/ Next /\ ~\E r \in Names : rj[r].st = "Orphaned" /\ rj'[r].st \in {"Active", "Paused"}
-              \/ \E r \in Names : RestoreOpt206(r)
-SpecOpt206 == Init /\ [][NextOpt206]_vars /\ FairnessHost /\ \A r \in Names : WF_vars(RestoreOpt206(r))
+NextCF_RestoreAlways == \/ Next /\ ~\E r \in Names : rj[r].st = "Orphaned" /\ rj'[r].st \in {"Active", "Paused"}
+                        \/ \E r \in Names : RestoreCF_Always(r)
+SpecCF_RestoreAlways == Init /\ [][NextCF_RestoreAlways]_vars /\ FairnessHost /\ \A r \in Names : WF_vars(RestoreCF_Always(r))
 
 \* F: a runtime job whose name later appears in code is rewritten by code but stays "runtime".
 Probe_RuntimeJobTakenOverByCode ==
