@@ -90,7 +90,7 @@
       "entity": "RecurringJob", "actor": "Host", "from": ["Orphaned"], "to": ["Active", "Paused"],
       "ears": { "when": "a running worker node declares an orphaned recurring job again", "shall": "return the job to the state it had before it was orphaned, update the stored definition and definitionHash to match that node's code definition, and compute nextRunAt from now" },
       "mentions": ["RecurringJob.stateBeforeOrphan", "RecurringJob.nextRunAt", "RecurringJob.definitionHash", "hosting.Node.Running"],
-      "notes": "Decided by the owner on 2026-11-06: a job whose removal is rolled back comes back Active or Paused, as it was. Instants missed while orphaned are not caught up. refiner-model 2026-11-06 F-5 (decided 2026-11-06, recommended option): a job that comes back with changed code takes the code definition at once.",
+      "notes": "Decided by the owner on 2026-11-06: a job whose removal is rolled back comes back Active or Paused, as it was. Instants missed while orphaned are not caught up. refiner-model 2026-11-06 F-5 (decided 2026-11-06, recommended option): a job that comes back with changed code takes the code definition at once. Run 5 F-1: instants already missed when the job was orphaned are recorded by the orphaning (REQ-242); only those that fall due while it is orphaned are dropped without a record.",
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-3 (implied)" }]
     },
     {
@@ -164,7 +164,7 @@
       "entity": "RecurringJob", "actor": "Operator", "from": ["Paused"], "to": ["Active"],
       "ears": { "when": "an operator resumes a paused recurring job", "shall": "mark the job active and compute nextRunAt from now" },
       "mentions": ["RecurringJob.nextRunAt"],
-      "notes": "Decided by the owner on 2026-11-06: instants missed while paused are dropped, not caught up; 'from now' is confirmed. Maintenance is different: instants that fall due during maintenance go through the misfire policy (INV-210).",
+      "notes": "Decided by the owner on 2026-11-06: instants missed while paused are dropped, not caught up; 'from now' is confirmed. Maintenance is different: instants that fall due during maintenance go through the misfire policy (INV-210). refiner-model run 5 F-1: instants already missed when the job was paused are recorded by the pause (REQ-242); only those that fall due while it is paused are dropped without a record.",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-9" }]
     },
@@ -318,7 +318,7 @@
       "id": "REQ-227", "kind": "transition", "status": "approved",
       "entity": "RecurringJob", "actor": "Operator", "from": ["Active", "Paused"], "to": ["Active", "Paused"],
       "ears": { "when": "a recurring job's schedule changes", "shall": "compute nextRunAt from now, never from the last execution, and create no catch-up occurrence for the old schedule" },
-      "notes": "refiner-model 2026-11-07 run 4 F-1: no catch-up still holds, but instants that were already missed when the schedule changes are recorded as dropped (REQ-242), so the miss is alerted.",
+      "notes": "refiner-model 2026-11-07 run 4 F-1: no catch-up still holds, but instants that were already missed when the schedule changes are recorded as dropped (REQ-242), so the miss is alerted. Run 5 F-2: that includes an instant that passed moments before the change and was not triggered yet (REQ-234).",
       "mentions": ["RecurringJob.schedule", "RecurringJob.nextRunAt"],
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-10" }]
@@ -375,8 +375,8 @@
     },
     {
       "id": "REQ-234", "kind": "assumption", "status": "approved",
-      "ears": { "shall": "treat a due instant as missed only when the trigger runs more than MisfireThreshold after it, 60 seconds by default (MisfireThreshold)" },
-      "notes": "Decided by the owner on 2026-11-06; same default as Quartz.",
+      "ears": { "shall": "treat a due instant as missed when the trigger runs more than MisfireThreshold after it, 60 seconds by default (MisfireThreshold), or, for an instant that fell due while the recurring job was active, when no trigger ran for it before nextRunAt was moved past it or the job stopped being active, however recently it fell due" },
+      "notes": "Decided by the owner on 2026-11-06; same default as Quartz. refiner-model run 5 F-2 (recommended option): 'missed' was defined only by when the trigger runs, so an instant that had just passed when a schedule change, pause, orphaning or removal passed over it was neither run nor missed, and left no trace. Now every instant that passed while the job was active either runs on time or is missed and recorded (REQ-242). Instants that fall due while a job is paused or orphaned are not missed; they are dropped on purpose (REQ-215, REQ-206).",
       "tags": ["M1"],
       "sources": [{ "document": "requirements.md", "section": "§4.4 REC-5" }]
     },
@@ -438,11 +438,11 @@
     {
       "id": "REQ-242", "kind": "invariant", "status": "approved", "strength": "must",
       "entity": "RecurringJob",
-      "ears": { "when": "an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227)", "shall": "record in the job store which due instants were missed (the first, the last and how many) and how they were handled (the occurrences the misfire policy created for them and whether each started, is waiting or was skipped by the overlap policy, or that the misfire policy or the schedule change dropped them), in the same store write that moves nextRunAt, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
-      "mentions": ["RecurringJob.missedInstants", "RecurringJob.nextRunAt", "RecurringJob.misfirePolicy", "RecurringJob.Active", "RecurringJob.schedule", "RecurringJob.overlapPolicy"],
-      "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-222", "REQ-227"],
+      "ears": { "when": "an active recurring job's nextRunAt is moved past one or more missed due instants, by a trigger (REQ-216) or by a schedule change (REQ-227), or an active recurring job is paused (REQ-214), orphaned (REQ-205) or removed (REQ-207, REQ-213) while it has missed due instants", "shall": "record in the job store which due instants were missed (the first, the last and how many) and how they were handled (the occurrences the misfire policy created for them and whether each started, is waiting or was skipped by the overlap policy, or that the misfire policy, the schedule change, the pause, the orphaning or the removal dropped them), in the same store write that moves nextRunAt or pauses, orphans or removes the job, and keep that record as long as dead-lettered jobs are kept (jobs RetentionDeadLettered)" },
+      "mentions": ["RecurringJob.missedInstants", "RecurringJob.nextRunAt", "RecurringJob.misfirePolicy", "RecurringJob.Active", "RecurringJob.Paused", "RecurringJob.Orphaned", "RecurringJob.schedule", "RecurringJob.overlapPolicy"],
+      "dependsOn": ["REQ-216", "REQ-217", "REQ-218", "REQ-219", "REQ-220", "REQ-222", "REQ-227", "REQ-234", "REQ-214", "REQ-205", "REQ-207", "REQ-213"],
       "rationale": "integrations INV-412 makes the notification lease holder find missed occurrences in the job store. The last outcome (REQ-231) is overwritten by the next one, and RunOnce leaves no trace of a miss at all.",
-      "notes": "refiner-model 2026-11-06 integrations run 3 F-17 (recommended option). One record per trigger, not per instant, so a long outage on a frequent schedule writes one record. REQ-220's log line and in-memory event are unchanged. Run 4 F-1 (recommended option): a schedule change applied at a node start (REQ-204), by the scheduler (REQ-241) or by an operator (REQ-212) moves nextRunAt past overdue instants without a trigger (REQ-227); those instants are recorded as dropped by the schedule change, so integrations REQ-403 alerts them. Before, whether a missed run left any trace depended on whether the deploy also changed the schedule. Paused and orphaned jobs are excluded: their instants are dropped on purpose (REQ-215, REQ-206). Run 4 F-2 (recommended option): the record says what became of each catch-up occurrence, because the overlap policy can skip it in the same write, and a record saying only \"caught up by RunOnce\" then reported a run that never happened."
+      "notes": "refiner-model 2026-11-06 integrations run 3 F-17 (recommended option). One record per trigger, not per instant, so a long outage on a frequent schedule writes one record. REQ-220's log line and in-memory event are unchanged. Run 4 F-1 (recommended option): a schedule change applied at a node start (REQ-204), by the scheduler (REQ-241) or by an operator (REQ-212) moves nextRunAt past overdue instants without a trigger (REQ-227); those instants are recorded as dropped by the schedule change, so integrations REQ-403 alerts them. Before, whether a missed run left any trace depended on whether the deploy also changed the schedule. Instants that fall due while a job is paused or orphaned are dropped on purpose and not recorded (REQ-215, REQ-206). Run 4 F-2 (recommended option): the record says what became of each catch-up occurrence, because the overlap policy can skip it in the same write, and a record saying only \"caught up by RunOnce\" then reported a run that never happened. Run 5 F-1 (recommended option): instants already missed when an active job is paused, orphaned or removed are recorded in that write. A pause, orphaning or removal does not move nextRunAt, and the later resume or restore happens while the job is not active, so before this those misses left no trace, depending on whether the trigger or the operator came first. Run 5 F-2: 'missed' covers an instant that passed moments before any of these writes and was not triggered yet (REQ-234), so every instant that passed while the job was active either runs or is recorded. Run 5 F-3 (recommended option): the record describes each occurrence as it was in the write that made it; a waiting occurrence may later start (REQ-224) or be skipped (REQ-237), which the record does not follow. The occurrence's own state says what became of it."
     },
     {
       "id": "INV-206", "kind": "invariant", "status": "approved",
@@ -657,7 +657,7 @@
     "misfirePolicy": "RunOnce (default: one catch-up), Skip (jump to the next future occurrence) or RunAll(max) (REQ-217 to REQ-219).",
     "overlapPolicy": "Skip (default), Queue(max), Allow or CancelPrevious (REQ-221 to REQ-225, REQ-235).",
     "timeMode": "Utc (default) or Local; Local needs an explicit IANA time zone (REQ-200).",
-    "MisfireThreshold": "Lateness after which a due instant counts as missed; 60 s by default (REQ-234).",
+    "MisfireThreshold": "Lateness of the trigger after which a due instant counts as missed; 60 s by default. An instant that an active job's schedule change, pause, orphaning or removal passes over before any trigger ran for it is missed however recently it fell due (REQ-234).",
     "MaxQueuedOccurrences": "Waiting occurrences allowed under Queue; 1 by default (REQ-233).",
     "unfinished": "For overlap: the occurrence's job is not Succeeded, DeadLettered, Cancelled or Unroutable (REQ-239). A waiting occurrence is also in the way (REQ-221 to REQ-225, REQ-235).",
     "orphanPolicy": "What happens to a code- or configuration-defined job no live node declares: Orphan (default, REQ-205) or Delete (REQ-207).",
