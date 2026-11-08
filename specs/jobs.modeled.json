@@ -1,7 +1,7 @@
 {
   "module": "jobs",
-  "specHash": "0d2b4b8050debb3b456a934b4d9c36f0895b2b30d4f086e4abcc9b65cca6fb5d",
-  "generatedAt": "2026-11-08T01:56:36Z",
+  "specHash": "d1c4f5af9f87339150943337d04b6b0e155d916eaf43724355ad60b513bb826c",
+  "generatedAt": "2026-11-08T13:23:28Z",
   "model": "model/jobs/Jobs.tla, model/jobs/Jobs_Unique.tla, model/jobs/Jobs_Throttle.tla, model/jobs/Jobs_Flow.tla",
   "items": {
     "INV-100": {
@@ -252,7 +252,7 @@
     "REQ-140": {
       "hash": "b503e05d234d7e1b312008d934ca61c718bd06eaae587ac4cfe25b3ec48296c7",
       "reviewed": false,
-      "note": "Jobs.tla ReleaseOnShutdown + R140 (run 4: both branches only while the timeout token was not signalled); Chk_TimeoutReleaseSplit, Chk_TimeoutVsShutdown and Scn124_TimedOutNotReleased hold; hosting REQ-29 run-4 wording in NodeStop (R140Pending)"
+      "note": "Jobs.tla ReleaseOnShutdown (run 7: the node's check, once per run, shared with REQ-190) + ShutdownCheckLeaves (timed-out outcome) + R140; Chk_TimeoutReleaseSplit, Chk_TimeoutVsShutdown and Scn124_TimedOutNotReleased hold; hosting REQ-29 in NodeStop (every in-flight run checked)"
     },
     "REQ-141": {
       "hash": "25daec5403a37590cc9c8d5a490fde9cceca1fbace087d0fdcbe8ee103fcb431",
@@ -425,14 +425,14 @@
       "note": "Jobs.tla - every run gets SignalTimeout"
     },
     "REQ-190": {
-      "hash": "b15de54ae54fd159b42f85bb8b1c636570869d03e4bd9865a8b0b60aa53a2c5b",
+      "hash": "892f41e1de46b3c9528bafcca71660dc86b798ca71086fff0f86a568c2532445",
       "reviewed": false,
-      "note": "run 6 regenerated: Jobs.tla R190 is the exception branch only (shutdown OCE clause removed; an OCE of a cancel-requested job is REQ-136 alone, Chk_SingleRule holds again in Jobs_CHK2); ReleaseOnShutdown cancel branch (token cancelled for shutdown while still running; no timeout guard) abandons the run and records it (REQ-191); Recover, AbandonOnTimeout; NodeStop waits for it (hosting REQ-29). Run 6 F-1: a cancellation requested between the shutdown token and the shutdown write (Jobs_P4); the model applies this branch at the write (A-19)"
+      "note": "run 7 regenerated: the shutdown branch is the draining node's check (ReleaseOnShutdown, once per run, flag chk), reading the cancellation request and timeout signal when it is made; ShutdownCheckLeaves is the check's third outcome (timed out, no request); NodeStop waits until every in-flight run was checked. Run-6 F-1 regression: Prop_LateCancelNotLeft holds (Jobs_Holds/HoldsQ, violated on a scratch copy with the run-6 literal reading), Reach_LateCancelled reachable (Jobs_P4). R190 exception branch, Recover lease branch and AbandonOnTimeout unchanged. Run 7 F-1: a request after the check is left to lease expiry (Jobs_GAP8), against hosting REQ-29's note"
     },
     "REQ-191": {
       "hash": "bdb68e3bab58b68400780ce25a29759a14ea1c707feba5a01bc51f95695e2fee",
       "reviewed": false,
-      "note": "Jobs.tla: abandonment recorded as tag Abandoned by AbandonOnTimeout and both ReleaseOnShutdown branches (run 6: REQ-190 shutdown cancellation included; Prop_AbandonRecorded holds in Jobs_Holds/Jobs_HoldsQ, and fails on the run-5 model); lease loss by LeaseLostRecordable (predicate, history only); SCN-125 trap reachable"
+      "note": "Jobs.tla: abandonment recorded as tag Abandoned by AbandonOnTimeout and both writing outcomes of the shutdown check (ReleaseOnShutdown); Prop_AbandonRecorded holds in Jobs_Holds/Jobs_HoldsQ (re-checked in run 7); lease loss by LeaseLostRecordable (predicate, history only); SCN-125 trap reachable"
     },
     "REQ-192": {
       "hash": "de45473aa59ac24e5e895bdabb4987cf0ac7f51d529269fdfec2b259cb644389",
@@ -542,7 +542,7 @@
     "SCN-122": {
       "hash": "d64f10e48f99d1ff2176956fae71269f624ae476bb202eada3b705bc327c90b5",
       "reviewed": false,
-      "note": "Jobs_SCN122.cfg trap (reachable), re-checked in run 6"
+      "note": "Jobs_SCN122.cfg trap (reachable), re-checked in run 7"
     },
     "SCN-123": {
       "hash": "6bfc8c48525e95f20cbd5dc819676bf23b33017864bdb343400318f782647411",
@@ -557,7 +557,7 @@
     "SCN-125": {
       "hash": "618f50ebba3635de145e9d97ad35248cbc7bbee47da66df550ae1ba8d8359717",
       "reviewed": false,
-      "note": "Jobs_SCN125.cfg trap (reachable), re-checked in run 6"
+      "note": "Jobs_SCN125.cfg trap (reachable), re-checked in run 7"
     }
   },
   "skipped": {

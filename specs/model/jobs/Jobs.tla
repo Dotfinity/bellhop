@@ -20,8 +20,11 @@ ASSUME MaxAttempts \in Nat \ {0}                 \* @req REQ-100
 ASSUME NodeLimit \in Nat \ {0}                   \* @req REQ-106
 ASSUME WorkerNodes \subseteq Nodes
 
-VARIABLES job, runs, node, queue, maint
-vars == <<job, runs, node, queue, maint>>
+VARIABLES job, runs, node, queue, maint,
+          late   \* history only (run 7): jobs whose cancellation was requested after their token was cancelled
+                 \* for shutdown and before their draining node's check (run-6 F-1's window); never read by an action
+vars == <<job, runs, node, queue, maint, late>>
+jvars == <<job, runs, node, queue, maint>>   \* run 7: fairness subscript without the history variable
 
 Status == {"none", "Scheduled", "Enqueued", "Processing", "Succeeded", "Failed",
            "DeadLettered", "Cancelled", "Unroutable"}
@@ -37,7 +40,8 @@ JobRec == [status: Status, attempt: 0..MaxAttempts, token: Nat, owner: Nodes \cu
            longWait: BOOLEAN,     \* enqueued for longer than UnroutableAfter (A-1, REQ-183)
            cancelReq: BOOLEAN, cancelTok: Nat, hist: SUBSET Hist]
 RunRec == [node: Nodes, job: Jobs, token: Nat, mode: {"running", "abandoned", "released"},
-           cSig: BOOLEAN, tSig: BOOLEAN, graceOver: BOOLEAN, sSig: BOOLEAN]
+           cSig: BOOLEAN, tSig: BOOLEAN, graceOver: BOOLEAN, sSig: BOOLEAN,
+           chk: BOOLEAN]          \* run 7: the draining node's shutdown check (REQ-140, REQ-190) was made (A-19)
 NodeRec == [st: {"Running", "Draining", "Stopped"}, handler: BOOLEAN, shutdownPassed: BOOLEAN]
 
 TypeInv ==
@@ -46,6 +50,7 @@ TypeInv ==
   /\ node \in [Nodes -> NodeRec]
   /\ queue \in {"Active", "Paused"}
   /\ maint \in {"Off", "On"}
+  /\ late \subseteq Jobs
 
 Init ==
   /\ job = [j \in Jobs |-> [status |-> "none", attempt |-> 0, token |-> 0, owner |-> NULL,
@@ -56,6 +61,7 @@ Init ==
      \* other node states (stopped, no handler) are reached by Crash / NodeStart
   /\ queue = "Active"
   /\ maint = "Off"
+  /\ late = {}
 
 RunsOn(n)   == {r \in runs : r.node = n}
 Current(r)  == job[r.job].status = "Processing" /\ job[r.job].token = r.token
@@ -127,7 +133,8 @@ Claim(n, j) ==
        /\ SetJob(j, [job[j] EXCEPT !.status = "Processing", !.owner = n, !.token = t,
                       !.attempt = @ + 1, !.leaseExpired = FALSE, !.longWait = FALSE])
        /\ runs' = runs \cup {[node |-> n, job |-> j, token |-> t, mode |-> "running",
-                              cSig |-> FALSE, tSig |-> FALSE, graceOver |-> FALSE, sSig |-> FALSE]}
+                              cSig |-> FALSE, tSig |-> FALSE, graceOver |-> FALSE, sSig |-> FALSE,
+                              chk |-> FALSE]}
   /\ UNCHANGED <<node, queue, maint>>
 
 \* @req REQ-124  sweep (run by a running worker node, hosting REQ-40)
@@ -189,9 +196,9 @@ R138(r, e) == e = "oce" /\ ~CR(r) /\ r.tSig /\ ~r.graceOver               \* REQ
 R140(r, e) == ShutOCE(r, e) /\ ~CR(r) /\ ~r.tSig                          \* REQ-140 (run 3: "or it throws OCE and its timeout token was not signalled")
 \* REQ-190's exception branch (run 3: "other than OCE or PermanentJobFailureException while the attempt number is
 \* below maxAttempts and the retry policy allows another attempt").  Run 6: the shutdown branch no longer has an
-\* OperationCanceledException clause ("its token was cancelled for shutdown (REQ-139) while its handler is still
-\* running"), so an OCE thrown by a cancel-requested job is REQ-136's alone (run-5 F-2).  The shutdown branch is
-\* ReleaseOnShutdown.
+\* OperationCanceledException clause, so an OCE thrown by a cancel-requested job is REQ-136's alone (run-5 F-2).
+\* Run 7: the shutdown branch ("its draining node finds its handler still running after cancelling its token for
+\* shutdown (REQ-139)") is the node's check, ReleaseOnShutdown.
 R190(r, e) == CR(r) /\ e = "retryable" /\ job[r.job].attempt < MaxAttempts
 \* A-5: an OCE covered by REQ-136 or REQ-138 is not also an ordinary failure (REQ-136 notes).
 Gen(r, e)  == ~ShutOCE(r, e) /\ ~(e = "oce" /\ (R136(r, e) \/ R138(r, e)))
@@ -291,15 +298,17 @@ SignalShutdown(r) ==
   /\ SetRun(r, [r EXCEPT !.sSig = TRUE])
   /\ UNCHANGED <<job, node, queue, maint>>
 
-\* @req REQ-140 REQ-190 REQ-191  token cancelled for shutdown while the handler is still running: release the
-\*        lease and take back the attempt (REQ-140) or, when cancellation was requested, abandon the handler and
-\*        mark the job Cancelled (REQ-190's shutdown branch, run 6 wording, no timeout guard).  Either way the
-\*        handler is still running, so REQ-191 records it (run 6: "abandons a handler that is still running, for
-\*        whatever reason"): tag Abandoned.  ShutdownCancel names the cause, as Timeout and Released do.  REQ-140's
-\*        "throws OperationCanceledException" branch is in HandlerThrows (R140); REQ-190 has none since run 6.
-\*        The decision reads cancelReq when the lease write is made (A-19).
+\* @req REQ-140 REQ-190 REQ-191  the draining node's check after it cancelled the token for shutdown (REQ-139),
+\*        made once per run (run 7, REQ-190 wording "its draining node finds its handler still running after
+\*        cancelling its token for shutdown"; REQ-140 notes: both are judged at this check).  The handler is still
+\*        running: release the lease and take back the attempt (REQ-140) or, when cancellation was requested,
+\*        abandon the handler and mark the job Cancelled (REQ-190's shutdown branch, no timeout guard).  Either way
+\*        REQ-191 records it ("abandons a handler that is still running, for whatever reason"): tag Abandoned.
+\*        ShutdownCancel names the cause, as Timeout and Released do.  REQ-140's "throws OperationCanceledException"
+\*        branch is in HandlerThrows (R140); REQ-190 has none since run 6.  The check reads cancelReq and the
+\*        timeout signal as they are when it is made (A-19).  The third outcome is ShutdownCheckLeaves.
 ReleaseOnShutdown(r) ==
-  /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r)
+  /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r) /\ ~r.chk
   /\ node[r.node].st = "Draining"
   /\ job[r.job].cancelReq \/ ~r.tSig
   /\ IF job[r.job].cancelReq
@@ -310,22 +319,33 @@ ReleaseOnShutdown(r) ==
   /\ SetRun(r, [r EXCEPT !.mode = IF job[r.job].cancelReq THEN "abandoned" ELSE "released"])
   /\ UNCHANGED <<node, queue, maint>>
 
+\* @req REQ-140 REQ-190  (run 7) the same check, third outcome: the handler is still running, its timeout token was
+\*        signalled and its cancellation was not requested, so neither REQ-140 (its while needs no timeout signal)
+\*        nor REQ-190 (its while needs the request) applies.  The run stays in flight on its timeout path
+\*        (REQ-138/186, or REQ-190's timeout branch if a request comes later); the check is not made again, so a
+\*        request after it is not a shutdown cancellation (REQ-190 notes: "left to lease expiry").
+ShutdownCheckLeaves(r) ==
+  /\ r \in runs /\ r.mode = "running" /\ r.sSig /\ Current(r) /\ ~r.chk
+  /\ node[r.node].st = "Draining"
+  /\ ~job[r.job].cancelReq /\ r.tSig
+  /\ SetRun(r, [r EXCEPT !.chk = TRUE])
+  /\ UNCHANGED <<job, node, queue, maint>>
+
 \* hosting REQ-29 (run 5 wording): stop when every in-flight job has finished, or once ShutdownTimeout has
 \* passed, every remaining run's token was cancelled and "the lease releases and cancellations that jobs REQ-140
 \* and REQ-190 call for at shutdown" were attempted (attempts always succeed here: no store outage).  In flight
 \* (A-3) = a running handler that holds its job's current lease, so a job settled by REQ-138/186/190 or lost to
-\* lease expiry no longer holds the node.  Only a timed-out, not cancel-requested run (in its grace period) is
-\* left behind; it is tagged DrainLeft (history only) so probes can tell it from a crash, and DrainLeftCancel
-\* when its cancellation had been requested (Chk_NoCancelLeftAtStop).
+\* lease expiry no longer holds the node.  Run 7: REQ-140 and REQ-190 call for their writes at the node's check
+\* (A-19), so the node stops once every in-flight run was checked.  Only a run the check left on its timeout path
+\* (in its grace period) is left behind; it is tagged DrainLeft (history only) so probes can tell it from a crash,
+\* and DrainLeftCancel when its cancellation was requested after the check (Chk_NoCancelLeftAtStop).
 InFlight(r)     == r.mode = "running" /\ Current(r)
-R140Pending(r)  == InFlight(r) /\ ~r.tSig /\ ~job[r.job].cancelReq
-R190Pending(r)  == InFlight(r) /\ job[r.job].cancelReq
 NodeStop(n) ==
   /\ node[n].st = "Draining"
   /\ \/ \A r \in RunsOn(n) : ~InFlight(r)
      \/ /\ node[n].shutdownPassed
         /\ \A r \in RunsOn(n) : r.mode = "running" => r.sSig
-        /\ \A r \in RunsOn(n) : ~R140Pending(r) /\ ~R190Pending(r)
+        /\ \A r \in RunsOn(n) : InFlight(r) => r.chk
   /\ node' = [node EXCEPT ![n].st = "Stopped", ![n].shutdownPassed = FALSE]
   /\ runs' = runs \ RunsOn(n)
   /\ job' = [j \in Jobs |-> IF \E r \in RunsOn(n) : r.job = j /\ r.mode = "running" /\ Current(r)
@@ -387,30 +407,42 @@ MaintOn     == QueueOps /\ maint = "Off" /\ maint' = "On" /\ UNCHANGED <<job, ru
 \* @req REQ-163
 MaintOff    == QueueOps /\ maint = "On" /\ maint' = "Off" /\ UNCHANGED <<job, runs, node, queue>>
 
-Next ==
+NextJ ==
   \/ \E j \in Jobs : \/ Enqueue(j) \/ Schedule(j) \/ DuePasses(j) \/ WaitPasses(j) \/ LeaseExpires(j)
                      \/ Promote(j) \/ RetryDue(j) \/ MarkUnroutable(j) \/ CancelPending(j)
                      \/ CancelProcessing(j) \/ Requeue(j) \/ Delete(j) \/ Retention(j)
   \/ \E n \in Nodes, j \in Jobs : Claim(n, j) \/ Recover(n, j)
   \/ \E r \in runs : \/ Renew(r) \/ HandlerReturns(r) \/ SignalTimeout(r) \/ GracePasses(r)
                      \/ AbandonOnTimeout(r) \/ SignalShutdown(r) \/ ReleaseOnShutdown(r)
+                     \/ ShutdownCheckLeaves(r)
                      \/ \E e \in {"retryable", "permanent", "oce"} : HandlerThrows(r, e)
   \/ \E n \in Nodes : NodeDrain(n) \/ ShutdownPasses(n) \/ NodeStop(n) \/ Crash(n) \/ NodeStart(n)
   \/ PauseQueue \/ ResumeQueue \/ MaintOn \/ MaintOff
 
-\* Fairness only for actor: system and for the passing of time.
+\* Run 7: history variable `late` (never read by an action).  A job joins it when its cancellation is requested
+\* while a run of it is in flight with its token cancelled for shutdown and not yet checked, and leaves it when the
+\* request is cleared (requeue, REQ-141..143) or the slot is reused.
+LateNext == {j \in Jobs : job'[j].cancelReq
+                          /\ \/ j \in late
+                             \/ ~job[j].cancelReq /\ \E r \in runs : r.job = j /\ r.mode = "running" /\ Current(r)
+                                                                 /\ r.sSig /\ ~r.chk}
+Next == NextJ /\ late' = LateNext
+
+\* Fairness only for actor: system and for the passing of time.  Run 7: subscript jvars, because the actions do not
+\* assign the history variable `late` (Next does).
 Fairness ==
-  /\ \A j \in Jobs : /\ WF_vars(Promote(j)) /\ WF_vars(RetryDue(j)) /\ WF_vars(MarkUnroutable(j))
-                     /\ WF_vars(Retention(j)) /\ WF_vars(DuePasses(j)) /\ WF_vars(WaitPasses(j))
-                     /\ WF_vars(\E n \in Nodes : Claim(n, j)) /\ WF_vars(\E n \in Nodes : Recover(n, j))
-  /\ \A n \in Nodes : WF_vars(ShutdownPasses(n)) /\ WF_vars(NodeStop(n))
+  /\ \A j \in Jobs : /\ WF_jvars(Promote(j)) /\ WF_jvars(RetryDue(j)) /\ WF_jvars(MarkUnroutable(j))
+                     /\ WF_jvars(Retention(j)) /\ WF_jvars(DuePasses(j)) /\ WF_jvars(WaitPasses(j))
+                     /\ WF_jvars(\E n \in Nodes : Claim(n, j)) /\ WF_jvars(\E n \in Nodes : Recover(n, j))
+  /\ \A n \in Nodes : WF_jvars(ShutdownPasses(n)) /\ WF_jvars(NodeStop(n))
   /\ \A j \in Jobs :
-       /\ WF_vars(\E r \in runs : r.job = j /\ SignalTimeout(r))
-       /\ WF_vars(\E r \in runs : r.job = j /\ GracePasses(r))
-       /\ WF_vars(\E r \in runs : r.job = j /\ AbandonOnTimeout(r))
-       /\ WF_vars(\E r \in runs : r.job = j /\ SignalShutdown(r))
-       /\ WF_vars(\E r \in runs : r.job = j /\ ReleaseOnShutdown(r))
-       /\ WF_vars(\E r \in runs : r.job = j /\ Renew(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ SignalTimeout(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ GracePasses(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ AbandonOnTimeout(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ SignalShutdown(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ ReleaseOnShutdown(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ ShutdownCheckLeaves(r))
+       /\ WF_jvars(\E r \in runs : r.job = j /\ Renew(r))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
@@ -569,7 +601,10 @@ Reach_TimedOutLeftCounted ==
                    /\ job[j].status = "Enqueued" /\ job[j].attempt = 1 /\ ~job[j].cancelReq
 
 \* @req hosting.REQ-29 REQ-190  (run 5) a draining node never stops while a run whose cancellation was requested
-\*        still holds its job's lease: REQ-190's shutdown cancellation happens first (run 4 F-1).
+\*        still holds its job's lease: REQ-190's shutdown cancellation happens first (run 4 F-1).  Run 7: expected
+\*        VIOLATED.  REQ-190's shutdown branch is now the node's check, so a request after the check on a run the
+\*        check left on its timeout path is left to lease expiry (REQ-190 notes).  Run alone (Jobs_GAP8.cfg) as the
+\*        F-1 example; Prop_LateCancelNotLeft is the check for requests before the check.
 Chk_NoCancelLeftAtStop == \A j \in Jobs : "DrainLeftCancel" \notin job[j].hist
 
 \* Run 5: same-event check by outcome.  Every pair of rules that applies to one throw decides the same
@@ -594,13 +629,28 @@ AbandonedNow(r) == r.mode = "running" /\ \E r2 \in runs' : /\ r2.node = r.node /
                                                          /\ r2.token = r.token /\ r2.mode # "running"
 Prop_AbandonRecorded == [][\A r \in runs : AbandonedNow(r) => "Abandoned" \in job'[r.job].hist]_vars
 
-\* Probe (run 6, F-1): an operator cancels a job after its draining node cancelled the run's token for shutdown
-\*        (REQ-139) and before the node's shutdown write (REQ-140 / REQ-190, hosting REQ-29).  REQ-140's "while ...
-\*        its cancellation was not requested" no longer holds, and REQ-190's shutdown event ("its token was
-\*        cancelled for shutdown") came before the request.  Expected VIOLATED (reachable).  The model then applies
-\*        REQ-190 at the write (A-19).
-ProbeAct_CancelAfterShutdownSignal ==
-  [][\A j \in Jobs : ~(CancelProcessing(j) /\ \E r \in runs : r.job = j /\ r.mode = "running" /\ Current(r) /\ r.sSig)]_vars
+\* @req REQ-190 REQ-140 hosting.REQ-29  (run 7, regression for run-6 F-1) a cancellation requested after the job's
+\*        token was cancelled for shutdown and before its draining node's check (`late`) is read by that check:
+\*        the node never stops gracefully with such a run still in flight.  Run 6 used this reading as A-19; run 7
+\*        it is REQ-190's wording.  Action property; on a scratch copy with run 6's literal reading (REQ-190's
+\*        shutdown event before the request, so no write is called for) it is violated.
+Prop_LateCancelNotLeft ==
+  [][\A n \in Nodes : NodeStop(n) => \A r \in RunsOn(n) : ~(InFlight(r) /\ r.job \in late)]_vars
+
+\* (run 7) the late request ends Cancelled at the node's check, at the last attempt, with the handler abandoned and
+\*        recorded (REQ-191).  Expected VIOLATED = reachable; replaces run 6's ProbeAct_CancelAfterShutdownSignal.
+Reach_LateCancelled ==
+  ~\E j \in late : /\ job[j].status = "Cancelled" /\ "ShutdownCancel" \in job[j].hist
+                   /\ "Abandoned" \in job[j].hist /\ job[j].attempt = MaxAttempts
+                   /\ \E r \in runs : r.job = j /\ r.token = job[j].token /\ r.mode = "abandoned"
+
+\* (run 7) a late request whose job's lease expires before the node's check: a running worker node may recover it
+\*        first (REQ-133 at the last attempt), so it is dead-lettered while its draining node still holds the run.
+\*        Expected VIOLATED = reachable (accepted race: REQ-190 notes, lease expiry at the last attempt dead-letters).
+Reach_LateLeaseExpiryFirst ==
+  ~\E j \in late : /\ job[j].status = "DeadLettered" /\ "Interrupted" \in job[j].hist
+                   /\ \E r \in runs : r.job = j /\ r.token = job[j].token /\ r.mode = "running" /\ ~r.chk
+                                      /\ node[r.node].st = "Draining"
 
 \* Check (run 4, hosting REQ-29): a draining node eventually stops.
 Liv_DrainEnds == \A n \in Nodes : node[n].st = "Draining" ~> node[n].st = "Stopped"
