@@ -1,5 +1,5 @@
 ------------------------- MODULE IntegrationsAlerts -------------------------
-\* Generated from integrations.json (specHash 138efb1f8daa) — FEAT-400 Notifications: who evaluates.
+\* Generated from integrations.json (specHash 05969b22d40d) — FEAT-400 Notifications: who evaluates.
 \* Edit the requirements, not this file. Every action/property carries an @req comment.
 \* Run 2: the alerts registration and the notification lease (INV-411, REQ-438), the node-lost and
 \* missed-occurrence triggers (REQ-404, REQ-403), SCN-404, SCN-405, and run 1's assumption A-11 (two nodes
@@ -9,16 +9,19 @@
 \* new rule starts, are in IntegrationsAlertEvents.tla.
 \* Run 4 (handoff: INV-412 modified, INV-413 added): the rule's store record (INV-413) and the question
 \* whether a holder's write may act on what it read before its lease lapsed.
+\* Run 5 (handoff: INV-412 and INV-413 modified, run-4 F-20 option 1 applied): both writes are now
+\* conditional on what was read. Every store write of INV-412/INV-413 is two steps: a read that decides it,
+\* and a later write that checks the lease and its condition at the time it lands and fails (changing
+\* nothing) if either no longer holds. A node that paused keeps its pending write and may land it after it
+\* took the lease back.
 \*   RuleKnownAtStart : TRUE: the store already records the rule; FALSE: it is new and INV-413 applies.
-\*   DeliveryWrite : what INV-412's write (delivery + handled mark) checks besides the lease.
-\*     "literal"     : as written: INV-411 checks the lease in that write; nothing requires it to re-check
-\*                     that the event it read is still unhandled. Read and write are two steps.
-\*     "conditional" : F-20 option 1: the write succeeds only if the event is still unhandled (one step).
+\*   DeliveryWrite : what INV-412's write (delivery + handled mark) checks.
+\*     "conditional" : @req INV-412 INV-411  the lease, and that the event is still not marked handled.
+\*     "leaseOnly"   : counterfactual: run 4's wording, the lease only (run 4's F-20).
 \*   FirstWrite    : what INV-413's write (rule record + marks) checks.
-\*     "literal"     : as written: it creates no delivery, so INV-411's lease check does not cover it, and
-\*                     nothing requires it to re-check that the name is still unrecorded. Two steps.
-\*     "fencedOnly"  : F-20 option 3: it checks the lease (INV-411 extended to it), nothing else.
-\*     "conditional" : F-20 option 1: it succeeds only if the name is still unrecorded (one step).
+\*     "conditional" : @req INV-413  the lease, and that the store still has no record of the rule.
+\*     "fencedOnly"  : counterfactual: the lease only (run 4's F-20 option 3).
+\*     "unchecked"   : counterfactual: run 4's wording, nothing (run 4's F-20).
 \*
 \* EventTracking: edge-triggered rules (REQ-400 "when a job is dead-lettered", REQ-401 Nth failure, REQ-403
 \* missed or late occurrence) fire on an event that happens on some worker node.
@@ -48,10 +51,9 @@ CONSTANTS Nodes,          \* processes
 ASSUME AlertNodes \subseteq Nodes /\ WorkerNodes \subseteq Nodes
 ASSUME EventTracking \in {"storeCursor", "nodeReplay", "nodeFromNow"}
 ASSUME RuleKnownAtStart \in BOOLEAN
-ASSUME DeliveryWrite \in {"literal", "conditional"} /\ FirstWrite \in {"literal", "fencedOnly", "conditional"}
-ASSUME DeliveryWrite = "literal" => EventTracking = "storeCursor"
-SplitDelivery == DeliveryWrite = "literal"
-SplitFirst    == FirstWrite # "conditional"
+ASSUME DeliveryWrite \in {"conditional", "leaseOnly"} /\ FirstWrite \in {"conditional", "fencedOnly", "unchecked"}
+\* INV-412's read and write are about the store; the node-memory counterfactuals keep one step.
+SplitDelivery == EventTracking = "storeCursor"
 
 VARIABLES running,   \* node process is up
           stale,     \* hosting REQ-60: no heartbeat for NodeLostAfter (only after the node stopped)
@@ -63,8 +65,8 @@ VARIABLES running,   \* node process is up
           lost,      \* history: node-lost deliveries created per lost node (capped)
           crashes, pauses,
           known,     \* @req INV-413  the store records the rule's name
-          pendEv,    \* split writes: per node, the event it read as unhandled and has not yet written
-          pendFirst, \* split writes: per node, it read "no record of the rule" and has not yet written
+          pendEv,    \* per node, the event it read as unhandled and has not yet written (INV-412)
+          pendFirst, \* per node, it read "no record of the rule" and has not yet written (INV-413)
           newEv      \* history: events that happened while the store had no record of the rule
 vars == <<running, stale, lease, occurred, handledS, handledN, made, lost, crashes, pauses,
           known, pendEv, pendFirst, newEv>>
@@ -136,10 +138,9 @@ LeasePauses ==
   /\ pauses' = pauses + 1
   /\ UNCHANGED <<running, stale, occurred, handledS, handledN, made, lost, crashes, known, pendEv, pendFirst, newEv>>
 
-\* @req REQ-400 REQ-401 REQ-403  An edge event becomes a delivery for its rule.
-\* @req INV-411  Only on a running alerts node that holds the lease, checked in the same store write.
-\* @req INV-412  ("storeCursor") the event is found in the store and marked handled in that same write.
-\*               One step: the write re-checks what was read (DeliveryWrite = "conditional", or node memory).
+\* Counterfactuals "INV-412 dropped" (EventTracking = "nodeReplay" / "nodeFromNow"): an edge event
+\* (REQ-400, REQ-401, REQ-403) becomes a delivery when the lease holder's own memory has not handled it.
+\* @req INV-411  Only on a running alerts node that holds the lease (one step).
 HandleEvent(n, e) ==
   /\ ~SplitDelivery
   /\ n \in AlertNodes
@@ -147,18 +148,14 @@ HandleEvent(n, e) ==
   /\ lease = n
   /\ known
   /\ e \in occurred
-  /\ IF EventTracking = "storeCursor"
-       THEN /\ e \notin handledS
-            /\ handledS' = handledS \cup {e}
-            /\ UNCHANGED handledN
-       ELSE /\ e \notin handledN[n]
-            /\ handledN' = [handledN EXCEPT ![n] = @ \cup {e}]
-            /\ UNCHANGED handledS
+  /\ e \notin handledN[n]
+  /\ handledN' = [handledN EXCEPT ![n] = @ \cup {e}]
+  /\ UNCHANGED handledS
   /\ made' = [made EXCEPT ![e] = Min(@ + 1, 2)]
   /\ UNCHANGED <<running, stale, lease, occurred, lost, crashes, pauses, known, pendEv, pendFirst, newEv>>
 
-\* @req INV-412  Split write (DeliveryWrite = "literal"), read half: the holder finds an event the store
-\*               shows as not handled for the rule.
+\* @req REQ-400 REQ-401 REQ-403  An edge event becomes a delivery for its rule.
+\* @req INV-412  Read: the holder finds an event the job store shows as not handled for the rule.
 HandleRead(n, e) ==
   /\ SplitDelivery
   /\ n \in AlertNodes
@@ -171,36 +168,34 @@ HandleRead(n, e) ==
   /\ pendEv' = [pendEv EXCEPT ![n] = e]
   /\ UNCHANGED <<running, stale, lease, occurred, handledS, handledN, made, lost, crashes, pauses, known, pendFirst, newEv>>
 
-\* @req INV-412  Split write, write half: create the delivery and mark the event handled in one write.
-\* @req INV-411  The write checks that this node holds the lease. Nothing requires it to check that the
-\*               event is still unhandled.
+DeliveryOK(n) == /\ lease = n
+                 /\ DeliveryWrite = "conditional" => pendEv[n] \notin handledS
+
+\* @req INV-412  Write: create the delivery and mark the event handled in one write that succeeds only if
+\*               the event is not yet marked handled for the rule ("conditional").
+\* @req INV-411  The same write checks that this node holds the lease.
 HandleWrite(n) ==
   /\ SplitDelivery
   /\ running[n]
-  /\ lease = n
   /\ pendEv[n] # NULL
+  /\ DeliveryOK(n)
   /\ handledS' = handledS \cup {pendEv[n]}
   /\ made' = [made EXCEPT ![pendEv[n]] = Min(@ + 1, 2)]
   /\ pendEv' = [pendEv EXCEPT ![n] = NULL]
   /\ UNCHANGED <<running, stale, lease, occurred, handledN, lost, crashes, pauses, known, pendFirst, newEv>>
 
-\* @req INV-413  ("conditional") The holder evaluates the rule, the store has no record of its name:
-\*               record it and mark every stored event handled, without deliveries, in one write that
-\*               succeeds only while the name is still unrecorded (and, being one step, under the lease).
-FirstSeen(n) ==
-  /\ ~SplitFirst
-  /\ n \in AlertNodes
+\* @req INV-412 INV-411  The write lands but its check fails (the lease moved on, or the event was marked
+\*                       handled since the read): nothing changes and the next evaluation reads again.
+HandleWriteFails(n) ==
+  /\ SplitDelivery
   /\ running[n]
-  /\ lease = n
-  /\ ~known
-  /\ known' = TRUE
-  /\ handledS' = handledS \cup occurred
-  /\ UNCHANGED <<running, stale, lease, occurred, handledN, made, lost, crashes, pauses, pendEv, pendFirst, newEv>>
+  /\ pendEv[n] # NULL
+  /\ ~DeliveryOK(n)
+  /\ pendEv' = [pendEv EXCEPT ![n] = NULL]
+  /\ UNCHANGED <<running, stale, lease, occurred, handledS, handledN, made, lost, crashes, pauses, known, pendFirst, newEv>>
 
-\* @req INV-413  Split (FirstWrite = "literal" or "fencedOnly"), read half: the holder evaluates the rule and finds no
-\*               record of its name.
+\* @req INV-413  Read: the holder evaluates the rule and finds no record of it in the store.
 FirstRead(n) ==
-  /\ SplitFirst
   /\ n \in AlertNodes
   /\ running[n]
   /\ lease = n
@@ -209,18 +204,29 @@ FirstRead(n) ==
   /\ pendFirst' = [pendFirst EXCEPT ![n] = TRUE]
   /\ UNCHANGED <<running, stale, lease, occurred, handledS, handledN, made, lost, crashes, pauses, known, pendEv, newEv>>
 
-\* @req INV-413  Split, write half: record the name and mark every event the store records at the time of
-\*               the write as handled. "literal": INV-411 checks the lease only in writes that create or
-\*               update a delivery, so this one checks nothing; "fencedOnly": it checks the lease.
+FirstOK(n) == /\ FirstWrite \in {"conditional", "fencedOnly"} => lease = n
+              /\ FirstWrite = "conditional" => ~known
+
+\* @req INV-413  Write: record the rule and mark every event the store records at the time of the write as
+\*               handled, without deliveries, in one write that checks the lease and succeeds only if the
+\*               store still has no record of the rule ("conditional").
 FirstWriteStep(n) ==
-  /\ SplitFirst
   /\ running[n]
   /\ pendFirst[n]
-  /\ FirstWrite = "fencedOnly" => lease = n
+  /\ FirstOK(n)
   /\ known' = TRUE
   /\ handledS' = handledS \cup occurred
   /\ pendFirst' = [pendFirst EXCEPT ![n] = FALSE]
   /\ UNCHANGED <<running, stale, lease, occurred, handledN, made, lost, crashes, pauses, pendEv, newEv>>
+
+\* @req INV-413  The write lands but its check fails (the lease moved on, or another holder recorded the
+\*               rule since the read): nothing changes.
+FirstWriteFails(n) ==
+  /\ running[n]
+  /\ pendFirst[n]
+  /\ ~FirstOK(n)
+  /\ pendFirst' = [pendFirst EXCEPT ![n] = FALSE]
+  /\ UNCHANGED <<running, stale, lease, occurred, handledS, handledN, made, lost, crashes, pauses, known, pendEv, newEv>>
 
 \* @req REQ-404  A node has sent no heartbeat for NodeLostAfter: delivery with the node as subject.
 \*               (State-triggered, so any holder sees it; repeats are left to the cooldown, INV-400.)
@@ -266,7 +272,8 @@ Next ==
   \/ LeaseExpires \/ LeasePauses
   \/ \E n \in Nodes : \/ TakeLease(n) \/ Crash(n) \/ GoesStale(n) \/ Restart(n)
                       \/ (\E e \in Events : HandleEvent(n, e) \/ HandleRead(n, e))
-                      \/ HandleWrite(n) \/ FirstSeen(n) \/ FirstRead(n) \/ FirstWriteStep(n)
+                      \/ HandleWrite(n) \/ HandleWriteFails(n) \/ FirstRead(n) \/ FirstWriteStep(n)
+                      \/ FirstWriteFails(n)
                       \/ (\E x \in Nodes : NodeLostAlert(n, x))
 
 \* The lease takeover and rule evaluation are system duties (REQ-438, INV-411): fair. Restart is the
@@ -275,7 +282,8 @@ Fairness ==
   /\ \A n \in Nodes : WF_vars(TakeLease(n)) /\ WF_vars(\E e \in Events : HandleEvent(n, e))
                       /\ WF_vars(Restart(n))
                       /\ WF_vars(\E e \in Events : HandleRead(n, e)) /\ WF_vars(HandleWrite(n))
-                      /\ WF_vars(FirstSeen(n)) /\ WF_vars(FirstRead(n)) /\ WF_vars(FirstWriteStep(n))
+                      /\ WF_vars(HandleWriteFails(n))
+                      /\ WF_vars(FirstRead(n)) /\ WF_vars(FirstWriteStep(n)) /\ WF_vars(FirstWriteFails(n))
   /\ WF_vars(LeaseExpires)
 
 Spec == Init /\ [][Next]_vars /\ Fairness

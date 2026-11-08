@@ -1,7 +1,7 @@
 {
   "module": "integrations",
-  "specHash": "138efb1f8daa4ba9b02b768d3a815d1b75a018522437d5962b545f588738c03f",
-  "generatedAt": "2026-11-07T12:00:00Z",
+  "specHash": "05969b22d40d843e2560b7255c1db110572df3b057c3dc47d388c0cf764b5b78",
+  "generatedAt": "2026-11-08T12:00:00Z",
   "model": "model/integrations/IntegrationsNotifications.tla, model/integrations/IntegrationsAlerts.tla, model/integrations/IntegrationsAlertEvents.tla, model/integrations/IntegrationsHttp.tla, model/integrations/IntegrationsOutbox.tla",
   "items": {
     "REQ-400": {
@@ -22,7 +22,7 @@
     "REQ-403": {
       "hash": "bbb0a1a5c5d593fde58d3a31fe4fb1b2da2ccef22d87094fba42a70b0fd95d04",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla HandleMissed: missed instants found through recurring REQ-242 records; Liv_MissedAlerted holds (230 states), fails without REQ-242 (_noReq242)"
+      "note": "IntegrationsAlertEvents.tla HandleMissed: missed instants found through recurring REQ-242 records, written by a trigger or (run 5) by a schedule change (REQ-227); Liv_MissedAlerted holds (462 states), fails without REQ-242 on the schedule-change instant (_noReq242, 8 steps)"
     },
     "REQ-404": {
       "hash": "88df2c741a7379689aca56f470de10a4e8a52d4ad47ff5cb94fc9d78b37d54b8",
@@ -107,7 +107,7 @@
     "INV-411": {
       "hash": "2fecc024e416563f9c0aeaaace283579e7ca8d136a9df47d01bb204dcf2023f8",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla: lease guard on HandleEvent/NodeLostAlert, fenced write; SCN-405 holds (445 states)"
+      "note": "model/integrations/IntegrationsAlerts.tla: lease checked in the write of INV-412 and INV-413 (run 5, the write fails if it no longer holds) and guards NodeLostAlert; SCN-405 holds (949 states)"
     },
     "REQ-438": {
       "hash": "787fa90356e09512df8b35a918865b93b82a824ae01ae69612d46a09d8a9d7db",
@@ -217,22 +217,22 @@
     "SCN-405": {
       "hash": "de144f435e7920d0adda184eb8fc40652c2265e453164c8674bbe3f90295cf26",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla: Scn405_NoLeaseNoDelivery holds (all three readings)"
+      "note": "model/integrations/IntegrationsAlerts.tla Scn405_NoLeaseNoDelivery: holds in every alerts cfg (949 states in the main cfg)"
     },
     "INV-412": {
-      "hash": "1f1ea4f3b8c5ceb5b24b6ff341993f7e75d2bd609505afde462b753ab69a9df0",
+      "hash": "ccfee90d0fe5dba3e72351f4885262669991d84ca50be0485666aef0c31ffcb2",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlertEvents.tla: one delivery per recorded change, every dead-letter and every REQ-242 miss record alerted (230 states); the job-mark and no-REQ-242 counterfactuals fail. IntegrationsAlerts.tla: holds across a handover with one-step writes (445); as written, a write decided before a lease lapse can land after it and alert an event twice (_staleWrite, F-20)"
+      "note": "model/integrations/IntegrationsAlerts.tla (run 5): read, then a later write that checks the lease and that the event is still unhandled, and fails otherwise; one delivery per event and every event alerted across a crash, a restart and a lease pause (949 states); run 4's lease-only write still alerts twice (_staleWrite, 12 steps, counterfactual). IntegrationsAlertEvents.tla: one delivery per recorded change, every dead-letter and every REQ-242 miss record alerted, including an instant dropped by a schedule change (462 states). What 'handled for that rule' is attached to once a rule is known by its settings: run-5 F-23"
     },
     "INV-413": {
-      "hash": "8e3682ef45a344b230d3b84bde5bb7f575f3a45f2e998ee857c92b58cf50b00a",
+      "hash": "803ebcd7ca21afdcfbbb0cc4ab12063824a8c0a3c8eb3b993a92704a75216a46",
       "reviewed": false,
-      "note": "IntegrationsAlertEvents.tla: a rule added later alerts no older event and every later one (_newRule, 509 states); remove/re-add catches up as the notes say (_readd, accepted); edit of trigger -> F-22; new system -> F-21. IntegrationsAlerts.tla: as written its write is unchecked and a stale one skips an event (_newRuleLiteral, F-20); one conditional step passes (_newRule, 984)"
+      "note": "IntegrationsAlertEvents.tla (run 5): records keyed by name and event settings and kept; an edited trigger starts at the store's present (_editTrigger, 3,215 states; name-only counterfactual fails, 5 steps); a rule added later alerts no older event and every later one (_newRule, 1,061); edit then rollback skips an owed dead-letter if marks are per name (_editBack, 9 steps) and not if per name and settings (_editBackPerSettings, 14,474): F-23. IntegrationsAlerts.tla: the conditional, lease-checked write across a handover holds (_newRule, 2,408); unchecked and lease-only counterfactuals lose an event (14 steps each)"
     },
     "SCN-406": {
       "hash": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11",
       "reviewed": false,
-      "note": "model/integrations/IntegrationsAlerts.tla: Scn406_NotReached violated as expected from InitSCN406 (3 steps, 19 states)"
+      "note": "model/integrations/IntegrationsAlerts.tla: Scn406_NotReached violated as expected from InitSCN406 (4 steps, 33 states)"
     }
   },
   "skipped": {
