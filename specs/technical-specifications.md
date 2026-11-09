@@ -1207,11 +1207,11 @@ Format: refiner-tech/1
 ## TECH-129 — Alerts registration
 
 - **Area:** framework
-- **Statement:** Bellhop shall offer an alerts registration, separate from AddClient() and AddWorker(), that can be combined with them and with MapBellhopDashboard on one node or used alone on an alerts-only node.
+- **Statement:** The AddBellhop builder shall offer AddAlerts(), an alerts registration separate from AddClient() and AddWorker(), that can be combined with them and with MapBellhopDashboard on one node or used alone on an alerts-only node.
 - **Applies to:** hosting REQ-52, hosting REQ-59, integrations INV-411, integrations REQ-438, integrations REQ-403, integrations REQ-404
 - **Strength:** must
 - **Status:** approved
-- **Notes:** Decided by the owner on 2026-11-06 (integrations findings F-6): alerting must keep working when the last worker is down. The owner suggested the name app.UseBellhopAlerts(); the builder style of TECH-128 would give AddAlerts(). See open questions.
+- **Notes:** Decided by the owner on 2026-11-06 (integrations findings F-6): alerting must keep working when the last worker is down. Decided by the owner on 2026-11-10: AddAlerts() on the AddBellhop builder, in the style of TECH-128, because a hosted background duty is registered on the service collection; app.UseBellhopAlerts(), suggested earlier, is not offered.
 
 ## TECH-130 — Redis reset safety in the claim and heartbeat scripts
 
@@ -1220,9 +1220,8 @@ Format: refiner-tech/1
 - **Applies to:** redis REQ-507, redis REQ-521, redis REQ-522, redis REQ-526, redis REQ-527, redis REQ-528, redis REQ-530, redis REQ-534, TECH-56, TECH-62
 - **Strength:** must
 - **Status:** approved
-- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy; see open questions. Redis run 2 (F-2, F-6): unique-key locks are re-created with the record, and marker values come from TIME. Redis run 4 F-1 and F-2: every script that reads the marker returns it, so detection happens on the reads a worker already makes, and the claim keeps the last-reset value for the resetSinceClaim test. Redis run 5 F-1: the script that reads the marker also makes the REQ-507 or REQ-528 write, because a write sent as a separate command could lose to another node's first marker or advance, and the flush then went unreported. Redis run 7 F-1: the REQ-507 write includes the unacknowledged reset record, so a reply lost after the script ran cannot hide the reset.
+- **Notes:** refiner-model 2026-11-06 redis F-1/F-2, owner's choice of full protection. Under ShardByQueue every hash tag carries its own marker copy. Decided by the owner on 2026-11-10: one marker per hash tag with detection per tag is acceptable, although the REQ-507/REQ-528 marker write, REQ-523's record written with it and REQ-527's advance are then not atomic across the whole namespace. Which hash slot REQ-523's record lives in is still open; see open questions. Redis run 2 (F-2, F-6): unique-key locks are re-created with the record, and marker values come from TIME. Redis run 4 F-1 and F-2: every script that reads the marker returns it, so detection happens on the reads a worker already makes, and the claim keeps the last-reset value for the resetSinceClaim test. Redis run 5 F-1: the script that reads the marker also makes the REQ-507 or REQ-528 write, because a write sent as a separate command could lose to another node's first marker or advance, and the flush then went unreported. Redis run 7 F-1: the REQ-507 write includes the unacknowledged reset record, so a reply lost after the script ran cannot hide the reset.
 
 ## Open questions
 
-- TECH-129: exact API for the alerts registration: app.UseBellhopAlerts() as the owner suggested, or AddAlerts() on the AddBellhop builder like AddClient()/AddWorker() (TECH-128)? A hosted background duty is normally registered on the service collection. Owner to decide.
-- TECH-130: under ShardByQueue (Redis Cluster), is one generation marker per hash tag with detection per tag acceptable, given that the REQ-507/REQ-528 marker write, REQ-523's record written with it, and REQ-527's advance are then not atomic across the whole namespace, and which hash slot REQ-523's record lives in? Owner to decide.
+- TECH-130: under ShardByQueue (Redis Cluster), which hash slot does redis REQ-523's unacknowledged reset record live in? One generation marker per hash tag with detection per tag was accepted by the owner on 2026-11-10. Owner to decide.
