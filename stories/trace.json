@@ -1,0 +1,3056 @@
+{
+  "format": "refiner-stories/1",
+  "project": "Bellhop",
+  "testTag": "Trait(\"Req\", \"{id}\")",
+  "epics": [
+    {
+      "id": "m1-core-preview",
+      "milestone": "M1",
+      "title": "M1 — Core preview"
+    },
+    {
+      "id": "m2-1-0",
+      "milestone": "M2",
+      "title": "M2 — 1.0"
+    },
+    {
+      "id": "m3-1-x",
+      "milestone": "M3",
+      "title": "M3 — 1.x"
+    }
+  ],
+  "standing": [
+    "TECH-1",
+    "TECH-2",
+    "TECH-3",
+    "TECH-8",
+    "TECH-9",
+    "TECH-12",
+    "TECH-48",
+    "TECH-50",
+    "TECH-51",
+    "TECH-124",
+    "NFR-28",
+    "NFR-38",
+    "NFR-39",
+    "NFR-41",
+    "NFR-51",
+    "NFR-53"
+  ],
+  "deferred": {
+    "TECH-72": "may; the owner deferred it on 2026-11-10 until the Valkey GLIDE C# client is mature, because a builder cannot judge 'once that client is mature'"
+  },
+  "stories": [
+    {
+      "id": "ST-001",
+      "slug": "repository-and-ci",
+      "title": "Set up the repository, packages and CI gates",
+      "epic": "m1-core-preview",
+      "dependsOn": [],
+      "owns": [
+        "TECH-1",
+        "TECH-2",
+        "TECH-3",
+        "TECH-8",
+        "TECH-9",
+        "TECH-50",
+        "TECH-51",
+        "TECH-124",
+        "NFR-37",
+        "NFR-44",
+        "NFR-45",
+        "NFR-46"
+      ],
+      "context": [
+        "REQ-2",
+        "REQ-36",
+        "REQ-8"
+      ],
+      "pins": {
+        "TECH-1": "4227ccfce27f603797a0c5d9c93bc795248e90ebb9ac9e6e83fdf576525ece95",
+        "TECH-2": "b64812b8832de311fdae55d5e6f4da3fac7f732a6865f1aadae1f94a798f13f9",
+        "TECH-3": "aa617038edad705fbfc15964fc00d5da6a7d2d9a0617f563dec9dc648525079c",
+        "TECH-8": "d34cce8cace757ba662b39f88bb22524faf3f51c6a4f953c978e35fa72b6b97e",
+        "TECH-9": "6679a52329100ca7da29aec123154f09a57266123379df89f40760c11a651532",
+        "TECH-50": "947c8e8afa1e61b800909cd44bbce96e5a5f2e8bc56ffb1325df9be81b0220e1",
+        "TECH-51": "8bbb1f100647fd9076d945e4d093037b8b708d7ac81b02d3d7ad73c1668f6b59",
+        "TECH-124": "d7ffa3d6786182328371a665dd720cb8f8d181ac3bc1ce82e3e744a4067b7ac4",
+        "NFR-37": "227ad09adb93bd09b72b0a1b1515b93fc99ea9d4d91d88d343f160ba80619519",
+        "NFR-44": "c40e69c03a0d44665e03964daeb60918b1fb089aac1febd78a6306d35a2401c2",
+        "NFR-45": "eb76617a79d3bb8e6d5ef7d46eae296959d9666a67383756346c05bcbe894b8f",
+        "NFR-46": "794baefd610786bede6250d36a2172241f5d0252ab6a78dfcb126d1fa028a4d1"
+      }
+    },
+    {
+      "id": "ST-002",
+      "slug": "job-contracts",
+      "title": "Define jobs, handlers and their payload contract",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-001"
+      ],
+      "owns": [
+        "TECH-14",
+        "TECH-15",
+        "TECH-17",
+        "TECH-18",
+        "TECH-5",
+        "TECH-6",
+        "TECH-7",
+        "REQ-101",
+        "INV-120",
+        "INV-121",
+        "INV-123"
+      ],
+      "context": [
+        "REQ-3",
+        "REQ-39"
+      ],
+      "pins": {
+        "REQ-101": "07c6ca29267f82dcfe1e5017a85b2b60a86d271ec33daae7fa3f5eb14ee98597",
+        "INV-120": "2c25baa1ea920ed2e9be9873bba7c9b88f8cbe05705e669fada30c99218ad7e7",
+        "INV-121": "3de0cc2a328251ac22fd16b91839b90b964b5e011300c7c9932e699301eb8852",
+        "INV-123": "caabe1df9fe258d3688791cd7df86eac0c82e4ecf0235bc7520be1ca3e777a16",
+        "TECH-5": "d0c85c24cdc767dd9a256ba4111cb661f5bb8d444168cb9510778087ea6e2b16",
+        "TECH-6": "4b271c826bfeaee630e3f192d64b32b39c1ace8794b1e31649e34e798b36784f",
+        "TECH-7": "8dbcb625a65b4e639e71a93a2c0d67f83619bae235d153acc0940e6937c8be81",
+        "TECH-14": "3507f0496164b7c974bfa94095a88eaa04892805addb04b0a8fa86735d56f738",
+        "TECH-15": "e7f39bd26c2a64714c20c607c3c5c4fd36f010bae15a5bf7cf660cf518c5bd09",
+        "TECH-17": "f5e28c21d03c3d740007b70da43053e482d5190372401898e8e2e1c3889893c4",
+        "TECH-18": "0602c9471e69dfb92aa4bbbbfa857f387508bbefc42a1bf1b3f0c55671df9686"
+      }
+    },
+    {
+      "id": "ST-003",
+      "slug": "schedules",
+      "title": "Evaluate cron and interval schedules in UTC or a local time zone",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-002"
+      ],
+      "owns": [
+        "TECH-23",
+        "TECH-24",
+        "TECH-25",
+        "REQ-200",
+        "INV-208",
+        "REQ-228",
+        "REQ-229"
+      ],
+      "pins": {
+        "REQ-200": "cd300ee41f08d2de8e47ed1b63c9dcaccc116f7707ba7014493c6425d0f74708",
+        "INV-208": "ce00be91da632acacb58071e501f55520cf66b1923dfbc6be59ba1c9c4d576bc",
+        "REQ-228": "bfac70ed756b113d8a8f764cd95b6a23a6dd204bd045d68c64b1672f083ef59e",
+        "REQ-229": "3f7d5533aa236471acca878739728fa1c5fce06108ef993445ab5dbdd19b6565",
+        "TECH-23": "b60d575c0b096c3272b673574b2ab95e31fb9a4546dc52d0df7d953021445e19",
+        "TECH-24": "5449fc4d5a3d81282fad10d546a01fb8a5f50f31f7d276a7912f1e67f2115730",
+        "TECH-25": "6ec0f33f3770cf2637e428c2658a1f4f205cb77eed2b3edf2e4abb1286afd510"
+      }
+    },
+    {
+      "id": "ST-004",
+      "slug": "store-contract",
+      "title": "Define the job store contract and the in-memory store",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-002"
+      ],
+      "owns": [
+        "TECH-31",
+        "TECH-32",
+        "TECH-43",
+        "TECH-12"
+      ],
+      "pins": {
+        "TECH-12": "cfb0490ed76094003c9a69a68fa5d244087f84b0aba64d38a9a2d3c3ab654960",
+        "TECH-31": "86c347bc9827da82f68d58612e5859f6524876467db077ffa7e1fad52a6bc8a1",
+        "TECH-32": "b446b6bfb2a7c2a01228b8b06ed2be5e034875839fdd7a387b193b6d12769ce3",
+        "TECH-43": "a94130ba012cefe0876a6ba383f530f5ec3ef23276fa415be4257b1c08bb3d8b"
+      }
+    },
+    {
+      "id": "ST-005",
+      "slug": "host-registration",
+      "title": "Register Bellhop with AddBellhop, AddClient and AddWorker",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-004",
+        "ST-003"
+      ],
+      "owns": [
+        "TECH-10",
+        "TECH-11",
+        "TECH-128",
+        "REQ-13",
+        "REQ-14",
+        "REQ-15",
+        "REQ-17",
+        "REQ-52",
+        "REQ-57",
+        "TECH-22"
+      ],
+      "constrains": [
+        "INV-123"
+      ],
+      "pins": {
+        "REQ-52": "8a5f97c0b3e4ecd9ea1369d6e8937421f527810968a0e8174346ca9c18a1bb27",
+        "REQ-57": "1a7b7f4a6f7b0c10cc4fdbbee91e01d7368f67797b843913feee2f75e3a15eba",
+        "REQ-13": "386cb916d9322cd55c9dd504e16ea8d7a08d13c0447b8a470431a4eeb2e9b518",
+        "REQ-14": "18fba2d7e2d72b6933e5820bd3170cb4f2203db0d48800bad1a2870c22c18921",
+        "REQ-15": "b7129d7ec389cf5d6baa28ad008bd69916f28226221119cf26cb9564ce030362",
+        "REQ-17": "4b141746551dd6c9e0decc85fec4a170e3a2f2e27a11073b79fa301bdb2888fe",
+        "TECH-10": "cb2b76e703781dc3ef5ca7cb34fae0487c4dcea345d4c7775a1b174a14af6105",
+        "TECH-11": "cce4eb5b5d7ef229fbcb8da546bb646d609c606abc8fae1d06a446bd0c3a2094",
+        "TECH-22": "2953934a7c214bcc3d952082153d0e8bbaf93c70d7b9ed1f5cbaf079dd0307d2",
+        "TECH-128": "2d6ab954584fe5f4e8e35160cd0e924cf4e078b2520b811d9fd6cb60afca3810"
+      }
+    },
+    {
+      "id": "ST-006",
+      "slug": "node-startup",
+      "title": "Start a node: option validation, schema checks and the startup summary",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-005"
+      ],
+      "owns": [
+        "REQ-9",
+        "REQ-12",
+        "REQ-16",
+        "REQ-18",
+        "REQ-19",
+        "REQ-21",
+        "REQ-22",
+        "REQ-23",
+        "REQ-43",
+        "REQ-53",
+        "REQ-54",
+        "SCN-1",
+        "SCN-2",
+        "SCN-3",
+        "NFR-41"
+      ],
+      "pins": {
+        "REQ-21": "6620673757e5bef7c892b56d4f43610b942b92016423e456ee7ee1673cb5d033",
+        "REQ-9": "905c2eacb309072858d1561d1a008717e704b5fab933add191959d92b531ed30",
+        "REQ-12": "77b56e3e0f06f9a306b7953681798fed6ea7f4819fe133aa24a5968362e67453",
+        "REQ-16": "cb1d3bb7922e581ca05ff0456f69f8c1071bb66d47b715d9d42733514769ac7d",
+        "REQ-18": "51c40b44c1ee0016909b2c365eb50752b53271411cec222b02cb1d5d219b2e64",
+        "REQ-19": "7faad003bdb21cf065a1dd7d981d73c44f71d3a0830607b3c823ac9c30a55a59",
+        "REQ-22": "f92d53a53b028145c650f89a67b16fadc19f78ccadf03718abfe4b5f74c2ea53",
+        "REQ-23": "11e531604c0ab7a5afb3f38603a9f85bb8fb8d80d0dc32760c2e2f13fd269368",
+        "REQ-43": "7b8f7b357b201cb38b1b7612bb9dbe678580154b7c0b123aabb1d037c077b32b",
+        "REQ-53": "da61ef57bcbd57d831b6da5bbe7996fe801a9607ed97754fb1a22ac0fb933422",
+        "REQ-54": "fd4b91bf2ff72e40018fc320c0830672e47e5fef569cec9e2a4d81c3dce1a7d8",
+        "SCN-1": "0242861c846d71afd75a30927dba2b09bd8362d8349547c3cf602d3f94ebbe56",
+        "SCN-2": "d0c1b9c5d1ce5d47d8a5ff15129b85192147fbf3ba998cab4f5db96e6146b38e",
+        "SCN-3": "1fc4f033f7fe9fb4216c34505f9befc289aa59d54a8087c6aae6fbf45422873e",
+        "NFR-41": "ae7d1bfc626e041653b9779940e3d469e488f41f133058f5a467d9f4bb0bd0d0"
+      }
+    },
+    {
+      "id": "ST-007",
+      "slug": "enqueue-and-schedule",
+      "title": "Enqueue and schedule jobs",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-006"
+      ],
+      "owns": [
+        "TECH-19",
+        "TECH-20",
+        "TECH-33",
+        "REQ-105",
+        "REQ-120",
+        "REQ-121",
+        "REQ-122",
+        "REQ-147",
+        "REQ-148",
+        "REQ-153",
+        "REQ-182",
+        "INV-105",
+        "INV-115",
+        "REQ-40",
+        "SCN-116"
+      ],
+      "constrains": [
+        "REQ-18",
+        "INV-123"
+      ],
+      "pins": {
+        "REQ-105": "aaee4810f0d1b5ecb927ab76b6519f1b882fc21c3216d272ad3302887f409b8d",
+        "REQ-120": "58b4a142edefb981badbcc97b9279f3ce92c5762ce6f7e9ed01a1944be9dccbc",
+        "REQ-121": "a3d6983adb619c8ac132a650bb417aefed70a902c7bbe69de8c2d1a1f06cd56c",
+        "REQ-122": "0fc1826e1c10aaebb775e5932842324598fc64121ae616f43af1af732af1a824",
+        "REQ-147": "63eae862cab274b7a1b4d97a589168d61d91f163d15c2cccd1dd1f91c7d673b4",
+        "REQ-182": "38429ba7ef5b17350452f2c77117d393dd9d46ff3f8e48cbed2f9e80d14976ed",
+        "INV-105": "9a4596f29c6cd3c90475547aad7838a614dc6bd95aabf62444a1c6bd5576d7c6",
+        "INV-115": "810a2fcbd8342b19907fd38453745032c9b8c481282e853f6fd16ea2777df998",
+        "REQ-40": "abc1ea35345cde4958d9cc77e7095c4aef3874d429bddb3001a44021372161b3",
+        "REQ-148": "b8cc3ca02b0b6d081b25d710a5be401cb64b6d53024ee31b6534e3b011c4c9c2",
+        "REQ-153": "bb904c000c826380a44ee0a8f42e74b21a9995071bad199e1cd1ce9072cfe257",
+        "SCN-116": "bf073716911eaa0925917bd4a8a1eaeb7a5b0c6282e01b4cb1d0b793fe5851bb",
+        "TECH-19": "6c9a83cc46a5750f8b72e69a884a3c01c29c55a01bf46b8fc9e587b74e647411",
+        "TECH-20": "3250b54974fe82b775f61dadc5b4304c5684a13d25b177ea1523f908060c6ef1",
+        "TECH-33": "eefd876707e59c4e05a2e5d82965bab4e7835546ffd30234dd8bbe69fc0583cd"
+      }
+    },
+    {
+      "id": "ST-008",
+      "slug": "claim-and-run",
+      "title": "Claim and run jobs on a worker",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-007"
+      ],
+      "owns": [
+        "TECH-13",
+        "TECH-16",
+        "TECH-34",
+        "TECH-35",
+        "TECH-104",
+        "REQ-102",
+        "REQ-103",
+        "REQ-106",
+        "REQ-123",
+        "REQ-127",
+        "INV-103",
+        "INV-106",
+        "INV-116",
+        "INV-122",
+        "REQ-20",
+        "SCN-100",
+        "SCN-104",
+        "SCN-120",
+        "REQ-126"
+      ],
+      "constrains": [
+        "REQ-18",
+        "TECH-31",
+        "INV-105"
+      ],
+      "pins": {
+        "REQ-102": "a129c3fa235dc8299d4690f425293df2ed042b5d9df45c8ee2f8f6ad146ed1fd",
+        "REQ-103": "3d09362c76a101dd5513d81ac9978fc6b02b0c64f14f4513aeb41159e8c02e72",
+        "REQ-106": "cb771cbdadeff3105656f1add9867de2d774c1d5b4283659f40283df7145206f",
+        "REQ-123": "a17a0148c578583c8334d8984ead82c929c3e7efc716c9c6a488d2c2c9d2ec76",
+        "REQ-126": "db6a692378904bc1d01021c1498b3460cbe6c15647e30e68bfbd0bcdcdbb4276",
+        "REQ-127": "61f12c32d28e7022a05da4b24acfb71718618a20cfb0f30e3146e925c60a3506",
+        "INV-103": "67154542b112b249ffab15aa9805140f3359ba7a74dde81d2d03642a682077bd",
+        "INV-106": "3872fadda2ae7f2075d0ac03a7c17a324ce8147efd1567b40c049c9b161520cb",
+        "INV-116": "5de5fdeca9583a24bfb9306c225b777d1f9769670f21f84724b0574ee29d1cf8",
+        "INV-122": "8b9dc0d0e416c6ee9209b997f4f8dac75f8dcf0caf02716d7d13b541cf07d5f0",
+        "REQ-20": "28ac7ba8bb6444582a99be523ee672ca9450c2c3cbe398d4db095e5fffc02f91",
+        "SCN-100": "dfbf6fc367ccbb9e9e608ad513163ad75905206777fa6769062f4a50836d3223",
+        "SCN-104": "83e2ce631f7d3fe309f43f1d5f2a8d846b6ebde5ce570b07d70b51c744b33618",
+        "SCN-120": "5978fdbe12a6e16aee328716703699a79c48500fc887970fb4731186a688b863",
+        "TECH-13": "b5430c0d477036b6626b3fb4439feec5543832504720d4d8b63ea3a31a8fe857",
+        "TECH-16": "f2617dc17ef7d19394d58d91220c056fd7a37495edcde9730973f503ffb70adb",
+        "TECH-34": "f4a4bca3ebce9f1c18cdab172d58ef8580dba6c991bcef94de21770e9803ac26",
+        "TECH-35": "cc75461de6c1700c0d5507479e2bb19b27ef75ed12ff40891bc87c2107ded475",
+        "TECH-104": "fafa38d6579b6e4926d21e4621def1aff7f7fee5e48a077de6f4a951218b7259"
+      }
+    },
+    {
+      "id": "ST-009",
+      "slug": "queues-and-pauses",
+      "title": "Order claims by queue and priority, and pause queues or all processing",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-008"
+      ],
+      "owns": [
+        "REQ-108",
+        "INV-107",
+        "INV-110",
+        "INV-111",
+        "LIV-100",
+        "REQ-160",
+        "REQ-161",
+        "INV-113",
+        "REQ-162",
+        "REQ-163",
+        "INV-114",
+        "SCN-110"
+      ],
+      "constrains": [
+        "REQ-123",
+        "INV-106",
+        "INV-123"
+      ],
+      "pins": {
+        "REQ-108": "afa16c47edd86f2b400bb69561ecd65d180574382a5bda347b17852e20dcaaf9",
+        "REQ-160": "0f7449642cf5e4cf66b9120259bf956214b724da0517b7e77acbd271e138c320",
+        "REQ-161": "8e5e7dcf8473fb20dab61876245a7c1fd96b527af55e303242d2424c3fba646b",
+        "REQ-162": "e059b38e04b8f65226338d8b6a648774aa39e76b8cc4b406f1e038b9bda64cc9",
+        "REQ-163": "742e485febfeb842d6bfa3d60f0095f98d1dad558dfb428d07b469820da5d9ea",
+        "INV-107": "dc5c84f283e73140e6a0933fed55d4f189c7fa79667da92491fbae8704fcb67e",
+        "INV-110": "8ece86a3e5d215536adb6ab2aac245fcd459f13dd48f88ec6f9b92986fa346bb",
+        "INV-111": "8ace1a6cbf14f303e57be3b407104736ad4c769a70860c6b0e75c8ac2217fb9a",
+        "INV-113": "4bef02e483673f096b79c40a7f05d4387d97365a2278f3c4d8d943d3c631e1ca",
+        "INV-114": "7b917f8f208c6a3a83a3934f377b50a5fd1e5ecba0a47540668a90e6883d4299",
+        "LIV-100": "2fffe4a7664eb76b9ceaecb87e4cd183ea8f95a1f2764d55106e8808a766884a",
+        "SCN-110": "cc323107dca85f31cd967c07c1a2d7bac90a5a22e34e075219a6ec734e15fe07"
+      }
+    },
+    {
+      "id": "ST-010",
+      "slug": "execution-pipeline",
+      "title": "Hook into execution: middleware, parameters and job events",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-008"
+      ],
+      "owns": [
+        "TECH-27",
+        "TECH-28",
+        "TECH-30",
+        "REQ-154",
+        "REQ-169",
+        "INV-136"
+      ],
+      "constrains": [
+        "INV-122",
+        "TECH-16"
+      ],
+      "pins": {
+        "INV-136": "9dbea348256aecc5a26fa0202524aefd826f879bcd51daa0a4a0d17f04112df6",
+        "REQ-154": "e18c1ed90a9bd1125628506eeefbd0b14bdc9272e0093e2b8f5681e8a88c4ba7",
+        "REQ-169": "09f13d991236b59049326d8584bb37e1b8ff01ed8fa1f1a70f43beb03cbe0482",
+        "TECH-27": "1622c3b79c92dfc4f8b3b255312fb60ec16fc9e278929d3627f7f226a33bd510",
+        "TECH-28": "cd35e2771810b9246588258ecb702db1bd1748507660cf55305f93d615ad1fc8",
+        "TECH-30": "849f72f88df0fc07dbecc7a809205e8c5520608a235c3768b55131c9215a0f90"
+      }
+    },
+    {
+      "id": "ST-011",
+      "slug": "retries-and-dead-letters",
+      "title": "Retry failing jobs and dead-letter them",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-008",
+        "ST-010"
+      ],
+      "owns": [
+        "TECH-26",
+        "REQ-100",
+        "REQ-129",
+        "REQ-130",
+        "REQ-131",
+        "INV-117",
+        "SCN-101"
+      ],
+      "constrains": [
+        "INV-115",
+        "INV-116",
+        "REQ-169",
+        "REQ-40",
+        "INV-123"
+      ],
+      "pins": {
+        "REQ-100": "93f2063d111409838341953f2c712211398325d82c22b2f85bd7d01a2c040e23",
+        "REQ-129": "e9439f73405bdf989108f00f4872055008b1f90c26d2c1209f9cd4d5b93bc637",
+        "REQ-130": "236d986fbc94d0053d615cfe899a4bfdd12a3f3fc89bdf2b8d79a261b18345b2",
+        "REQ-131": "8d722bad13039307b0893957e064d783b2b50ca3ea16ebb77f74e28c0ba7001c",
+        "INV-117": "6f984615b169056967de029c207c3c855acdc95b8087e2f65c96c969cb4ea551",
+        "SCN-101": "fa0f19811420bcb7773fc40d7b81d97784af17f0c28fd03d7962d2fd748a03ac",
+        "TECH-26": "1e30c41cff8112ed8f23c8c2a99ea208130b77ba2488a5eb509f1d972a801b59"
+      }
+    },
+    {
+      "id": "ST-012",
+      "slug": "worker-nodes-and-unroutable",
+      "title": "Track worker nodes and mark jobs no worker can handle as unroutable",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-008"
+      ],
+      "owns": [
+        "REQ-60",
+        "REQ-183",
+        "REQ-124",
+        "REQ-125",
+        "SCN-111"
+      ],
+      "constrains": [
+        "REQ-123",
+        "INV-116",
+        "REQ-40"
+      ],
+      "pins": {
+        "REQ-60": "b1e277e9a4c3ddba6e6d409f17a39322e1db322286af0831f1b9098432d1ff22",
+        "REQ-183": "5e763839d8874777b3ae98d4b8e40fe0884e30cd6ae2d0431fe5541aeb29b7ab",
+        "REQ-124": "157d994df2f6cdffda88e11d7fff6affc7689f68a180754490ee03e00ee76e4e",
+        "REQ-125": "6a2807f81376975f35106671453c493fcb0dbbd33967944de19d7128a3942522",
+        "SCN-111": "02a1ddbc79298da7316872e2cea00c56b96f366f5e0e2f0017384ee35044f455"
+      }
+    },
+    {
+      "id": "ST-013",
+      "slug": "leases-and-recovery",
+      "title": "Renew leases and recover jobs from lost nodes",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-011",
+        "ST-012",
+        "ST-009"
+      ],
+      "owns": [
+        "REQ-10",
+        "REQ-132",
+        "REQ-133",
+        "INV-104",
+        "INV-128",
+        "LIV-101",
+        "SCN-102",
+        "SCN-103",
+        "SCN-117"
+      ],
+      "constrains": [
+        "INV-103",
+        "INV-116",
+        "REQ-169",
+        "INV-114",
+        "INV-105",
+        "REQ-40",
+        "REQ-126"
+      ],
+      "context": [
+        "REQ-7",
+        "REQ-37"
+      ],
+      "pins": {
+        "REQ-10": "b9cc6f2838a62cb1f70fb73f2670da1b63acb57f1b74231ca422f330e560e8e1",
+        "REQ-132": "72fab6f6b47ddaab089e1f5511b745d84c03149ca0de3d35b486c265d65fbe65",
+        "REQ-133": "e6f8ee5c1231e65f3e234da1a0890ce2bc241b210c4f98f3ec434458432296c4",
+        "INV-104": "aea79d7810e896a3cfaaf43c5f7a5b186b2a6dcadfc3fb40d3eb4d08ca45f7f8",
+        "INV-128": "3c3dea61729429d2643eb9bbb0ec9bc578f804decc06e1a771d017c3ab22e4d2",
+        "LIV-101": "33a606f30ffde9217acb530f80cf0548cab007f4f7d679a47072a1d285ff8c01",
+        "SCN-102": "622ae32f7a3c71d773681be19f506cf7290b84802f7a4c3e223a1bd51e9a1d9b",
+        "SCN-103": "7990b13f40ddf5b3b63f4facdb628304ec74ee82fbbd69d1bcb5bb1af4f9d143",
+        "SCN-117": "816300fd92119c080ed4ac0975fcd1d44a4709b4fda283bb8a1561bf1ed05844"
+      }
+    },
+    {
+      "id": "ST-014",
+      "slug": "timeouts",
+      "title": "Time out handlers that run too long",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-013"
+      ],
+      "owns": [
+        "REQ-137",
+        "REQ-138",
+        "REQ-186",
+        "REQ-187",
+        "REQ-189"
+      ],
+      "constrains": [
+        "INV-128",
+        "REQ-129",
+        "REQ-131",
+        "INV-123"
+      ],
+      "pins": {
+        "REQ-187": "e6d268510a263b99d436d185dfe1223b4d5a1b20c3591e58cabca7be3af2a01f",
+        "REQ-189": "6b9d0da09bbb6fca39162e67eaa32acb35613e007b88a474d46693933701f1c9",
+        "REQ-137": "825d12ccb1aa6fa7cb0db80b9c9e52a1a444dbc6053c6e4c677a807081678d77",
+        "REQ-138": "5e5e7657e4e12e0ac5725a0386a739c677f60158a0203cd4b901f13f2babcacf",
+        "REQ-186": "2905accadd2fbb00ea1e7d3eb5b77d28ac72ca1823d1acd97c1964ec8b039922"
+      }
+    },
+    {
+      "id": "ST-015",
+      "slug": "health-check",
+      "title": "Report node health",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-011",
+        "ST-012"
+      ],
+      "owns": [
+        "TECH-101",
+        "REQ-30",
+        "REQ-31",
+        "REQ-32",
+        "REQ-33",
+        "REQ-34",
+        "REQ-35",
+        "REQ-44",
+        "REQ-46",
+        "REQ-47",
+        "REQ-48",
+        "REQ-49",
+        "REQ-50",
+        "REQ-58"
+      ],
+      "pins": {
+        "REQ-46": "b1d487c39a4571287041c27791cfde1c384fca53970ece60643c328a69cf9d9d",
+        "REQ-47": "58c174b684966ae3e3bbfbbe6f85ef82a918c47d7755eb2501dc256f9d779af2",
+        "REQ-48": "1263eb34ce4ffcf69293af1629aa01bdc85e02e3a62f2f59c72c120eaa1c760f",
+        "REQ-49": "0dbd0cdee2b37bf15b542e8701399b38f86acded35aaf5a8d6b8b485c982020b",
+        "REQ-50": "05735352674e4f2b60ee56f7863ddf0dac390b7bef8311e126eb35e784ccc612",
+        "REQ-30": "265579fad1610aa70cf10cc10f0dc05d610525fc5b898951dbfeca500c81a380",
+        "REQ-31": "46069edc116cba5b43aa75f2cde7efd7037f3512e18b47126de6bebccf006642",
+        "REQ-32": "d4ad2ac95f0bc8f69bdaa809e0b0b53d9fe6d0062b6d6cfb0fd08057084cce21",
+        "REQ-33": "d2579cd2fc61396cdc2c0e216155a2149b839932431d51baf6956d849c06ec03",
+        "REQ-34": "2fa02f4a1317200e88f589848fd5cd8385b6ffcec833675b16b1da9bcfdb7b77",
+        "REQ-35": "08a5c7c7570d9039eed3234ddad10fb2c935af5fb9bfda9abe10b0d84971fde5",
+        "REQ-44": "0d00260e9b13a8c19aeab1c5eb798053829be1ff5bd54059847b6805496dc4c9",
+        "REQ-58": "fb1e6787f62844966ea35492c5f654c5ad6336e8094d3f1063748d7005560a75",
+        "TECH-101": "6e0f4f37eddba454d91d64321b8df64d888d0b6e6d2451076419133191bf5076"
+      }
+    },
+    {
+      "id": "ST-016",
+      "slug": "startup-resilience",
+      "title": "Survive store outages, migration races and clock skew",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-006",
+        "ST-015"
+      ],
+      "owns": [
+        "REQ-24",
+        "REQ-25",
+        "REQ-26",
+        "REQ-42",
+        "REQ-45",
+        "REQ-56",
+        "SCN-5",
+        "SCN-6"
+      ],
+      "constrains": [
+        "REQ-12",
+        "REQ-18",
+        "REQ-22"
+      ],
+      "pins": {
+        "REQ-45": "9200dcede0d934083be83c48fcb13424e52ee1f26e48efa1e3581cbef8494c0d",
+        "REQ-25": "e6d9b18fb3c2178f89335e5a2de3005b5257028d34de0d6ecde3f1775c23954d",
+        "REQ-26": "f326f36d32f5de43e50245378bb91da804e53267b02e7eb5290f60d7cd2ee5c6",
+        "REQ-24": "ab682363f56a0c01d6bf6d4185856e3e5c579136d9788d430de1eb6f739ceb91",
+        "REQ-42": "1ed035b2d3649da6136d1df787bb12ef026728486b4a3653056803d2a1a2f086",
+        "REQ-56": "bb5017eed7c55873cdc003ffcf0d622fd7613772534d24e4f57424971b4f4817",
+        "SCN-5": "6cc1f10f209dbdcd39aa51ed2a640ec06b99e234cf0f66231eef77a534916929",
+        "SCN-6": "d402e537049f0870ca757b46ce808e014ed861faeabdfa5415f65ce35efc5751"
+      }
+    },
+    {
+      "id": "ST-017",
+      "slug": "graceful-shutdown",
+      "title": "Shut down gracefully and hand unfinished jobs to other nodes",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-014",
+        "ST-016"
+      ],
+      "owns": [
+        "REQ-27",
+        "REQ-28",
+        "REQ-29",
+        "REQ-55",
+        "REQ-139",
+        "REQ-140",
+        "SCN-4",
+        "SCN-115",
+        "SCN-124"
+      ],
+      "constrains": [
+        "REQ-129",
+        "REQ-138",
+        "INV-128",
+        "REQ-131",
+        "REQ-186"
+      ],
+      "pins": {
+        "REQ-28": "512d9a4fb12838c1bd27a4355e910d6d8bff4e385900f0432ba8b9129e64a4a4",
+        "REQ-27": "ce15b349c1546afeb686ccab38ecb3974f87c12cf522a2da7d558db8c49c939d",
+        "REQ-29": "24e4de85f2840f44e5bf6c4349733ff7cc58fbb0ff3581af07cdd3619a027dc8",
+        "REQ-55": "99abb818b13a29a559918d671a36eec06fa6b2822c17c7f7bf040c807f400668",
+        "REQ-139": "1de9300b84fdee35b00e4c08d23e1b73847f97add78227f80342a77322d3a500",
+        "REQ-140": "b503e05d234d7e1b312008d934ca61c718bd06eaae587ac4cfe25b3ec48296c7",
+        "SCN-4": "30c6ab1ba1a6301b05ef347fcbe09fb5293df3b0b55067ffd28cd76f77f7b06f",
+        "SCN-115": "be6208b6014b51a90904a224f3c875f2730b77dab2bd0279b1cd96f4aa6be694",
+        "SCN-124": "4af34aea5cf5408e010effbc0da441ba42b6e1c4d0b5e5ce485e2650d87c3e9c"
+      }
+    },
+    {
+      "id": "ST-018",
+      "slug": "cancellation",
+      "title": "Cancel jobs, including running ones",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-017"
+      ],
+      "owns": [
+        "REQ-134",
+        "REQ-135",
+        "REQ-136",
+        "REQ-190",
+        "REQ-191",
+        "SCN-107",
+        "SCN-122",
+        "SCN-125"
+      ],
+      "constrains": [
+        "REQ-129",
+        "REQ-132",
+        "REQ-138",
+        "REQ-140",
+        "REQ-29",
+        "INV-128",
+        "REQ-169",
+        "REQ-131",
+        "REQ-186",
+        "REQ-133",
+        "TECH-19"
+      ],
+      "pins": {
+        "REQ-134": "d8333d22f0cf40ac51097842ee7bb55eb9c9bbd0fcb3a3ff055ff53405924605",
+        "REQ-135": "6e2cf17dd5437e8689b48e62aa2d271b2781e6efad42fe4545c495bb473aface",
+        "REQ-136": "bbe29226eed995274c48f3d258e5c8f2099429493a81d7276dfca253a9d87fa6",
+        "REQ-190": "892f41e1de46b3c9528bafcca71660dc86b798ca71086fff0f86a568c2532445",
+        "REQ-191": "bdb68e3bab58b68400780ce25a29759a14ea1c707feba5a01bc51f95695e2fee",
+        "SCN-107": "79da855a4259c27d0573c9dbd21eb60436a689c5a20b38d9015b24a1bf997eb1",
+        "SCN-122": "d64f10e48f99d1ff2176956fae71269f624ae476bb202eada3b705bc327c90b5",
+        "SCN-125": "618f50ebba3635de145e9d97ad35248cbc7bbee47da66df550ae1ba8d8359717"
+      }
+    },
+    {
+      "id": "ST-019",
+      "slug": "uniqueness",
+      "title": "Enforce unique keys",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-008",
+        "ST-018"
+      ],
+      "owns": [
+        "REQ-107",
+        "REQ-150",
+        "REQ-151",
+        "REQ-152",
+        "INV-100",
+        "INV-135",
+        "SCN-105"
+      ],
+      "constrains": [
+        "REQ-120",
+        "REQ-121",
+        "REQ-182",
+        "INV-123"
+      ],
+      "context": [
+        "REQ-39"
+      ],
+      "pins": {
+        "REQ-107": "4ca0488e33f2f8cd08c7854e97acb427f234f8ddb6b7d22a516a2f0f6f3636a0",
+        "REQ-151": "aafd1db4a953786b5e679aa0ed0537c55faad998e2b8ead98e8ecede523a4c5a",
+        "INV-100": "2aa323d1daab6e7fc06862824dea5a1c1c8ae7e6819f9bbb460b4d19a6d5fea0",
+        "INV-135": "dfe05e6e6f1d50eabc77c3a5cde7f2f5541a4a3d1765bfa4ed6df7853b7e4bba",
+        "REQ-150": "add6a108fbfc5976058d2619ee6184cdd5b01129ea38184ffb3be938db22c161",
+        "REQ-152": "586f6d1a411ff929f77e9b833acc6ff6807b5a1e8206582b7184aa148c15b4a0",
+        "SCN-105": "9c7e93386da4f4fc3a77fe98b7776ceb5b17f0dcd36b9e6c6521778d3cd0e1b1"
+      }
+    },
+    {
+      "id": "ST-020",
+      "slug": "requeue-and-delete",
+      "title": "Requeue and delete jobs",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-018",
+        "ST-019"
+      ],
+      "owns": [
+        "REQ-141",
+        "REQ-142",
+        "REQ-143",
+        "REQ-144",
+        "INV-129",
+        "INV-130",
+        "SCN-112"
+      ],
+      "constrains": [
+        "INV-100",
+        "INV-116",
+        "TECH-19"
+      ],
+      "pins": {
+        "REQ-141": "25daec5403a37590cc9c8d5a490fde9cceca1fbace087d0fdcbe8ee103fcb431",
+        "REQ-142": "33ce32c6df16e709e453532883a18da64c45049a56b7e29200215b75542913c1",
+        "REQ-143": "0a9da7a3fe50d6dcfe18132a228ef8c0029eadd5d01d8b751781374cbcbff60c",
+        "REQ-144": "863586d79e8889e385f55099a69648f9e98cecafcbee8a3116829c2e6952fcc4",
+        "INV-129": "a7b8ab9db0f2b42f316917f9fe0d29629075efce22af178e1bd8f70f84edc767",
+        "INV-130": "d829f3a22574a8eb58fc86aa1037213827b6367c976a4ae43cfe7fac97268f42",
+        "SCN-112": "d3b0c709847fad53f6fa324d64c8db72b1d8776f7bc2ed54b29fc6118a6e657d"
+      }
+    },
+    {
+      "id": "ST-021",
+      "slug": "retention-cleanup",
+      "title": "Clean up finished jobs after their retention",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-020"
+      ],
+      "owns": [
+        "REQ-104",
+        "REQ-109",
+        "REQ-145",
+        "REQ-164",
+        "INV-118",
+        "INV-119"
+      ],
+      "constrains": [
+        "REQ-40",
+        "INV-114"
+      ],
+      "pins": {
+        "REQ-104": "4813d7785c103594fde30c2f348b7e43623a1fef0ae9309a710c03c26c2d5b98",
+        "REQ-109": "fb8f98970a1be214bc3e7741092d462fc8aefe72dd02a2c105034ef6ff0d4928",
+        "REQ-145": "dd124249102d271588071a2ac2823d102f61ee289a6b28b3b1f7e915d6a6748c",
+        "INV-118": "e2b4e32ef9f71ba8a667e98a1c0a557320a6b3c744a5ca67ed043ec78c0d6dbc",
+        "INV-119": "4c548bf6d5cb84502228c07799732e69ac418556ea31fbf264213c927e35eae3",
+        "REQ-164": "64df55df35fba7be912f9d6074125ca1a9c09f7a6f978d9aa5a2709f04c1be6b"
+      }
+    },
+    {
+      "id": "ST-022",
+      "slug": "recurring-definitions",
+      "title": "Declare recurring jobs in code and reconcile them across nodes",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-003",
+        "ST-006",
+        "ST-012"
+      ],
+      "owns": [
+        "TECH-45",
+        "REQ-201",
+        "REQ-202",
+        "REQ-203",
+        "REQ-204",
+        "REQ-205",
+        "REQ-206",
+        "REQ-207",
+        "REQ-210",
+        "REQ-227",
+        "REQ-241",
+        "INV-200",
+        "SCN-203",
+        "SCN-204",
+        "SCN-207",
+        "SCN-208",
+        "SCN-209"
+      ],
+      "constrains": [
+        "REQ-12",
+        "REQ-18",
+        "REQ-40"
+      ],
+      "pins": {
+        "REQ-201": "1a108b3088d0dece4689ee63450716a57ebd76d505d9c8a388877db9ded67bcc",
+        "REQ-202": "81286ad3dea545640dfd6e7bd3d77d04a6f2e1f8e5fa63943a0b9bbbc2ce531c",
+        "REQ-203": "408786982ba691fc09dd82121f33cb1727e143352282df55affa9f8cebef701c",
+        "REQ-204": "57bff9f1854378a72b526dc9f51994fc530174d471d1660b8196fbb6b04acaeb",
+        "REQ-205": "88a059aa7f91df1c924769442cacda04a6e0262552844a42e376663df669371a",
+        "REQ-206": "e679a806d962f7563a8302ac4a39f87378aeb8b02a46240d3402749380c4c3e7",
+        "REQ-207": "91514861ca4d1c05d3ca17e649a02bbe60e84a2ae0de4fbb10b63a4ee7ecfcb7",
+        "REQ-210": "11f2a82f72c125b8ded2df4863926749900d5af0a319c87a55e8f11181474bbe",
+        "REQ-227": "0456d4ac404753c0f7bc1930c019abc8826494d16ae7cc4cd854d676ee3c7eea",
+        "REQ-241": "359c92303bfac13c34e9c67cad41f49eb2efb4c92cb1d173c67a612c16f00f2e",
+        "INV-200": "aabda1e033f251ea9cd5f8aafa56fce146593e49cb567fae992f9d330ce8b050",
+        "SCN-203": "f4f67a5017644d0c6ccdb802a384abbabf96d8ad4cc27e2c3660656d45de2f1b",
+        "SCN-204": "6e95b72653b6fc9bd215bad6e364c33f16117546b5873a7b584d4efd47bdb97c",
+        "SCN-207": "d1d384389f797004dcac08dd7ddfeca43fae49588dc58b6f1079f539fdf206f7",
+        "SCN-208": "b665d03060766dd2446d58f8026ed84feebbd670009dcc8c31674d309c7bfd39",
+        "SCN-209": "ed40976cd08e8633ac064c22d1a5e0bfde53788b10d709ad3cb1ef9626b42413",
+        "TECH-45": "959c0402180909c65b1a11156746cb6281b025ec5829b3575561fead035443a9"
+      }
+    },
+    {
+      "id": "ST-023",
+      "slug": "recurring-management",
+      "title": "Manage recurring jobs at runtime",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-022"
+      ],
+      "owns": [
+        "TECH-21",
+        "REQ-208",
+        "REQ-209",
+        "REQ-211",
+        "REQ-212",
+        "REQ-213",
+        "REQ-214",
+        "REQ-215",
+        "REQ-230",
+        "REQ-236",
+        "INV-206",
+        "INV-211",
+        "SCN-205",
+        "SCN-212",
+        "SCN-214"
+      ],
+      "constrains": [
+        "REQ-227",
+        "REQ-12",
+        "TECH-45",
+        "TECH-128"
+      ],
+      "pins": {
+        "REQ-208": "8e271faa2399833189982413780b3741de828f8a8d970738bfc2d0fdf74abb40",
+        "REQ-212": "e9a08be600b4835eef50b1e7f58bc8ddf96b386d5eff60960cdbe9c41ca706c1",
+        "REQ-213": "bfe77dff0a33782eda594ad8d235be54f67df825134805b6430376aa27d88298",
+        "REQ-214": "5e5e807b87b26d0f8c99aefd24dc0addcb826948ccb67b738e4b2ac050b7ef04",
+        "REQ-215": "c2e66abee4d954848a92270a742ffc18e179506f2309624480030f6fd20bc856",
+        "REQ-236": "2aaed2c130a345978c61c57e49dab8789e3dd3f715892637b3bc64eda0133a94",
+        "INV-206": "ac7b8f84746d19ce057931a19f7922fc335e5d07e8c0835fc9dce1a2bef9bec0",
+        "INV-211": "b420ce59db5d026d5868c574b5f9737f4120b2a3efabcf463533d5b88751513b",
+        "REQ-209": "25f6eae348f709a26e3b31c5628a7c36161dcc839cb68913b7b4698cfc022a7b",
+        "REQ-211": "da6259f7b416fb4f1c5bca3fb5817c14cd2e871c73a42316ddd522a45bedef47",
+        "REQ-230": "17fea355e801b8cc0b06c2b1b9462cc6b8cab717a86d1bc3abe31a84c5dfeffe",
+        "SCN-205": "69c2bcaf008c2c8b333a2dd6dd5c312ad473954aab5c97c08aadd746eba06ae6",
+        "SCN-212": "fcf75dd532c8a848bc24e90250043f171e6a18950363accb6bb72d887c0403b7",
+        "SCN-214": "b7dd2723277b51f719d3f495faf12a546b4eed2b9f6744480ae0109c2004ab3c",
+        "TECH-21": "139aed39177d55d9e256b3cb176816e61e867b29b267425286ec777692e71b78"
+      }
+    },
+    {
+      "id": "ST-024",
+      "slug": "recurring-overlap",
+      "title": "Start recurring occurrences under each overlap policy",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-023",
+        "ST-018",
+        "ST-019"
+      ],
+      "owns": [
+        "REQ-226",
+        "REQ-221",
+        "REQ-222",
+        "REQ-223",
+        "REQ-224",
+        "REQ-233",
+        "REQ-235",
+        "REQ-239",
+        "INV-204",
+        "INV-205",
+        "REQ-225",
+        "REQ-240",
+        "SCN-215"
+      ],
+      "context": [
+        "REQ-238"
+      ],
+      "constrains": [
+        "REQ-134",
+        "REQ-150",
+        "REQ-152"
+      ],
+      "pins": {
+        "REQ-233": "3adcf32f8ee6d694d87f9327de77ca9d9828ba5acdbaf88f5f5b689bdf4783a2",
+        "REQ-239": "97f8050051d05646f4fa77b86210d795a4c51ecbeee67cfa29f83bb9738e2eff",
+        "REQ-221": "b868f70271ab867fe6d63c167df27c70af33ea76b4224e91b8519a6b5f3c8613",
+        "REQ-222": "f0096cae38b6c10c7ec32144ab24dfd88838e1f8546c03162f97287728dfb09e",
+        "REQ-223": "0d30adec8153846a79197d9748eda28ee968107654e0096915d51db0500b366f",
+        "REQ-224": "74f112f5027aff7e360eff6e84f32dd64ba571c9f7a134785fb87f885a4a34cc",
+        "REQ-225": "8f67ac4fb62146261d04db295b68743413d9cb64d8ce2df333847bd785b92c26",
+        "REQ-226": "8ea0aa1265ffaf77fc51ace30be67b426f65e4a8ecc5e50169f7d8df0d90f75e",
+        "REQ-235": "e54ac759ff008b89543c0ddfb71119fc6582dea6a45597500f47c05e0a8ca4cc",
+        "REQ-240": "3b7e380eb2a6cf7228ada94454344a77fd95f6e3b2a9e7cc912f6778ee5e7f47",
+        "INV-204": "d5631da898fef89fd951a1c66f0cf4a131cf5f11056129b45b0e841804634d71",
+        "INV-205": "c8f35e63098709eaa7917231af566cedd75f5f44a44a6fc3141ab40287ad6cff",
+        "SCN-215": "5222841df843a00e8c0f691579a02129e0bc03fc81e241374c35b488017c9bcd"
+      }
+    },
+    {
+      "id": "ST-025",
+      "slug": "recurring-overlap-outcomes",
+      "title": "Skip waiting occurrences when a recurring job stops, and record each outcome",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-024",
+        "ST-018"
+      ],
+      "owns": [
+        "REQ-231",
+        "REQ-237"
+      ],
+      "constrains": [
+        "INV-204"
+      ],
+      "context": [
+        "REQ-238"
+      ],
+      "pins": {
+        "REQ-237": "ad976cd839222c75ddd3156ed51b4d38c91b6945d1a403bb56fd5931bbfae600",
+        "REQ-231": "5237d746b2c83da2a6720992dbb17f9c6ca6ca6a07a75c419636eda658ecbaff"
+      }
+    },
+    {
+      "id": "ST-026",
+      "slug": "recurring-trigger",
+      "title": "Trigger recurring jobs on schedule, once across nodes, with misfire handling",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-025",
+        "ST-009",
+        "ST-010",
+        "ST-021"
+      ],
+      "owns": [
+        "REQ-216",
+        "INV-212",
+        "REQ-242",
+        "REQ-234",
+        "INV-207",
+        "REQ-217",
+        "REQ-218",
+        "REQ-219",
+        "REQ-220",
+        "INV-201",
+        "INV-203",
+        "INV-210",
+        "SCN-200",
+        "SCN-201",
+        "SCN-202",
+        "SCN-206",
+        "SCN-210",
+        "SCN-211",
+        "SCN-213",
+        "SCN-216",
+        "SCN-217"
+      ],
+      "constrains": [
+        "REQ-169",
+        "REQ-40",
+        "TECH-45",
+        "INV-204",
+        "REQ-150",
+        "REQ-152"
+      ],
+      "pins": {
+        "REQ-234": "691976c8ba72d6e1883bf90c0b90225214c65e18a4d7ff294ea2ff9d7dcb3878",
+        "REQ-216": "8f9c827892e050b726b262788af75545d62b2fe1d48af357746afad748b21d59",
+        "INV-201": "b9aaf5e3ac76733ba16767d45a4289b50ec1fbe670ead2eb503e1fd0c8cd2163",
+        "INV-203": "8e2c452774097e70067d3887f0cb4ae7ce7169aee397d4c020f883268a0a4ff7",
+        "INV-207": "eb0b9994da29c80cfbbabf402ae0203a0bb5ee09b4903961ffe9e4dc99d5d68c",
+        "INV-210": "b4f87cd091157f02198e42618c29d2f63807b7cdbc1221adc8363a4cadcf4625",
+        "INV-212": "b96223e91d476bd5138fd1c35c1d4aa9d2f73bcee4cc554e911389247431e596",
+        "REQ-217": "423051ebf969f570b07f758c6e63d371ca2cdc6c476edb9e3ad0398c97dbe513",
+        "REQ-218": "e1df26e1d5a64e728114a6adcf1f8bec0ed3fadbc2b7783cf30ee4a03d18e847",
+        "REQ-219": "1e0d2d50e89ca553246daae112a43895d8d7a77ad9e0825fc06e4c6cf49e51f8",
+        "REQ-220": "8d2ae21b65733b1b749472e1c5a2b06f9e9eecffdbbbb599d7f07208d1b3dcc0",
+        "REQ-242": "16a541fb186741cc853952021d95b94a2bb699ef04972c821a8c1487c2d6833b",
+        "SCN-200": "fa41a99be34596e66466472c7275874a429b00c26c61307f7792ad4db56ab2e0",
+        "SCN-201": "aaa1a789d897952d87d8463352685cb7d12ebe9f4872b753a7938ee348700799",
+        "SCN-202": "37258689921b2f1bcd2583997a82c86f84899e4247c6802221d3ba9b2047a27f",
+        "SCN-206": "1b2d6755bbd82bef9d7632efde47470e81d189abb4e2154848add7eabe29323b",
+        "SCN-210": "109b4964349917cfdcfccd6b199d5ab9444dbbd41c7fe2db2e7c0af945a4f936",
+        "SCN-211": "c779d4d0bb9823ce667d57875510938b4af3ade95eae90daa3fd529f37dd7ed6",
+        "SCN-213": "1a91921db3e4a874eb9c309076a9886938bed558a20794898d1ae81ea79dff9b",
+        "SCN-216": "faaf47259286a77a435b3b042fbd69f5de9edf6d0a161589e7a332811afc670c",
+        "SCN-217": "e47e92d8f3b392c58a4401c833ec8147a3f6b7d818a98d0fe3e4fa7630e5cbb4"
+      }
+    },
+    {
+      "id": "ST-027",
+      "slug": "testing-harness",
+      "title": "Test jobs with Bellhop.Testing and inline execution",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-021",
+        "ST-026"
+      ],
+      "owns": [
+        "TECH-102",
+        "TECH-103",
+        "REQ-146",
+        "INV-131",
+        "INV-133"
+      ],
+      "constrains": [
+        "TECH-43",
+        "TECH-104"
+      ],
+      "pins": {
+        "INV-131": "29606e335f7767ade6a047764511455ee2e51142d84d2cf1bce2bfb63db443c0",
+        "INV-133": "2c62878576a10bd41566b8d7b20b0ac20b9dbb7949adb01f310d0c88178fb83d",
+        "REQ-146": "ceabf8a6f5f94434e7d9e99be6d8a7ee61093131ff9a11b4f0064db965771bf6",
+        "TECH-102": "cccaba9acb8bb07fcc72744c51e13c8d144ff3348640edee007005e5759dec01",
+        "TECH-103": "6cd7e048b667af18c9d45a19717a44d57c587c32d3657dcfec6aba4a2aeac58c"
+      }
+    },
+    {
+      "id": "ST-028",
+      "slug": "tracing-and-metrics",
+      "title": "Emit OpenTelemetry traces and metrics",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-010",
+        "ST-014",
+        "ST-018",
+        "ST-026",
+        "ST-021"
+      ],
+      "owns": [
+        "TECH-97",
+        "TECH-98",
+        "TECH-99",
+        "NFR-54",
+        "NFR-55"
+      ],
+      "constrains": [
+        "REQ-154",
+        "INV-118"
+      ],
+      "pins": {
+        "TECH-97": "036d3798c97d978cce21c76a1f280ff0646c40a8a714b9ccbd28ac99f3a37035",
+        "TECH-98": "86c71088e0e338614b35c930ad1cd960c63a9f98ba43e4ab964c531f0180fa5a",
+        "TECH-99": "cb26ed1a6007810c98a5ce0183f487940c897ea4545769b51309bbc5677cc07b",
+        "NFR-54": "e0fc1257e381f3342c73afe14ebbd7555fc402f111b54968f6633c541a0e664c",
+        "NFR-55": "47123ffc4ba72d97be0f155c8aa2012a5a011486a7a25aa2732a77903ef3cd24"
+      }
+    },
+    {
+      "id": "ST-029",
+      "slug": "postgres-schema",
+      "title": "Create and migrate the PostgreSQL schema",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-016"
+      ],
+      "owns": [
+        "TECH-37",
+        "TECH-36",
+        "TECH-46",
+        "TECH-47",
+        "TECH-48",
+        "TECH-126",
+        "TECH-127"
+      ],
+      "constrains": [
+        "REQ-22",
+        "REQ-23",
+        "REQ-24",
+        "REQ-42",
+        "REQ-56",
+        "TECH-31"
+      ],
+      "pins": {
+        "TECH-36": "e8d8ca74edc150c5c674c77d29f7037a77c8a718b8a22e569c6ac2f23f987070",
+        "TECH-37": "b53bebeb7344729200132186e3d6cd542eec265eb1393b55801fcbe267d82d07",
+        "TECH-46": "5a4d38fe4e39a7edadc626b18e6814032b3f2a530bc929632656db2951a29eea",
+        "TECH-47": "68259e414c72ada6d426b110bf011c33a1858e8056371b832d42f583636e1729",
+        "TECH-48": "673c37deeb9169442aed9360e5057d5924b05b955f80ca91a73ef52cb8f68092",
+        "TECH-126": "1fe8ee82ad1c913f9e9110d360e7eb7247dbd58d1d4b7514ab2086c8302e20c5",
+        "TECH-127": "fba2c4f6faf51c89bdc0ac8f2f9e6f3b2be9bd306371bbec23a61649e0b1224b"
+      }
+    },
+    {
+      "id": "ST-030",
+      "slug": "postgres-jobs",
+      "title": "Run jobs and recurring jobs on PostgreSQL",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-029",
+        "ST-021",
+        "ST-026",
+        "ST-027"
+      ],
+      "owns": [
+        "TECH-38",
+        "TECH-39",
+        "TECH-44",
+        "NFR-10"
+      ],
+      "constrains": [
+        "TECH-31",
+        "TECH-32",
+        "TECH-45",
+        "INV-103",
+        "INV-100",
+        "INV-115",
+        "INV-203",
+        "INV-212",
+        "INV-105"
+      ],
+      "pins": {
+        "TECH-38": "dda389ca4b45866b335354ad29157aa7d573523d68e7bddb9707e1730381fbd3",
+        "TECH-39": "7289bbf1abf13dc1d9a9bdb7929a5efbabcfb6fb3eef4a0321ecc5dda6e5f340",
+        "TECH-44": "9a9ac0ad9924a7a2fba860049849aa18120931543ffa1757dd817debbb33f087",
+        "NFR-10": "54f44a00d34da887842c19d5bb99af714e56081a1599d45128a6692135beb880"
+      }
+    },
+    {
+      "id": "ST-031",
+      "slug": "dashboard-access",
+      "title": "Mount the dashboard and protect it",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-006"
+      ],
+      "owns": [
+        "TECH-88",
+        "TECH-90",
+        "TECH-92",
+        "REQ-51",
+        "REQ-300",
+        "REQ-301",
+        "REQ-302",
+        "REQ-342",
+        "INV-300",
+        "INV-301",
+        "INV-302",
+        "SCN-300",
+        "SCN-301"
+      ],
+      "constrains": [
+        "REQ-12",
+        "REQ-18",
+        "NFR-41",
+        "REQ-54"
+      ],
+      "context": [
+        "REQ-6"
+      ],
+      "pins": {
+        "REQ-300": "4571c9e5a9d5aafb9d5a87142aaa58d0516c241376a4e413241e3a60bd8b836a",
+        "REQ-301": "81bf5e07c87954ed575ed6d5525eeb30b452c3c9b98d8532e7a288df63b64f3b",
+        "REQ-342": "c86054f0834fb89c981e85a11970309186e155a19918914f52bf75dd6258dcaa",
+        "INV-300": "6df80d6c3cf268cb8c93c982e3bd1d51fa787e489fb95849e305bdaec7c7ac45",
+        "INV-301": "41dc0c67fd0c61f22988b43ff05cd5b2650078ca0451355830b3029d286361da",
+        "INV-302": "9ed1aac3f190e0df842f7f0ff4dd765128360bb5889f1451c1459008d6c0b2ff",
+        "REQ-51": "cdfbe913cb8f42389cdc428a127d35e80f7a009af25fabc05d219c246152d55a",
+        "REQ-302": "ee5a3f8a20e5b48108bfe5d6a8586972d2d8deee6c281432a1ed40a3fed34325",
+        "SCN-300": "75da8f34ab964b2cc2b5183a92f3efafc1d305890b520295cf89e30bb96a01dc",
+        "SCN-301": "be0951a01b7a29fee4222b27edff1b59cb194738169c12355f7009692eea45d9",
+        "TECH-88": "84697f402ab901560d0dc5a53208dc20f1f754a8a679e9c09edcce58bd5771ac",
+        "TECH-90": "d6f9bc1c63f5376b41eb08ec93ddbd05b823c88071c420bf0ba39bd7ae83c346",
+        "TECH-92": "a9b2865ec0410cecf5102bfa798a7bdf6a8fc18cd27c337a9d684d7be29ad453"
+      }
+    },
+    {
+      "id": "ST-032",
+      "slug": "dashboard-shell",
+      "title": "Build the dashboard shell, overview page and live updates",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-031",
+        "ST-015",
+        "ST-030"
+      ],
+      "owns": [
+        "TECH-89",
+        "TECH-91",
+        "TECH-93",
+        "REQ-307",
+        "REQ-315",
+        "REQ-341",
+        "SCN-308",
+        "NFR-11",
+        "NFR-42",
+        "NFR-47",
+        "NFR-48",
+        "NFR-49",
+        "NFR-50"
+      ],
+      "constrains": [
+        "INV-301",
+        "NFR-41"
+      ],
+      "pins": {
+        "REQ-307": "2b18371132ab12a45217cd7a8e84dd1fc5cd57d1c16bf2579b5f8a39826dd236",
+        "REQ-315": "3ebef7c41e8a8d8ef1365789b91b6bbe929b1b32cf5703037493f4ba00d87149",
+        "REQ-341": "b67170cc1cdc70740ef337e5532ecc266bfe4eb61d13d0504041c1330973be39",
+        "SCN-308": "d86bd8b3789c68b21907e0a2e8cd7c26d86558d8406fb413364698aafbc3962d",
+        "TECH-89": "7ce554bb33566887b879e01821b39b3695b70d1d10f74e69e2ea40fd2595d623",
+        "TECH-91": "2f672d66f57a246998a8fd066f086f184be08b356fa53f55f927f010bae67ede",
+        "TECH-93": "6dcd8caf78253ca2f18214e1730d3f5443a1cbd887e65cfaa4b3c2456aff352f",
+        "NFR-11": "6cc35e076e3f9e1d3f006dff22123907a3f6406345a57c5ed7621657e7a922ef",
+        "NFR-42": "89033937ae5548c90aa766f84582f9ac46953cc9be2c6c8287669ae5c49cc7e7",
+        "NFR-47": "cb2640e6abf7f22cba26d52942c663e128dcfbaffe468d320918d39ec3999f67",
+        "NFR-48": "501844914a7c92c7b31669020574ce43f1782aba1c0d0b1e7b971e969bfbbe18",
+        "NFR-49": "85ab017c66717f4ff5ea62d7981896fe5327f9dd4bc8f9864db71cf8390470d3",
+        "NFR-50": "41dfc3346ee2000df8b15ffba9051a5eb5c1e1f9705fd46806e599559017be3e"
+      }
+    },
+    {
+      "id": "ST-033",
+      "slug": "dashboard-jobs",
+      "title": "Browse jobs on the jobs list and job detail pages",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-032"
+      ],
+      "owns": [
+        "REQ-308",
+        "REQ-309"
+      ],
+      "constrains": [
+        "INV-301",
+        "TECH-32",
+        "NFR-42",
+        "NFR-47",
+        "NFR-48",
+        "NFR-49",
+        "NFR-50"
+      ],
+      "pins": {
+        "REQ-308": "2770ff1318e1843255a42f2cf5f486a2f4fc4e544df6247a684315930dcb34a5",
+        "REQ-309": "0b4bee5d15dd0a5781c2749807b60dcb4a07980fa4b7388923052607d7bbf3b0"
+      }
+    },
+    {
+      "id": "ST-034",
+      "slug": "dashboard-operate",
+      "title": "Operate recurring jobs, dead letters and queues from the dashboard",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-033"
+      ],
+      "owns": [
+        "REQ-310",
+        "REQ-311",
+        "REQ-312"
+      ],
+      "constrains": [
+        "INV-301",
+        "INV-302",
+        "NFR-42",
+        "NFR-47",
+        "NFR-48",
+        "NFR-49",
+        "NFR-50"
+      ],
+      "pins": {
+        "REQ-310": "b58a9b3af66bf6087da9b5b621cddb0be5da8a1d3a650f81c414aa36bb3f0e6a",
+        "REQ-311": "a65f35b573dbdc894f07c007f4f79825e8f4a06e8afdc1ccd0bc4c8a03b1947a",
+        "REQ-312": "d8f21059d45b12ae9f960f8bb9a463c6a83070f9cf263139ef74bc6025742d70"
+      }
+    },
+    {
+      "id": "ST-035",
+      "slug": "docs-core-preview",
+      "title": "Write the getting-started, concepts and recipe docs with compiled snippets",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-028",
+        "ST-034"
+      ],
+      "owns": [
+        "NFR-24",
+        "NFR-25",
+        "NFR-28",
+        "NFR-29",
+        "NFR-36",
+        "NFR-51"
+      ],
+      "pins": {
+        "NFR-24": "60bb2f0930f96522c0fdf930a9aa1d5d74b1af90d800a726acc92f334a295c03",
+        "NFR-25": "60697777ddc38b6dbabe8945f0366032203106c81b9f73295382613e4fe321df",
+        "NFR-28": "7c1a4243f5239a2a15aa67ace0af5d49ad06b62876023745e3f5060f7e23e698",
+        "NFR-29": "612edb6b79e6d60ccdc26ec3a8cf170798921e1e6995030c9ba86f2d9ad2e714",
+        "NFR-36": "4ffad7c7bf1730ad6adc9ddb3e06a3e928ca9e8eea3fde4345c3abc6e8d93ecb",
+        "NFR-51": "98e4f8d335530f5de3486ef2d9041ed71a0e6b241432564bbdd5ef64372c8dda"
+      }
+    },
+    {
+      "id": "ST-036",
+      "slug": "core-qualities",
+      "title": "Measure idle cost, memory, recurring scale and static state",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-030"
+      ],
+      "owns": [
+        "NFR-12",
+        "NFR-13",
+        "NFR-14",
+        "NFR-53"
+      ],
+      "pins": {
+        "NFR-12": "fe791d0cb9b9c71fa34ca582df7b6ff8162987f28e621f0e5bc8f67e69a2d168",
+        "NFR-13": "f923b805599e8a3f9ae9bf842efb2b6137bce051d85fe1dbea22ba55bcc5e634",
+        "NFR-14": "d1313c92a97e9ad210479e62aa33c71655c5b5238664155e8e98dd4afb63ee54",
+        "NFR-53": "d4e80799c15033a05d1f25b2628a934535fb8823cb03f98dcd5bb76d4835b246"
+      }
+    },
+    {
+      "id": "ST-037",
+      "slug": "m1-acceptance",
+      "title": "Accept M1: run the core preview end to end on real infrastructure",
+      "epic": "m1-core-preview",
+      "dependsOn": [
+        "ST-035",
+        "ST-036"
+      ],
+      "owns": [
+        "NFR-1",
+        "NFR-4"
+      ],
+      "context": [
+        "REQ-36"
+      ],
+      "kind": "acceptance",
+      "pins": {
+        "NFR-1": "88c5d80179a84844d1c28cadf6ac7199ddeea36060b3ac7c9bc82629355f8a60",
+        "NFR-4": "d60aa0f66499bffcb2543c18c2e7334b12446a2571f01d0d6bd81a6ed681580d"
+      }
+    },
+    {
+      "id": "ST-038",
+      "slug": "continuations-and-chains",
+      "title": "Continue jobs after their parent, and chain them",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-037"
+      ],
+      "owns": [
+        "REQ-170",
+        "REQ-171",
+        "REQ-172",
+        "REQ-173",
+        "REQ-174",
+        "REQ-175",
+        "REQ-176",
+        "INV-138",
+        "LIV-102",
+        "SCN-108",
+        "SCN-109",
+        "SCN-118",
+        "SCN-121",
+        "SCN-123"
+      ],
+      "constrains": [
+        "REQ-150",
+        "TECH-19",
+        "REQ-169",
+        "REQ-134",
+        "REQ-145",
+        "REQ-152",
+        "REQ-143"
+      ],
+      "pins": {
+        "REQ-170": "08a0d8e7ad014e740e6ce16927e1a3ea6f6ba9cc56975d109c35a2814f0d3bce",
+        "REQ-171": "57d3d8d661d4aed3dbaa25933dde487c22d65166e59755f0c13bf9aed9fc1f8e",
+        "REQ-172": "66dae7dbfcc944337689635691418ee16f86194cd9cb3d3bce7856649879123b",
+        "REQ-173": "a25fe1bece110c45fbef5cf9940bcc84f0c6e45e21ba9a1e707fafd088de1fdb",
+        "REQ-174": "5375daf5efe8e4776c7e813f94ede2b976f5820a94feddda5aa2c8d974c95c94",
+        "REQ-175": "903bbf414e9782ca52d0fb81b81921005ea90480c6a6e173c9a754c1ab624821",
+        "INV-138": "8fdf98f1da293aa901befaa6bc7900bca46184cf97ded85b134026db0aa0c3eb",
+        "REQ-176": "077398ef64e3e04b6dc1b7ad04926ca46caeb570b6afe02bf8ccb1f94fbf1d2a",
+        "LIV-102": "49693795242b8ad8c1ee2bfa1366a5856c016b15c150a7af434195ceda6424c4",
+        "SCN-108": "38376a5a63f20b9cea42086f86499a47cfa0eca0b9f464ce7f9a13df99fb24fc",
+        "SCN-109": "008d29fcb0a857498f85819341396bfece0ff51d8431b49036d922c56d3c20f0",
+        "SCN-118": "49cbdfc03240957734d2deb91400c286a53653d83282c6851a8d253d07f0c852",
+        "SCN-121": "b79c364b8260db8cfaf9f4bf1ccb638c041cd593dac423ea15f0f3e688e465ea",
+        "SCN-123": "6bfc8c48525e95f20cbd5dc819676bf23b33017864bdb343400318f782647411"
+      }
+    },
+    {
+      "id": "ST-039",
+      "slug": "batches",
+      "title": "Group jobs into batches with batch continuations",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-038"
+      ],
+      "owns": [
+        "REQ-177",
+        "REQ-179",
+        "REQ-180",
+        "REQ-181",
+        "REQ-188",
+        "REQ-192",
+        "SCN-114",
+        "SCN-119"
+      ],
+      "constrains": [
+        "REQ-145",
+        "REQ-150",
+        "TECH-19",
+        "LIV-102",
+        "INV-118",
+        "REQ-152"
+      ],
+      "pins": {
+        "REQ-177": "e118c7b8124a3c992b7140c9a68d24e50f51f9b9be90ab7eb9d64023ae84467c",
+        "REQ-179": "91eeb272e82b4fe34dadc221591b8fab196326fdc4c8eba54dcc3657174487b2",
+        "REQ-180": "b19cebdc0a617ccb24764f6c798e6fe39a891cd93ff1158e4fc338db20818c7e",
+        "REQ-181": "d5d60c995dc7423dc51d4cd19070df01358a28a215ae11f82c9fdadbfe512197",
+        "REQ-188": "db7747331d149bf6ba4fff82502a3425021d9155cefa4b0f35ad0e8f17be7991",
+        "REQ-192": "de45473aa59ac24e5e895bdabb4987cf0ac7f51d529269fdfec2b259cb644389",
+        "SCN-114": "d0e6ce1fbb73d1449f0c1dd7eff3aa97e414ed8b57bd9f130247a9d179d23626",
+        "SCN-119": "23bfe9e3f38e88f6a550dfc65fb574f3199fadfad53a3b4457a55c3e27b3d8e2"
+      }
+    },
+    {
+      "id": "ST-040",
+      "slug": "bulk-results-and-waiting",
+      "title": "Enqueue in bulk, store job results and wait for completion",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-037"
+      ],
+      "owns": [
+        "INV-102",
+        "REQ-128",
+        "REQ-155",
+        "REQ-184",
+        "REQ-185",
+        "NFR-17"
+      ],
+      "constrains": [
+        "TECH-19",
+        "TECH-33",
+        "REQ-127",
+        "REQ-150",
+        "REQ-152"
+      ],
+      "pins": {
+        "REQ-185": "e600be5c589c60b0624b7c0e5925c43c68f287d2a48881bd1749473caf58fef9",
+        "REQ-128": "320d17224288e58bf9e4ee2ba00ab5553c57ff4c62726cb22f8a6af0d634c15d",
+        "REQ-184": "2e6534e28ad03ee915960041d88e9555532e93d6fa01780896a7774c670b6117",
+        "INV-102": "efc5795456936137ef95c9416dad540fd90f136e63089bca51992df4caccbba6",
+        "REQ-155": "0675206436bc323760570b8a0019369a4365c62551826a0e11aa1619c93f197a",
+        "NFR-17": "d7ce3fecbdfdf41f0804f5408b20bd1db0e267cb94b92415479948b5f5c0d622"
+      }
+    },
+    {
+      "id": "ST-041",
+      "slug": "transactional-enqueue",
+      "title": "Enqueue inside the application's database transaction",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-037"
+      ],
+      "owns": [
+        "INV-101",
+        "REQ-431",
+        "TECH-49",
+        "SCN-113"
+      ],
+      "constrains": [
+        "REQ-153",
+        "TECH-33",
+        "TECH-20"
+      ],
+      "pins": {
+        "INV-101": "aedf0ef7c4b5b56b37697c4222b0df5e5209bff90c5b29e546890ab2cafa931f",
+        "REQ-431": "468dc1d09ece0e919b54f488808dca0c6307dba8654920d83c224ea6390cbe95",
+        "SCN-113": "da6350cef96f8022c604bba09f227179c5f378fb96b721d02e8c84bf8b430112",
+        "TECH-49": "c962c8b4513e5afbdb3bcd5e98b24f74477b012a8cc40d6f3592267a17471bd4"
+      }
+    },
+    {
+      "id": "ST-042",
+      "slug": "throttling",
+      "title": "Throttle claims with concurrency keys, rate limits, LongRunning limits and weighted queues",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-037"
+      ],
+      "owns": [
+        "INV-108",
+        "INV-109",
+        "INV-112",
+        "REQ-156",
+        "REQ-157",
+        "REQ-158",
+        "REQ-159",
+        "SCN-106"
+      ],
+      "constrains": [
+        "REQ-123",
+        "INV-110",
+        "TECH-20",
+        "INV-111",
+        "INV-123"
+      ],
+      "pins": {
+        "INV-108": "9ef0d9ea0c32df83f8461eb4460127e856dd993dc307b488ff048a3f669c9a97",
+        "INV-109": "2cab1389e0fedb5798d9b7a066e6cb13100767b848a770d7f7f91f31df299aab",
+        "INV-112": "17e7f740e5a222253148a1b2deca9e8f8039f623c6c1d74fef6d7d641e06ca2b",
+        "REQ-156": "72cd54f829934d5552c63f7ebed7a76049397d06228cf2b5e4f0a59f58ccfa2b",
+        "REQ-157": "39e950b8537ae445035ae3eeb2be192f2ac2493f6713bf5e80fd241632ad5c9e",
+        "REQ-158": "4b292ee62aa3a34abe27378d365ba7a487566d7218fac89ffcc6cf0cd092374f",
+        "REQ-159": "f9e3a127d5a419a6640de8a169fb80adb7248e748a4b400b7bba397905d4d5ef",
+        "SCN-106": "40aa0b4d010865447e4fc8db7f3a48b0ce37870378e33745c752c6930db3e5fd"
+      }
+    },
+    {
+      "id": "ST-043",
+      "slug": "inline-continuations-and-keys",
+      "title": "Run continuations, unique keys and concurrency keys inline",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-038",
+        "ST-042",
+        "ST-039"
+      ],
+      "owns": [
+        "INV-132",
+        "INV-134",
+        "INV-137"
+      ],
+      "constrains": [
+        "REQ-146",
+        "INV-131"
+      ],
+      "pins": {
+        "INV-132": "674bbdaee33498c430eaf0e8e022dcf62774692ad4be6fb0cba46df6d0d4e84f",
+        "INV-134": "f603eecfaf179a483b4c4e369675f6741de5e4a4c236509d0b78b8bef6578685",
+        "INV-137": "8a1563f2f40f6053b8a2c8d6130071312ca94cd280ec917739126c0ccd2d04d4"
+      }
+    },
+    {
+      "id": "ST-044",
+      "slug": "tags-and-correlation",
+      "title": "Tag jobs and carry correlation ids",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-038",
+        "ST-033",
+        "ST-039",
+        "ST-043"
+      ],
+      "owns": [
+        "TECH-29",
+        "REQ-167",
+        "REQ-168",
+        "INV-127"
+      ],
+      "constrains": [
+        "REQ-308",
+        "TECH-32",
+        "TECH-30"
+      ],
+      "pins": {
+        "INV-127": "bd07649d9d9388d0d223c238c5b3b5386a6c1ac33925011353655e8aec0929cb",
+        "REQ-167": "dda1af71c1bca049048f33f9571b9083408b4d8fbbaa5b4437761d534b79f47b",
+        "REQ-168": "0c7483d7c0f543629605f9ba9635f013d5a2dd4ca2b8f560a67396ec385576f4",
+        "TECH-29": "d0da4ca4b78a27d07c1878675c15071313e93ad99570212346929d9114f24d53"
+      }
+    },
+    {
+      "id": "ST-045",
+      "slug": "log-capture-and-progress",
+      "title": "Capture job logs and progress, and mask sensitive values",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-044"
+      ],
+      "owns": [
+        "TECH-100",
+        "REQ-165",
+        "INV-126",
+        "REQ-166",
+        "INV-124",
+        "NFR-56"
+      ],
+      "constrains": [
+        "TECH-16",
+        "REQ-108",
+        "REQ-309",
+        "INV-128"
+      ],
+      "pins": {
+        "REQ-166": "2717b8cbb53debb332adf411bebfd2aedc0bf3f9254995a7a442c94d2c4577a6",
+        "INV-124": "ae17caa82cee2ff9f5951f7a5e5add189a68c282dcae8d91f945d70b02662622",
+        "INV-126": "d75ef258068d1691176ac373a64252c7e58cae95b6e252941e39d3a67727aa13",
+        "REQ-165": "f9131ab7233003ea0772f97c611ba29b4974c078f572d0aaf2bc88136307a1d6",
+        "TECH-100": "e83b18f876ef72210f0734d4e1b5df843a79d1275a3b113f2df75180545def2c",
+        "NFR-56": "048cdb644ea5646fb84f567f7eb30b1ee20ca97fe29c61a0ace52c4b667ed37e"
+      }
+    },
+    {
+      "id": "ST-046",
+      "slug": "namespaces",
+      "title": "Share one store between applications with namespaces",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-037"
+      ],
+      "owns": [
+        "INV-125"
+      ],
+      "context": [
+        "REQ-39"
+      ],
+      "constrains": [
+        "INV-100",
+        "TECH-44"
+      ],
+      "pins": {
+        "INV-125": "4ed944414957e7b2c6b672c5dfefe10d1c505c7f4307c6b8c4e2d54f2be2018f"
+      }
+    },
+    {
+      "id": "ST-047",
+      "slug": "recurring-configuration-and-windows",
+      "title": "Define recurring jobs in configuration and limit them to a validity window",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-037"
+      ],
+      "owns": [
+        "TECH-120",
+        "REQ-232",
+        "INV-209",
+        "INV-202"
+      ],
+      "constrains": [
+        "REQ-210",
+        "REQ-236",
+        "INV-201",
+        "REQ-202"
+      ],
+      "pins": {
+        "REQ-232": "15c39cc501f2302329bdd27520f42df285f8d0176fa7c93eeeb30309530e0856",
+        "INV-202": "6281a9346d2de8fc64dcda64bbfe10e77acc39c61e363d3ff25f522e16b9bab0",
+        "INV-209": "3d44961e075ffd6790b5c40c3862e3c5d47a63d1efccada7332dad5d6b559031",
+        "TECH-120": "b9aae0044efcac8a832be838e3e8f66626531b9fdca158ab357832c09f75ee4a"
+      }
+    },
+    {
+      "id": "ST-048",
+      "slug": "http-jobs",
+      "title": "Run HTTP jobs and guard outbound calls",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-033",
+        "ST-038"
+      ],
+      "owns": [
+        "TECH-113",
+        "TECH-114",
+        "REQ-416",
+        "REQ-420",
+        "REQ-421",
+        "REQ-422",
+        "REQ-434",
+        "INV-401",
+        "INV-402",
+        "INV-403",
+        "INV-404",
+        "INV-405",
+        "INV-408",
+        "SCN-401",
+        "SCN-402"
+      ],
+      "constrains": [
+        "REQ-172"
+      ],
+      "pins": {
+        "REQ-416": "ac5d1e5aa210806cea40d98bbd4a5f09591b91f9dfe6522db819b6dd65919e4d",
+        "REQ-421": "6ca0b2b78826920e01dc94a94f57fa48fd7e556035fc53e147d87dab9c0f1991",
+        "REQ-422": "1a0d606a58ed3e5996c02b724175e720f958bc117e689ab51b3501ea176d0955",
+        "REQ-434": "bf4ddca49f4ab79b6ac95e8543e0a446120e17a7f8959c684243d5794654a359",
+        "INV-401": "ba26ff7b178883ef87e3cb0718ece99f630b1672f2b8edd1ebb8af6be51888bf",
+        "INV-402": "b167bf4b7dcae120487a667fe8eb23cf5ab395b34269e3bf489994dae4857618",
+        "INV-403": "43c7e7112c7e98d4e160b34b2f7b04acfec026badfe9f1cf3a876194703e6d99",
+        "INV-404": "4e5c3a8340b4c81332e99cacd50a84b027430986c7cde555e5d5fe2ee2713d43",
+        "INV-405": "489ffeb1a97d747d432d00fb3fc308704d1aa10308accbb3b25b41d8a94ab649",
+        "INV-408": "ed17458ed33f2fdf569a04070924825b2041e387fbf7f37ada0e8707c9fb7976",
+        "REQ-420": "708d2ee907ce3e11d9d941b4f14aea4991429aa80c5f75b23756fef8da6d1422",
+        "SCN-401": "5d0f81519bf4d27c62cf442b7d95a3455257d564f3d15cc16218df7214b6ca79",
+        "SCN-402": "3512cc5a307c48a8d042bd7e05b412d97eba0a05e4e314258541460822b79abf",
+        "TECH-113": "a9010e4a56485b64b85c3844cd39b62c1797bfc220b4e14ba43f15173ffb5d4a",
+        "TECH-114": "b45e377012065ef7090496fa271f36cd2686a0614d82f2bde3cb4f012c7fe8e1"
+      }
+    },
+    {
+      "id": "ST-049",
+      "slug": "alerts-lease",
+      "title": "Load alert rules and hold the notification lease on alerts nodes",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-030",
+        "ST-032",
+        "ST-037"
+      ],
+      "owns": [
+        "TECH-129",
+        "REQ-59",
+        "REQ-410",
+        "REQ-438",
+        "INV-411"
+      ],
+      "constrains": [
+        "REQ-52",
+        "REQ-54",
+        "REQ-40",
+        "REQ-19"
+      ],
+      "pins": {
+        "INV-411": "2fecc024e416563f9c0aeaaace283579e7ca8d136a9df47d01bb204dcf2023f8",
+        "REQ-59": "cdcd24dc95f920ed5634b867fa933c435c674924611db0deeb3a1fb64aec58e8",
+        "REQ-410": "4deb2bebe06a4011fa2ce6ebc43a5e4931c452870e03852e53c467ec409d470e",
+        "REQ-438": "787fa90356e09512df8b35a918865b93b82a824ae01ae69612d46a09d8a9d7db",
+        "TECH-129": "ac367e6d74b3df4b9170784a2d239c8d3919269adacc4129a456f33dbcc8c572"
+      }
+    },
+    {
+      "id": "ST-050",
+      "slug": "alert-channels",
+      "title": "Send alerts through webhook, Slack, Teams and ILogger channels",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-049",
+        "ST-048"
+      ],
+      "owns": [
+        "TECH-115",
+        "TECH-116",
+        "TECH-117",
+        "TECH-118",
+        "REQ-407",
+        "REQ-408",
+        "REQ-409",
+        "REQ-412",
+        "REQ-415"
+      ],
+      "constrains": [
+        "INV-401",
+        "INV-402",
+        "INV-403",
+        "INV-404",
+        "TECH-113",
+        "INV-411"
+      ],
+      "pins": {
+        "REQ-412": "edd5d575f50226a3ee80f66fee43b5dcff591bbbd1ae9ebede780c3a791a06a4",
+        "REQ-407": "f7e072f0aa8547b836590bfc9f622bc45c27a827422f10e0c5adbfdc1aefa343",
+        "REQ-408": "39d1883f60e745ad3c3ccf9987913ae608aca9d7064c02c1a4e00c55e2eb235d",
+        "REQ-409": "b3251c30deeba2a29aa29a646efd1ba88c7997c1bb51778fcb67b3ebaa3d2e6c",
+        "REQ-415": "b2b613f26277177f4d0d5e2a2a4a763bbc684112df445a8c4d453f69bbfa38ad",
+        "TECH-115": "1063aacf50e7a7e39771a5c6a1529f4f2e79d058b99973268eae34df8c95a8a4",
+        "TECH-116": "17011aead86063b2b8881bdcf77777e73a132db49f42e4b9138499b01a774cba",
+        "TECH-117": "40bc1d4d7c969883bae67e1b3084221eebee90473c5460b78509d18b3a435490",
+        "TECH-118": "7da0eba57dd114cc5acc9b5a5410e3e290cb8a3655e46422638b67e41e494519"
+      }
+    },
+    {
+      "id": "ST-051",
+      "slug": "alert-cooldowns",
+      "title": "Alert on dead letters at most once per cooldown, with digests",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-050"
+      ],
+      "owns": [
+        "REQ-400",
+        "REQ-413",
+        "REQ-414",
+        "REQ-433",
+        "INV-400",
+        "INV-407",
+        "INV-409",
+        "INV-410",
+        "SCN-400",
+        "SCN-405"
+      ],
+      "constrains": [
+        "REQ-409",
+        "INV-411"
+      ],
+      "pins": {
+        "REQ-413": "cddea21ae4f516ac78f053da17381cd9c35b299d3e1ecf46c0ccf5a74ff2d5b0",
+        "REQ-400": "4b15ca75d0e530b27e0f177d58ebbd5c44d4fb886ca8014b8c714334e428f774",
+        "REQ-414": "414b671fb66a52305b9f98591ebd518fbbc4a49fd03bab2c0da42d0f02c20377",
+        "INV-400": "6c0f609acc5ee4e9509d447bcdfb0bb7ad8b2287504e6a494190ab7c627acd81",
+        "INV-407": "bcb37ffb3a4c842b7478d45aec9b0b65c1fbae9c32800a27181a4901358c3a0b",
+        "INV-409": "8ada8696f64bfb5a5a4e3b85d40d26e3285f24418ecc2280a108aa941f22ab19",
+        "INV-410": "d09944aaf4b31dc39f185f661b9e6a4545514112144a5783f717eef842b5cfb9",
+        "REQ-433": "4f523089d6b526a40dec8603f3c40e4c658a1a2fde887abe270dbd3f00490f04",
+        "SCN-400": "841437895a90520ce5093404ad640a9defa89b91e2adf7d896c4a58c301fcebb",
+        "SCN-405": "de144f435e7920d0adda184eb8fc40652c2265e453164c8674bbe3f90295cf26"
+      }
+    },
+    {
+      "id": "ST-052",
+      "slug": "alert-events",
+      "title": "Alert on failures, failure rates, late recurring jobs, lost nodes, deep queues and waiting throttles",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-051",
+        "ST-042"
+      ],
+      "owns": [
+        "REQ-401",
+        "REQ-402",
+        "REQ-403",
+        "REQ-404",
+        "REQ-405",
+        "REQ-406",
+        "INV-412",
+        "INV-413",
+        "SCN-404",
+        "SCN-406"
+      ],
+      "constrains": [
+        "INV-409",
+        "INV-411",
+        "REQ-400"
+      ],
+      "pins": {
+        "REQ-401": "fa4f5ce7811070589566bf04fe771213bab1fe3029e8c0c3e431a69bd5e45706",
+        "REQ-402": "e39de7723ebfdf511d1ebe317b703cb63464ec7e44d23dd8f0b96c12cac03dea",
+        "REQ-403": "bbb0a1a5c5d593fde58d3a31fe4fb1b2da2ccef22d87094fba42a70b0fd95d04",
+        "REQ-404": "88df2c741a7379689aca56f470de10a4e8a52d4ad47ff5cb94fc9d78b37d54b8",
+        "REQ-405": "5f24e07642e4d7f26e1f4fe5872d1d6f0e129e21ed680a6766f71d2ba12b8bcb",
+        "REQ-406": "0eaabf524168e29142469623c807faeef5f1523a2063689ac6748eafd685a3f0",
+        "INV-412": "d1626e50cc19956abd88da25353293d48d30105d66660e40eb53f6e922250971",
+        "INV-413": "4c3f09cc08311a495633b784bc8bd80f227c69bdff0907bcb628b0c922a489de",
+        "SCN-404": "aa39f028a4dbab671ff202ea93d33ff157264b4b965f92068c01aa8644d100e6",
+        "SCN-406": "cca3ff9acc56113d4b071a8609903feba5bbc57a1d802bc845a768a1c2bd9f11"
+      }
+    },
+    {
+      "id": "ST-053",
+      "slug": "analyzers",
+      "title": "Ship Roslyn analyzers for job names, handlers, payloads and cron literals",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-003",
+        "ST-012",
+        "ST-037"
+      ],
+      "owns": [
+        "TECH-107",
+        "TECH-108",
+        "TECH-109",
+        "TECH-110",
+        "TECH-111"
+      ],
+      "pins": {
+        "TECH-107": "785497069c3bfb480beca6df8f631cc69c76df7f427fabc04f732b57588b96f8",
+        "TECH-108": "7499f5052cf85ab4ebc65f12103ee05faba73cb3a6211ef02f2954195c8aab8d",
+        "TECH-109": "b5d430351b4aa9c5666aaaf4c248daeef83bd21d62f300744454adf46899f352",
+        "TECH-110": "48439aeed38aaa26cc635ad7fe7a94a690469da6423f6de633ad8fa353b9452d",
+        "TECH-111": "151cb96b542edfaf70e96be0f44b0190886d9e8519b21586a577cc2f0f4cd452"
+      }
+    },
+    {
+      "id": "ST-054",
+      "slug": "conformance-suite",
+      "title": "Publish the store conformance suite",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-039",
+        "ST-040",
+        "ST-041",
+        "ST-043",
+        "ST-045",
+        "ST-046",
+        "ST-047",
+        "ST-052"
+      ],
+      "owns": [
+        "TECH-105",
+        "NFR-18",
+        "NFR-57"
+      ],
+      "constrains": [
+        "TECH-31",
+        "TECH-32",
+        "TECH-45"
+      ],
+      "pins": {
+        "TECH-105": "65eee39002d6eee3ec5d0f3b769db1e702cebf8cc5357389ffc1c1a0fa03513c",
+        "NFR-18": "d463c9e5e9eb8a69004584b705c66ff85d7d6f254a2d5655c57dafacbe33bf4c",
+        "NFR-57": "108698d391fd8487036d9cddf58997a6b1570a708b1ece265da767a9d7362858"
+      }
+    },
+    {
+      "id": "ST-055",
+      "slug": "sqlserver-store",
+      "title": "Store jobs in SQL Server",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-054"
+      ],
+      "owns": [
+        "TECH-40",
+        "TECH-41"
+      ],
+      "constrains": [
+        "TECH-36",
+        "TECH-44",
+        "TECH-46",
+        "TECH-47",
+        "TECH-126",
+        "TECH-127",
+        "TECH-105",
+        "INV-101",
+        "NFR-17",
+        "NFR-18",
+        "NFR-13",
+        "NFR-14"
+      ],
+      "pins": {
+        "TECH-40": "6e4e388fa68c795ec356fdd3129b2ecdfa8bdbdbc65ee91f3c6d10e34422378c",
+        "TECH-41": "451132c7a57fc45ff4b29c95079e34f7a88116322d17bfb93717afa059185d68"
+      }
+    },
+    {
+      "id": "ST-056",
+      "slug": "sqlite-store",
+      "title": "Store jobs in SQLite for a single node",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-054"
+      ],
+      "owns": [
+        "TECH-42"
+      ],
+      "constrains": [
+        "TECH-36",
+        "TECH-44",
+        "TECH-46",
+        "TECH-47",
+        "TECH-126",
+        "TECH-127",
+        "TECH-105",
+        "NFR-17",
+        "NFR-18",
+        "NFR-13",
+        "NFR-14",
+        "INV-101"
+      ],
+      "pins": {
+        "TECH-42": "adf7598d776bca7953acdfa1f864fab0a650240d8595ea6cc28726a9f26a78a6"
+      }
+    },
+    {
+      "id": "ST-057",
+      "slug": "redis-store-model",
+      "title": "Connect the Redis store and lay out its data model and scripts",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-054"
+      ],
+      "owns": [
+        "TECH-70",
+        "TECH-52",
+        "TECH-53",
+        "TECH-54",
+        "TECH-55",
+        "TECH-56",
+        "TECH-58",
+        "TECH-59",
+        "TECH-60",
+        "TECH-61",
+        "TECH-68",
+        "REQ-512",
+        "REQ-513"
+      ],
+      "constrains": [
+        "TECH-31",
+        "TECH-33",
+        "REQ-105",
+        "TECH-126",
+        "REQ-22",
+        "REQ-23",
+        "REQ-43"
+      ],
+      "context": [
+        "REQ-38"
+      ],
+      "pins": {
+        "REQ-512": "7918ff93d7184ac186846a877653b798f33c6cae00d109130df1f324b7b69a7d",
+        "REQ-513": "4c2ac02a577ec2b92cc4aa9676298d85d5735f7e686d01a6ef20ef32b8239972",
+        "TECH-52": "988b68da1c5f396a0d4551a68eb3dfebb4112c40de8b883b3ae62b1243d2a729",
+        "TECH-53": "d58c2abbc02e26ef6e44fac3d357c7a2bf2cade3a3e1ded13329df5abbb466c9",
+        "TECH-54": "8c3e80cf88e46e5e486d96d1d0e13df6111954d05258e62a1ef5eaf21387f98a",
+        "TECH-55": "ecb4a979521cf08d877a5522910f66d56161a51cd36e0e96bc48014a7f51470a",
+        "TECH-56": "e8eeacd627bac9b914cc08ff1433cb58ef2464c77820dbffb8f5c2a47738c4a4",
+        "TECH-58": "3bd10334068da631a4c071f4342766b6ab50365de7255fabb1d03cc454cb81f8",
+        "TECH-59": "4a09523777936a5f6106dc197571989f4b09966f2cefcdf1c364dfd7340889bd",
+        "TECH-60": "3a40c6bfaa4e3c9e54495515524bac9a034ca2f1492a6867898ad2ddfa0ab451",
+        "TECH-61": "9e1fe020b5478926eb16b7d73e50bd77800ca40a092973b2c6fed239b936e051",
+        "TECH-68": "5ad2c34fdfee753fe011dd10c26c886b814c58d460ea4086203bb919796a6655",
+        "TECH-70": "08adc3ba4cf8be88c85c27236693e162006e5bb290d05c51401a4b7e0b14a661"
+      }
+    },
+    {
+      "id": "ST-058",
+      "slug": "redis-job-scripts",
+      "title": "Run the job lifecycle on Redis with one script per transition",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-057"
+      ],
+      "owns": [
+        "TECH-57",
+        "TECH-62",
+        "TECH-63",
+        "TECH-66",
+        "TECH-67",
+        "REQ-514",
+        "REQ-515",
+        "REQ-533"
+      ],
+      "constrains": [
+        "TECH-105",
+        "INV-103",
+        "INV-100",
+        "TECH-45",
+        "TECH-32",
+        "NFR-17",
+        "NFR-18",
+        "NFR-13",
+        "NFR-14",
+        "TECH-70",
+        "TECH-54",
+        "TECH-55",
+        "TECH-58",
+        "TECH-59",
+        "TECH-60",
+        "TECH-61"
+      ],
+      "pins": {
+        "REQ-533": "a1f41ff73b6c692e68595220b089dbfd4fb0c5d7ceed70b152f493087654af66",
+        "REQ-515": "52a9b7e5ab6b45d45ace69bf513cfad3c747c1d206a99303d6d1429b1e571bf3",
+        "REQ-514": "6aebd83d094d9bb9dc2d9330b9fde4c6a27be7268589a0151dfb8eb833ed5213",
+        "TECH-57": "38a529cb3b0d9937fe4fed5de1704f71f9d58f5bc0e2838a3a6c46b83a63e5b8",
+        "TECH-62": "5ccb7cc4e1e6cc8934997fd5d0b4c53a18abc3c296c1e63ffd1d0146ae6b315b",
+        "TECH-63": "49cf5672f457014ef070a8d88a2aeb961afa8310b8c8cee55135170f4793139a",
+        "TECH-66": "38be93b7a95c3d8ef49376c49f7217ab50d57f419bf4c9933d4638215f4ad6ec",
+        "TECH-67": "ff3da6fd6f6effc874ec2d16e137d60daa6622eb7781741e20a24a937fac7356"
+      }
+    },
+    {
+      "id": "ST-059",
+      "slug": "redis-server-detection",
+      "title": "Detect the Redis server and disclose its durability",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-058"
+      ],
+      "owns": [
+        "TECH-69",
+        "REQ-500",
+        "REQ-501",
+        "REQ-502",
+        "REQ-503",
+        "REQ-504",
+        "REQ-505",
+        "REQ-506",
+        "REQ-519",
+        "REQ-520",
+        "REQ-529",
+        "REQ-531",
+        "SCN-501"
+      ],
+      "constrains": [
+        "REQ-12",
+        "REQ-18",
+        "NFR-41"
+      ],
+      "pins": {
+        "REQ-520": "e34f39f26e0f0c92cfff83a02a4f293448d1d8544d34294b4cf1f8167b456c82",
+        "REQ-500": "eafdc59076f0372c626e7ef44bc7f80cdc68f672cae1528a8644e36ea1c625ec",
+        "REQ-501": "0330968ab4fa0445da5f73e3910574d68ea3907bb205e484f7e944f51a1adc1a",
+        "REQ-502": "7c15df482eb604e0a879873ae063428670b3c31d66839008a58a6bc038f6494b",
+        "REQ-503": "5e0f612a6f5fe827f58ac3b4fd9d49ae913e23c24078e1f45bfbb9c4990add64",
+        "REQ-504": "a335aa99e019f37a85c8576471e8c14a916ea4eb840db0ab3341e28946bbcef6",
+        "REQ-505": "b126d9fa455726c6fce59568ec162ed15693bc78002f31ee88c79f7f6cf5292b",
+        "REQ-519": "e1c3d658ea2576235f9fa3a019d6267dd9750575a394fe49991fb7b6e9cf1c1b",
+        "REQ-529": "9ec746459993be5849d8ce8fe98f27c3f349b5bb5617cd82b14c4342484f8bd0",
+        "REQ-531": "2f4c5fd11a000018eaf099d1503ea2f8e4d89e2869463f091029394d9269b9c9",
+        "REQ-506": "1e00cf5cff9da5841c6ccc8e29ba603b560e1a4a4721dbd239a652b5179ca5bb",
+        "SCN-501": "6c5d66c00775a24165e0d4c05eae7c4eead5939da1a3adcd64c524287f3698c4",
+        "TECH-69": "5127e87f5cf054ba4fd4fc1dad80457543e8331b6e00ab53cc6cf90e0a575e3a"
+      }
+    },
+    {
+      "id": "ST-060",
+      "slug": "redis-reset-detection",
+      "title": "Detect a Redis flush or reset and pause while reconciling",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-059"
+      ],
+      "owns": [
+        "REQ-507",
+        "REQ-508",
+        "REQ-509",
+        "REQ-510",
+        "REQ-526",
+        "REQ-527",
+        "REQ-528",
+        "REQ-530",
+        "LIV-500",
+        "LIV-501",
+        "SCN-503",
+        "SCN-505",
+        "SCN-506"
+      ],
+      "constrains": [
+        "REQ-40",
+        "TECH-62",
+        "TECH-56",
+        "REQ-529",
+        "REQ-503",
+        "REQ-504"
+      ],
+      "pins": {
+        "REQ-507": "7f22c0f680883fc760b4b0cc74b267f62abc3297ccdc2ae7c17156b2bbef0245",
+        "REQ-508": "b8e5cd7efad11922fb20840fbf7eaf6a1b5a50c6d450d97cce23a687c3250daf",
+        "REQ-509": "e8e8104b5f3be4ab87b479acc5ca602596117d6dd9a1d38a254c9d4040766689",
+        "REQ-510": "568bcda13e7dd90e9826a92b4b063a25a123ff908cdb9bad0e67d9fe8d380535",
+        "REQ-527": "7eda44f17c1a1733dc8bcf6f7b2397e37f4fcf03f1aad0bc004650623960fab2",
+        "REQ-528": "38b21a33dacebe00746692a4112eac362f6c998e6c857d784e0185ce620f3bf2",
+        "REQ-530": "6bcbf2a9fed07be07473f952aba2ffb5f4c10ca819c16f6fbd8aa8d2d4eb89ca",
+        "REQ-526": "4362701203fdc12a12e8df139d066dc4da3e5460ec7a91e53b09a000c8222a06",
+        "LIV-500": "035ad63c90b1a2cd433e53f2b5570366ab6ea68fc7c4fb9830f3210113b7b932",
+        "LIV-501": "a0a930ab72cde3efc9cb0f7317939fc9abcc0ce7f78bc53efcf3d105fd22da01",
+        "SCN-503": "f558293ec59476d8bed14e18fd686874cfa08cdf2c6bc26b8db5b77f580146f2",
+        "SCN-505": "7693f594cdebad1608eb54848ff0367b6795d90bd9f40f6bc3e831d6d903365d",
+        "SCN-506": "a8253d6e7b1e755ee80b4dc0c4890eb39d46ad16375913b2b1b79439e03a674a"
+      }
+    },
+    {
+      "id": "ST-061",
+      "slug": "redis-reset-recovery",
+      "title": "Keep runs, unique keys and the reset record consistent across a Redis reset",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-060",
+        "ST-034"
+      ],
+      "owns": [
+        "REQ-521",
+        "REQ-522",
+        "REQ-523",
+        "REQ-524",
+        "REQ-525",
+        "REQ-532",
+        "REQ-534",
+        "SCN-500",
+        "SCN-504",
+        "SCN-507",
+        "SCN-508",
+        "SCN-509",
+        "SCN-510",
+        "TECH-130"
+      ],
+      "constrains": [
+        "INV-100",
+        "INV-301"
+      ],
+      "pins": {
+        "REQ-524": "d28d74f044a602bac45f8417b181a73c3e4d722bcddc4c0951e18c9f25ab9fcf",
+        "REQ-534": "a33e6805b141c155ec669d8da5beb9703ac0de2d134e8bee0c266806e23a4d0f",
+        "REQ-521": "2510296a2619e19c1e43fe44ce438e394f2cf7fe7e76317e738805dc219d2e20",
+        "REQ-522": "50bf045b20c8219131967ce2b58b901b287af09be90e1670103f4ff21809d61b",
+        "REQ-523": "476711187dedada7d0ed0194e5fc4e96095c5ff3a34dac0e08831d634528d70e",
+        "REQ-525": "f23a4c822608f90fa87cf6c5cb09b4dcf6995b731fe6129617745ca8aabb71db",
+        "REQ-532": "f73d75bb1dc8e61f3a25e890980154d4e132bc32949d5cd51fb0a112ba18b0f2",
+        "SCN-500": "d96390722d6195a6601a18e35e50686174663a28e1b222a2ed1df52de27ee7fc",
+        "SCN-504": "0fe43297a2c0fb551b7bf3e1b7ec29408bd55705135e3c63f8737d2df131fa31",
+        "SCN-507": "c215249aa7ac8ce3ff0fe862e6644412064e850e462e95f17fadd314a0cf5479",
+        "SCN-508": "0c2f1046d7d73ba8407e3131db2e723d92e994d550d51eada02d34652138a31a",
+        "SCN-509": "601bc07a15732220c9c3ae674d032eab9e2357b82ea557af188feb54bb3961da",
+        "SCN-510": "df536c9cdeeb2a1add41848c330abda23ae792cd8b00e62700a6970c2bb3cd41",
+        "TECH-130": "7e3c5157e80e92abfc8863e0c6094b3be44fa6a48fbcd3c5ad2287f4b0d6abca"
+      }
+    },
+    {
+      "id": "ST-062",
+      "slug": "redis-tier-1",
+      "title": "Prove the Redis store on Tier 1 servers and topologies",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-061"
+      ],
+      "owns": [
+        "TECH-64",
+        "TECH-71",
+        "TECH-73",
+        "TECH-80",
+        "TECH-81",
+        "TECH-82",
+        "REQ-511"
+      ],
+      "pins": {
+        "REQ-511": "60bca14a82f3f4de7e660481f1d069fa27e833ae69ffd9a20854dc981c43da1b",
+        "TECH-64": "dcbe7e78d7344adf5703a91adc376d9e926ff3fddf8522fdc4e8c47610208def",
+        "TECH-71": "2949d2afad80577f0a2baf44527b3a3883212f5e9439ad3f11aaf2640e5dc819",
+        "TECH-73": "f0cf23742a1094a6c03f711fe0601bc56e68c476eda7342ea3bc8a3449057cb1",
+        "TECH-80": "da0bac932990998f55aa2b212bcc7663f887d94931ce7eb296c13a413e83eb68",
+        "TECH-81": "24a270fba15146d3407e21914ece015822c3c3d1c6fb09720738a56f206e361e",
+        "TECH-82": "c3524fd069b4dd500dbf60abbd6f79b05e6a1b6d936a822fab42241257cca1d4"
+      }
+    },
+    {
+      "id": "ST-063",
+      "slug": "redis-hybrid-notifications",
+      "title": "Wake SQL-store nodes through Redis notifications",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-058",
+        "ST-055"
+      ],
+      "owns": [
+        "REQ-516",
+        "REQ-517",
+        "INV-501",
+        "SCN-502"
+      ],
+      "pins": {
+        "INV-501": "ba5d3ba717c8cfa403b0778c4ebe3bbcfc80a7db3f79b419491c8c3e48756a3a",
+        "REQ-516": "cfd6c3f446dc119bee8ddbf344a99f5b4e8b063dcb284dfd7ddcdf8b2fc6f867",
+        "REQ-517": "3cbc8df55ee5b78f91b5c1bfc55f3473b68b0d2677b6ce4fc5bf2e74f0e676df",
+        "SCN-502": "fb9ed23ca2dc6b3b0b9a1055fb2726b3ba03c8c8d2e268c923d46fd01d9f16b7"
+      }
+    },
+    {
+      "id": "ST-064",
+      "slug": "redis-shard-by-queue",
+      "title": "Shard the Redis store by queue on a Cluster",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-061",
+        "ST-062"
+      ],
+      "owns": [
+        "TECH-65",
+        "INV-500",
+        "INV-306",
+        "NFR-33"
+      ],
+      "constrains": [
+        "INV-100",
+        "TECH-58",
+        "TECH-56",
+        "TECH-130",
+        "REQ-507",
+        "REQ-509",
+        "REQ-523",
+        "REQ-526"
+      ],
+      "pins": {
+        "INV-306": "bd1b52a97114dc4d3d0f553780f2b02618a68d0bfeb18e24c2d1ed4827b7751e",
+        "INV-500": "fd98a1fb4699c119cbcc060fdfb0c2284cde5451e6899e8f3081d3cd1a949bc8",
+        "TECH-65": "0c6c413d23860d4abf1f7fc60c60ee8c5e1406831f07665989f8374bb57a2018",
+        "NFR-33": "568d777c73213f117b69a9e14f4c85fddfb4013af46d8e8977ca0a29633eccf3"
+      }
+    },
+    {
+      "id": "ST-065",
+      "slug": "dashboard-roles",
+      "title": "Grant dashboard permissions by role or claim",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-031",
+        "ST-037"
+      ],
+      "owns": [
+        "REQ-306"
+      ],
+      "constrains": [
+        "INV-301",
+        "REQ-302",
+        "REQ-300",
+        "REQ-301",
+        "REQ-342"
+      ],
+      "pins": {
+        "REQ-306": "83b6cf163fcd4c9a7225a8321497a5cb6f58689a664562ab4a38e8cb7245da16"
+      }
+    },
+    {
+      "id": "ST-066",
+      "slug": "dashboard-api-keys",
+      "title": "Authenticate scripts with dashboard API keys",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-034",
+        "ST-055",
+        "ST-056",
+        "ST-062"
+      ],
+      "owns": [
+        "REQ-305",
+        "REQ-337",
+        "REQ-338",
+        "REQ-339",
+        "REQ-340",
+        "INV-307",
+        "INV-308",
+        "SCN-306",
+        "SCN-307",
+        "NFR-62"
+      ],
+      "constrains": [
+        "INV-301",
+        "NFR-41",
+        "TECH-105",
+        "REQ-300",
+        "REQ-301"
+      ],
+      "pins": {
+        "REQ-340": "caf58ecd85b3d5a911c874312836611d157301335b3d399123101162181fa034",
+        "REQ-337": "31bf4f1bffee6cca269242f1ae36df8c8a922452590a23a61d174a36ee24c9ae",
+        "REQ-338": "2696fc2d153ee2d4e1a6c752e0d54bde5ec77cc7608fc3e53fc809dd5a141ff3",
+        "REQ-339": "2e541556370808ac5f5e36df7ed1e0a011b55b75931528ca62fe7fc5c00fa5d4",
+        "INV-307": "3ef4d73bf4933e78f8168dc90c410f8334c138ab3dd4943d94575e9c08b1bc52",
+        "INV-308": "45527a450746c00e2c387ad75ae3d249b62ca3bbba7953cbcbec25fc868ae172",
+        "REQ-305": "73013d63997c33dc620514a62f3b84761478fef1dff4fbeeaa50d9cc2b8ba0d4",
+        "SCN-306": "dfbc93376de2193c4a6376363482708809e1fb483b5f05f6822195a5f3611114",
+        "SCN-307": "4dde6daecff5029f804bc91cafd6c8a95a6415a1281d90de7e2ad4496752ae54",
+        "NFR-62": "aa99de9778ed5c0e9d8218f5c8455e80b198d635c45ec443693bf4a8bcf0c923"
+      }
+    },
+    {
+      "id": "ST-067",
+      "slug": "dashboard-basic-auth",
+      "title": "Sign in to the dashboard with basic authentication",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-066"
+      ],
+      "owns": [
+        "REQ-303",
+        "REQ-304",
+        "REQ-334",
+        "REQ-335",
+        "REQ-336",
+        "TECH-94",
+        "NFR-43",
+        "SCN-310"
+      ],
+      "constrains": [
+        "INV-301",
+        "REQ-305",
+        "NFR-41",
+        "REQ-12",
+        "REQ-300",
+        "REQ-301",
+        "REQ-342"
+      ],
+      "pins": {
+        "REQ-335": "c1dc6896432ba7a4cba4fdd812aa6ef4419175f187e1d46b702f3fea71f7c851",
+        "REQ-336": "75b899b28da78f2b3dec0474ec33bd26235c60bf4812b496349cd0c687248e79",
+        "REQ-334": "81f24cf24ec133ecc3ffedfc9b1eded81e299652be33f60d50b73e2617a32d42",
+        "REQ-303": "adf9f743f163c1afe5f1a0434a2822c05073a88879dfea920c8e05a949211814",
+        "REQ-304": "ed5670f086eb47dae2a80cc5981c97c546d12a711922ba6cdfecb8f780e4f75e",
+        "SCN-310": "467b0faefc9f70f99d54537313625d617549f60857b4bcc8c16ce33246595439",
+        "TECH-94": "1819936b5144150bc7769a9e4387562d4dc8e620da8d2f23d26e375b4119d2f5",
+        "NFR-43": "299db281df2ab5bafa21e04239b0d8ac6e92c805fec12df1f247aed380dbb3db"
+      }
+    },
+    {
+      "id": "ST-068",
+      "slug": "dashboard-launch",
+      "title": "Launch jobs from the dashboard",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-048",
+        "ST-066",
+        "ST-055",
+        "ST-056",
+        "ST-062"
+      ],
+      "owns": [
+        "TECH-95",
+        "INV-304",
+        "INV-309",
+        "REQ-319",
+        "REQ-320",
+        "REQ-321",
+        "REQ-322",
+        "REQ-323",
+        "REQ-324",
+        "SCN-302",
+        "SCN-303",
+        "SCN-304",
+        "SCN-305",
+        "SCN-309"
+      ],
+      "constrains": [
+        "INV-301",
+        "INV-302",
+        "INV-408",
+        "REQ-208",
+        "TECH-105",
+        "REQ-300"
+      ],
+      "pins": {
+        "REQ-320": "032fd5d6f5753d06dd8fe5dd7d036f0ae24b5b5ec63cafde07c5d4069c728d4f",
+        "REQ-321": "d0efd8ae2c21275966211989e71108e5384358c05269048ae6ad96ed9c5856a0",
+        "REQ-322": "38c3003aee2e0c645b10adb67164ebfcca9f2fcbf508a9b72a326e72434c3e0b",
+        "INV-304": "6a883ac1817d3edb11031749ea399792b5c8cb4902b2d5ca4cc899e825724a9c",
+        "INV-309": "ae60ad2a018552cf3a4b967a8f47d67b5eed322f6269c6852b7e5238573bddd6",
+        "REQ-319": "ad9276c75061ae01998e44324fca05723b8af6d78df0245ab6f575830264cfc4",
+        "REQ-323": "e19ce5ca4495bbe8b06c6f9456a2d47ca1051b7881f33d7de9471dad8c8e0c60",
+        "REQ-324": "72360974bbcacaeb80ee772ae955e356e2cb9fd3d594988968bfcfd03e047e9b",
+        "SCN-302": "9afd87fbffc4fd8665791b1342ed54e45c1b24e937a5c0edf847994edf186daa",
+        "SCN-303": "71f24a80745fb1d4b82649256ef65fd8210113ee4fd53dde0c5d094b4e512c0a",
+        "SCN-304": "c458177d4546dbeea7c999abf13a620288f91d1a045c7756caac240cbbd7c691",
+        "SCN-305": "0b78c568af7bf5283308486a811e527ca408a0118e7335bf603bf6314a1e2dba",
+        "SCN-309": "5cbf91189c460fe56699cf898eecf195dd2365d890995e1d0d9c8deeae97374f",
+        "TECH-95": "d03c0ee0487061f423f1671211f7ea68531f14fecc16c63a84329b41d4524ad0"
+      }
+    },
+    {
+      "id": "ST-069",
+      "slug": "dashboard-job-logs-and-graph",
+      "title": "Stream job logs and progress, and show job relationships",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-045",
+        "ST-039"
+      ],
+      "owns": [
+        "REQ-316",
+        "REQ-317",
+        "REQ-318"
+      ],
+      "constrains": [
+        "REQ-309",
+        "INV-124"
+      ],
+      "pins": {
+        "REQ-316": "a77b3cde0829a247f8af6535e3c49542f18b7022565caa3f16ad68e804ef1580",
+        "REQ-317": "fb03980022f62b422f18ad611239bdeb5037d4d4e12e2aa4e88ece4ed4ed7730",
+        "REQ-318": "c047b7ef35cc7af15025de6112195e910b1321bccee003546852235e3522e8c2"
+      }
+    },
+    {
+      "id": "ST-070",
+      "slug": "dashboard-tags-and-throttles",
+      "title": "Show the tags and throttles pages",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-044",
+        "ST-042",
+        "ST-068",
+        "ST-055",
+        "ST-056",
+        "ST-062"
+      ],
+      "owns": [
+        "REQ-325",
+        "REQ-326",
+        "REQ-327"
+      ],
+      "constrains": [
+        "INV-301",
+        "REQ-158",
+        "INV-309",
+        "TECH-105"
+      ],
+      "pins": {
+        "REQ-325": "13cf4e89df4d4af10411a368447c822497fcf43ef735e8635e117701d4688254",
+        "REQ-326": "d7ab56322efd39c91da8eaafa327876d6746098d5bbbe2479344b8a9a210546f",
+        "REQ-327": "9687bf5a9161bb0b9eb20879adb427acf9c101695947abd088747d690ef2ec96"
+      }
+    },
+    {
+      "id": "ST-071",
+      "slug": "dashboard-nodes",
+      "title": "Sample node metrics and show the nodes page",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-034",
+        "ST-055",
+        "ST-056",
+        "ST-062"
+      ],
+      "owns": [
+        "REQ-313",
+        "REQ-314",
+        "REQ-343"
+      ],
+      "constrains": [
+        "REQ-40",
+        "TECH-105"
+      ],
+      "pins": {
+        "REQ-313": "8a769d5cf2ba93e6b8e3f66ec300037579509d428b6b1648444466895c18eced",
+        "REQ-314": "3ff9b82c11681c132ef26f2d5d774136b8b748d4f5b930f1d026828a7e13c953",
+        "REQ-343": "cd83cb6e63094bc66ce9a6105664d409127ca4d5fa1520c2653964cc6609c93b"
+      }
+    },
+    {
+      "id": "ST-072",
+      "slug": "dashboard-recurring-builder",
+      "title": "Build and review recurring schedules in the dashboard",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-047",
+        "ST-034",
+        "ST-068",
+        "ST-055",
+        "ST-056",
+        "ST-062"
+      ],
+      "owns": [
+        "REQ-328",
+        "REQ-329"
+      ],
+      "constrains": [
+        "REQ-310",
+        "INV-309",
+        "TECH-105"
+      ],
+      "pins": {
+        "REQ-328": "b2e005b06367311b03a12037724613ac21a9ec438db213f04b5f59306feedbfd",
+        "REQ-329": "1ca07542f3ebc05e8364a13f12251edd42d2217fa8766b60cf3a86575c792daa"
+      }
+    },
+    {
+      "id": "ST-073",
+      "slug": "docs-1-0",
+      "title": "Publish the 1.0 option reference, guides and samples",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-035",
+        "ST-041",
+        "ST-044",
+        "ST-055",
+        "ST-061",
+        "ST-062"
+      ],
+      "owns": [
+        "NFR-2",
+        "NFR-26",
+        "NFR-27",
+        "NFR-30",
+        "NFR-31",
+        "TECH-106",
+        "NFR-32"
+      ],
+      "constrains": [
+        "NFR-28"
+      ],
+      "pins": {
+        "TECH-106": "2dd6dba6008c5f69b129972ad303c73b1644c6057ffcf6752298ff0a79035b6b",
+        "NFR-2": "2e6abf87f51a01c43003fd1bfceff6457b8d3b65f52a25584b9bc971c6b3ce51",
+        "NFR-26": "a3447e4606627b6320364906a84e6cfea050371d2b89f0bcf6ffffaefdc78a16",
+        "NFR-27": "4923575b8390f3f53afabb5abbd8e50ef38be5617a3223a1e3297390794a2fc0",
+        "NFR-30": "53be3eff760d55e22bd4b032e33be786fbac944fdcbc2e6a56fac90ac0f0507d",
+        "NFR-31": "ba1d2f7a18486b7dd3162db85cea2d8fc95472e66f6215cff6cd22dc57d57863",
+        "NFR-32": "0490dec19994d9bca2f870a9015bba65844cac487f24677f7b7a78fc728713fb"
+      }
+    },
+    {
+      "id": "ST-074",
+      "slug": "benchmarks",
+      "title": "Benchmark enqueue, scheduling, throughput and cron punctuality",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-055",
+        "ST-062"
+      ],
+      "owns": [
+        "TECH-123",
+        "NFR-5",
+        "NFR-6",
+        "NFR-7",
+        "NFR-8",
+        "NFR-9"
+      ],
+      "pins": {
+        "TECH-123": "4c5bddf575f451ff5be783224bd7880edd025d27cc9326201b7dfc8b726950dc",
+        "NFR-5": "d58f23a70ac523ac96ebc7a26a9cb49a00c3e6af2dc23dbc44f32d69b321430c",
+        "NFR-6": "0e712ebc3b74cc359d168f3deba592c41b14c2d6846ba854f33f00683171bca5",
+        "NFR-7": "cac793611fa0340404f98008eac8a7de6dce7da3e3bd9969cde2fba1d7155b38",
+        "NFR-8": "7915ce667542e5e28af16246f81ce682f40a3da503896db86747364d1a3dc0af",
+        "NFR-9": "16e89fe0ac78d4a2baf60f6458ccbeae26fa1809a21e358ebb8dce1d6327847f"
+      }
+    },
+    {
+      "id": "ST-075",
+      "slug": "query-plans",
+      "title": "Prove every cleanup and dashboard query is indexed and paged",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-055",
+        "ST-056",
+        "ST-062",
+        "ST-068",
+        "ST-069",
+        "ST-070",
+        "ST-071",
+        "ST-072"
+      ],
+      "owns": [
+        "NFR-15",
+        "NFR-16"
+      ],
+      "pins": {
+        "NFR-15": "709b68237ff7f9f652dc32b27cc24e4ad1f90f668f0e38712ebab40ca44cd766",
+        "NFR-16": "5f159270913cd5ec1762c98a3ef85033154afa53dd629f4cf233b7d73716e4f4"
+      }
+    },
+    {
+      "id": "ST-076",
+      "slug": "release-1-0",
+      "title": "Prepare the 1.0 release: API compatibility, upgrades, changelog and package audit",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-052",
+        "ST-053",
+        "ST-064",
+        "ST-063",
+        "ST-065",
+        "ST-067",
+        "ST-073",
+        "ST-074",
+        "ST-075"
+      ],
+      "owns": [
+        "TECH-112",
+        "NFR-19",
+        "NFR-20",
+        "NFR-21",
+        "NFR-22",
+        "NFR-23",
+        "NFR-38",
+        "NFR-39",
+        "NFR-40"
+      ],
+      "constrains": [
+        "NFR-26",
+        "NFR-2"
+      ],
+      "pins": {
+        "TECH-112": "a8fdb61859b0297e8910135f5fddf0564173496d71d248aef5ca04bc9a105b55",
+        "NFR-19": "0611574ef8329286a3f9fa24c4d346ba00d8a0b8b8cb23c12fdeb750378f71dc",
+        "NFR-20": "ba8bfef6ce6b85f478a9a0d5a145c7c11547c384e64111454333509e5e21207d",
+        "NFR-21": "5382659a62ac1c85d998f1fb0ccf5ab2f469c06f6cd3405f2b417f3418f5f963",
+        "NFR-22": "7b114b2546e1a38d5ecd038c924c879ff507b30be789f09036ca1eca07e1d77b",
+        "NFR-23": "7fdc2edfc00d452337c5855c13363916cd8a480787eef24fee46d2a0a0f9f3b0",
+        "NFR-38": "fd2289a58c4fbf9981d7f9380f05878151ca882c26b08348a6cf405da5287ca1",
+        "NFR-39": "6e79b7a9f62d823406f9a22d59460c9e8a042aff60b3f249264dc6b033ac22d2",
+        "NFR-40": "9275e9627171f66b05e6001e353ba758b2a710a112905cd0d5e9f2f06264bb38"
+      }
+    },
+    {
+      "id": "ST-077",
+      "slug": "m2-acceptance",
+      "title": "Accept M2: run 1.0 end to end on every store",
+      "epic": "m2-1-0",
+      "dependsOn": [
+        "ST-076"
+      ],
+      "owns": [],
+      "context": [
+        "REQ-36"
+      ],
+      "kind": "acceptance",
+      "pins": {}
+    },
+    {
+      "id": "ST-078",
+      "slug": "outbox",
+      "title": "Relay jobs through an outbox in the application's database",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-041",
+        "ST-073",
+        "ST-077"
+      ],
+      "owns": [
+        "REQ-430",
+        "REQ-432",
+        "REQ-435",
+        "REQ-436",
+        "REQ-437",
+        "INV-406",
+        "LIV-400",
+        "SCN-403"
+      ],
+      "constrains": [
+        "REQ-40",
+        "TECH-49",
+        "REQ-431",
+        "NFR-32",
+        "NFR-26",
+        "NFR-2",
+        "TECH-31",
+        "TECH-105"
+      ],
+      "pins": {
+        "REQ-436": "5322f6d43a4d23cb95d07ed6df5848e8aa1caf26e05a7af9bda9f4960c2222c1",
+        "REQ-430": "2adb7b3fc58f3a666bf7d765d5989fde5d7742e498289ded623f4e1ed6aa1a75",
+        "REQ-432": "46dfcc991e0249faa7e000faa1be4df9fe89567d1704e4629b970f56f2b2dffa",
+        "INV-406": "882b6078e34afb099f69dbf873bebfc679c821b1f13729eb79b4c4ed9a11e6da",
+        "REQ-435": "5e460c80f314418d4ad2ca36744ca31ee7249ccd2428bd5e366a9962ae47744f",
+        "REQ-437": "1c1a0216d2031f8c6d61fba09f7512ef741885e3c54cb3b2be34cc81f5cd2ae8",
+        "LIV-400": "3bd7498555d0617070956e1fd6d99898343f686bacea69a211bd4ee942d663b1",
+        "SCN-403": "0b0ea914807bf87e7e3ae45f284f96d2734ecf3f31b19896885ffd67b005c38a"
+      }
+    },
+    {
+      "id": "ST-079",
+      "slug": "smtp-channel",
+      "title": "Send alerts by email over SMTP",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-050",
+        "ST-077"
+      ],
+      "owns": [
+        "TECH-119"
+      ],
+      "constrains": [
+        "NFR-26",
+        "NFR-2"
+      ],
+      "pins": {
+        "TECH-119": "56f255f206c50699da04bae7bbbec70a1b965137eef0cce5d88c984aa5d23c4d"
+      }
+    },
+    {
+      "id": "ST-080",
+      "slug": "dashboard-polish",
+      "title": "Show readable exception chains, branding and localised UI strings",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-069",
+        "ST-077"
+      ],
+      "owns": [
+        "REQ-330",
+        "REQ-331",
+        "NFR-52"
+      ],
+      "constrains": [
+        "NFR-16"
+      ],
+      "pins": {
+        "REQ-330": "35a6eaadbb035c2086754724d09d71ca599b7a51994174aa7fedd4be234a02aa",
+        "REQ-331": "b90786686637a9762c1825bf83b55d017e311739f629dc1a877c685a9aa60ce1",
+        "NFR-52": "9a1e9e55febeb8aa9aba0f0a253a1bb59337d9adb98f35bbf155a56e21cf57f2"
+      }
+    },
+    {
+      "id": "ST-081",
+      "slug": "dashboard-insights",
+      "title": "Compute insights rollups and show the insights page",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-071",
+        "ST-077"
+      ],
+      "owns": [
+        "REQ-332",
+        "INV-305",
+        "REQ-333"
+      ],
+      "constrains": [
+        "REQ-40",
+        "NFR-16",
+        "NFR-15"
+      ],
+      "pins": {
+        "INV-305": "3d59d874a808975483db1845252c488360b7e48b4dd1a62373f64436c2f0851d",
+        "REQ-332": "da4f9b9336a2ea162861b7ebcf66bb2cdf456fc30048ac9473ffba780e460504",
+        "REQ-333": "912e1c37c96da72f33f9cd423943ba64a5cd4973e83cb7c0e2a031b81d937553"
+      }
+    },
+    {
+      "id": "ST-082",
+      "slug": "redis-tier-2-and-3",
+      "title": "Support Tier 2 and Tier 3 Redis-compatible servers",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-062",
+        "ST-077"
+      ],
+      "owns": [
+        "TECH-74",
+        "TECH-76",
+        "TECH-77",
+        "TECH-78",
+        "TECH-79",
+        "TECH-83",
+        "TECH-84",
+        "TECH-85",
+        "TECH-86",
+        "NFR-34"
+      ],
+      "context": [
+        "REQ-518"
+      ],
+      "pins": {
+        "TECH-74": "ae050d5f4165c592673aa1fbe4886921a1e491bc9d1eb382baef513294301864",
+        "TECH-76": "0c1b4e50aeb3682e85157fea0c9ced6261819d7aa6006419fcf7db8930c4545e",
+        "TECH-77": "845c2a9f1f36cd39ee9d181354935269b88e8dbacc23d1593d19efce83649988",
+        "TECH-78": "77d0505f46fe5ba0a5fddc7759f2e2d34055462ab39a279cb5249f5240015423",
+        "TECH-79": "98bf7e4bd77524e118b448304d7e194e70df46f730c4c57f74c924738eb8acf8",
+        "TECH-83": "ce2464190c8869b61c71936fc126ef3057013531543128c6cbf1296bb5229388",
+        "TECH-84": "00d71fab9fd133080cc9b1df76a9d7b32235ad74f974813efeb41a1c98edf7c2",
+        "TECH-85": "0245b4564629126866fff39eb275737b2a935b5e865c79a154086a80f02fce04",
+        "TECH-86": "43023be379182f235a4ee0e6429115b195f79a5e09da9ba0dcc9b662f2b202a9",
+        "NFR-34": "bedbbd08df3258403a7cf1f4dfd4ec2da2276b0f713c2321580dc13f0e3db572"
+      }
+    },
+    {
+      "id": "ST-083",
+      "slug": "garnet-fixture",
+      "title": "Test the Redis store in process with a Garnet fixture",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-082",
+        "ST-027"
+      ],
+      "owns": [
+        "TECH-75"
+      ],
+      "pins": {
+        "TECH-75": "4e4cd39778d1bcc77cdc72b339295d575563e87589bcbeae26fb3f52261d3de8"
+      }
+    },
+    {
+      "id": "ST-084",
+      "slug": "redis-ci-matrix",
+      "title": "Run the Redis CI matrix and publish the compatibility page",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-082"
+      ],
+      "owns": [
+        "TECH-87",
+        "NFR-35",
+        "NFR-58"
+      ],
+      "pins": {
+        "TECH-87": "cad264b1206a6aa2df7eab7c120e3c660222b8934fb09c58bac44527b1f2988a",
+        "NFR-35": "276b153a56fb074a56808d87f93c1f232dd5e6d1e25a3d1bf54ccc5d96d15d26",
+        "NFR-58": "f41e90b1e888aa19b1fede6dc204115db699661792a9116ec3be6e05d6234475"
+      }
+    },
+    {
+      "id": "ST-085",
+      "slug": "native-aot",
+      "title": "Verify Native AOT with a JsonSerializerContext",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-077"
+      ],
+      "owns": [
+        "TECH-4"
+      ],
+      "pins": {
+        "TECH-4": "37ba9a002aab299b6d56c2a179221b90c08bc92d82c44016d019099e250f4147"
+      }
+    },
+    {
+      "id": "ST-086",
+      "slug": "cli",
+      "title": "Ship the Bellhop CLI tool",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-067",
+        "ST-055",
+        "ST-056",
+        "ST-077"
+      ],
+      "owns": [
+        "TECH-122"
+      ],
+      "constrains": [
+        "NFR-26",
+        "NFR-2",
+        "TECH-94"
+      ],
+      "pins": {
+        "TECH-122": "09c1b92cd3d2f3dc9dc2963a2aff8e8ce334065bd2836136cd93cd90c8c4885c"
+      }
+    },
+    {
+      "id": "ST-087",
+      "slug": "mcp-server",
+      "title": "Expose the dashboard API to MCP clients",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-066",
+        "ST-065",
+        "ST-077"
+      ],
+      "owns": [
+        "TECH-121"
+      ],
+      "pins": {
+        "TECH-121": "4dfd5405b8ed0c072c299f3d337bc1fb4777b6706e75de3d5fefdbbb54e86475"
+      }
+    },
+    {
+      "id": "ST-088",
+      "slug": "soak-tests",
+      "title": "Run the zero-tuning and multi-node soak tests",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-077"
+      ],
+      "owns": [
+        "NFR-3",
+        "NFR-61"
+      ],
+      "pins": {
+        "NFR-3": "f8381787c34306abfd061607d22c5f52dc4da7abd0d2a5723074eacaec9f050f",
+        "NFR-61": "5934a1b65bac110ac72f8ce9f775b0d7873b80a175f7f7e3c81efd36ccd184d0"
+      }
+    },
+    {
+      "id": "ST-089",
+      "slug": "community-stores",
+      "title": "List community stores only after they pass the conformance suite",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-077"
+      ],
+      "owns": [
+        "NFR-59"
+      ],
+      "pins": {
+        "NFR-59": "e47ea0e6d5fcea117eb7d946635b04bcccdcfde91688bc32795ba485a87a4c90"
+      }
+    },
+    {
+      "id": "ST-090",
+      "slug": "m3-acceptance",
+      "title": "Accept M3: run 1.x end to end, including Tier 2 servers",
+      "epic": "m3-1-x",
+      "dependsOn": [
+        "ST-078",
+        "ST-079",
+        "ST-080",
+        "ST-081",
+        "ST-083",
+        "ST-084",
+        "ST-085",
+        "ST-086",
+        "ST-087",
+        "ST-088",
+        "ST-089"
+      ],
+      "owns": [],
+      "context": [
+        "REQ-36"
+      ],
+      "kind": "acceptance",
+      "pins": {}
+    }
+  ]
+}
