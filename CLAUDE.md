@@ -128,3 +128,14 @@ because everything downstream inherits it.
 - Failure paths handled and observable.
 - No secrets, debug leftovers, or dead code.
 - Story acceptance criteria met, Notes updated.
+
+
+## Workflow
+
+1) write code
+2) write tests
+3) test
+4) do code review
+5) do security review
+6) fix findings
+7) commit changes and start next story
